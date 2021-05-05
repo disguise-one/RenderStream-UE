@@ -1,0 +1,13 @@
+#include "/Engine/Public/Platform.ush"
+#include "/Engine/Private/Common.ush"
+
+// shader to resize an RGB texture
+void RSCopyPS(
+	float4 InPosition : SV_POSITION,
+	float2 InUV : TEXCOORD0,
+	out float4 OutColor : SV_Target0)
+{
+	float2 ScaledUV = InUV; // * RSResizeCopyUB.UVScale;
+	OutColor = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV);
+	OutColor.a = 1.f - OutColor.a;
+}
