@@ -9,6 +9,7 @@
 #include <memory>
 
 #include "RenderStreamLogOutputDevice.h"
+#include "Math/UnitConversion.h"
 
 #include "RenderStreamLink.h"
 #include "StreamPool.h"
@@ -31,7 +32,6 @@ public:
     virtual bool SupportsDynamicReloading () override;
 
 protected:
-
     void OnPostEngineInit();
     void OnBeginFrame();
     void OnEndFrame();
@@ -39,6 +39,7 @@ protected:
     void EnableStats() const;
 
 public:
+    static EUnit distanceUnit();
     bool PopulateStreamPool();
 
     static FRenderStreamModule* Get();

@@ -1,7 +1,10 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <memory>
 
+struct ID3D11Device;
 struct ID3D11Resource;
 struct ID3D12Resource;
 struct ID3D12Fence;
@@ -17,6 +20,7 @@ public:
         RS_FMT_BGRX8,
 
         RS_FMT_RGBA32F,
+        RS_FMT_RGBA16,
     };
 
     enum RS_ERROR
@@ -164,15 +168,48 @@ public:
         StreamDescription* streams;
     } StreamDescriptions;
 
+    enum RemoteParameterType
+    {
+        RS_PARAMETER_NUMBER,
+        RS_PARAMETER_IMAGE,
+        RS_PARAMETER_POSE,      // 4x4 TR matrix
+        RS_PARAMETER_TRANSFORM, // 4x4 TRS matrix
+        RS_PARAMETER_TEXT,
+    };
+
+    typedef struct
+    {
+        float min;
+        float max;
+        float step;
+        float defaultValue;
+    } NumericalDefaults;
+
+    typedef struct
+    {
+        const char* defaultValue;
+    } TextDefaults;
+
+    typedef union
+    {
+        NumericalDefaults number;
+        TextDefaults text;
+    } RemoteParameterTypeDefaults;
+
+    typedef struct
+    {
+        uint32_t width, height;
+        RSPixelFormat format;
+        int64_t imageId;
+    } ImageFrameData;
+
     typedef struct
     {
         const char* group;
         const char* displayName;
         const char* key;
-        float min;
-        float max;
-        float step;
-        float defaultValue;
+        RemoteParameterType type;
+        RemoteParameterTypeDefaults defaults;
         uint32_t nOptions;
         const char** options;
 
@@ -215,13 +252,14 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 23
+#define RENDER_STREAM_VERSION_MINOR 24
 
     enum SenderFrameType
     {
         RS_FRAMETYPE_HOST_MEMORY,
         RS_FRAMETYPE_DX11_TEXTURE,
-        RS_FRAMETYPE_DX12_TEXTURE
+        RS_FRAMETYPE_DX12_TEXTURE,
+        RS_FRAMETYPE_UNKNOWN
     };
 
     RENDERSTREAM_API static RenderStreamLink& instance();
@@ -242,6 +280,7 @@ private:
     typedef void rs_unregisterVerboseLoggingFuncFn();
 
     typedef RS_ERROR rs_initialiseFn(int expectedVersionMajor, int expectedVersionMinor);
+    typedef RS_ERROR rs_initialiseWithDX11DeviceFn(int expectedVersionMajor, int expectedVersionMinor, ID3D11Device* device);
     typedef RS_ERROR rs_shutdownFn();
     // non-isolated functions, these require init prior to use
     typedef RS_ERROR rs_saveSchemaFn(const char* assetPath, Schema* schema); // Save schema for project file/custom executable at (assetPath)
@@ -250,13 +289,18 @@ private:
     typedef RS_ERROR rs_setSchemaFn(/*InOut*/Schema* schema); // Set schema and fill in per-scene hash for use with rs_getFrameParameters
     typedef RS_ERROR rs_getStreamsFn(/*Out*/StreamDescriptions* streams, /*InOut*/uint32_t* nBytes); // Populate streams into a buffer of size (nBytes) starting at (streams)
 
+    typedef RS_ERROR rs_awaitFrameDataFn(int timeoutMs, /*Out*/FrameData* data); // waits for any asset, any stream to request a frame, provides the parameters for that frame.
     typedef RS_ERROR rs_setFollowerFn(int isFollower); // Used to mark this node as relying on alternative mechanisms to distribute FrameData. Users must provide correct CameraResponseData to sendFrame, and call rs_beginFollowerFrame at the start of the frame, where awaitFrame would normally be called.
     typedef RS_ERROR rs_beginFollowerFrameFn(double tTracked); // Pass the engine-distributed tTracked value in, if you have called rs_setFollower(1) otherwise do not call this function.
-    typedef RS_ERROR rs_awaitFrameDataFn(int timeoutMs, /*Out*/FrameData * data);
 
-    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const CameraResponseData* sendData);
-    typedef RS_ERROR rs_getFrameParametersFn(uint64_t schemaHash, /*Out*/void* outParameterData, size_t outParameterDataSize); 
-    typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);
+    typedef RS_ERROR rs_getFrameParametersFn(uint64_t schemaHash, /*Out*/void* outParameterData, uint64_t outParameterDataSize);  // returns the remote parameters for this frame.
+    typedef RS_ERROR rs_getFrameImageDataFn(uint64_t schemaHash, /*Out*/ImageFrameData* outParameterData, uint64_t outParameterDataCount);  // returns the remote image data for this frame.
+    typedef RS_ERROR rs_getFrameImageFn(int64_t imageId, SenderFrameType frameType, /*InOut*/SenderFrameTypeData data); // fills in (data) with the remote image
+    typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
+
+    typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
+    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const CameraResponseData* sendData); // publish a frame buffer which was generated from the associated tracking and timing information.
+
     typedef RS_ERROR rs_logToD3Fn(const char * str);
     typedef RS_ERROR rs_sendProfilingDataFn(ProfilingEntry* entries, int count);
     typedef RS_ERROR rs_setNewStatusMessageFn(const char* msg);
@@ -292,6 +336,8 @@ public:
                     free(const_cast<char*>(parameter.group));
                     free(const_cast<char*>(parameter.displayName));
                     free(const_cast<char*>(parameter.key));
+                    if (parameter.type == RS_PARAMETER_TEXT)
+                        free(const_cast<char*>(parameter.defaults.text.defaultValue));
                     for (size_t k = 0; k < parameter.nOptions; ++k)
                     {
                         free(const_cast<char*>(parameter.options[k]));
@@ -340,17 +386,21 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_unregisterVerboseLoggingFuncFn* rs_unregisterVerboseLoggingFunc = nullptr;
 
     rs_initialiseFn* rs_initialise = nullptr;
+    rs_initialiseWithDX11DeviceFn* rs_initialiseWithDX11Device = nullptr;
     rs_setSchemaFn* rs_setSchema = nullptr;
     rs_saveSchemaFn* rs_saveSchema = nullptr;
     rs_loadSchemaFn* rs_loadSchema = nullptr;
     rs_shutdownFn* rs_shutdown = nullptr;
     rs_getStreamsFn* rs_getStreams = nullptr;
-    rs_sendFrameFn* rs_sendFrame = nullptr;
+    rs_awaitFrameDataFn* rs_awaitFrameData = nullptr;
     rs_setFollowerFn* rs_setFollower = nullptr;
     rs_beginFollowerFrameFn* rs_beginFollowerFrame = nullptr;
-    rs_awaitFrameDataFn* rs_awaitFrameData = nullptr;
     rs_getFrameParametersFn* rs_getFrameParameters = nullptr;
+    rs_getFrameImageDataFn* rs_getFrameImageData = nullptr;
+    rs_getFrameImageFn* rs_getFrameImage = nullptr;
+    rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
+    rs_sendFrameFn* rs_sendFrame = nullptr;
     rs_logToD3Fn* rs_logToD3 = nullptr;
     rs_sendProfilingDataFn* rs_sendProfilingData = nullptr;
     rs_setNewStatusMessageFn* rs_setNewStatusMessage = nullptr;

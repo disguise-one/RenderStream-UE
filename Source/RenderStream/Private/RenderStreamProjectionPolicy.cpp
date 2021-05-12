@@ -22,25 +22,6 @@
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
-static EUnit distanceUnit()
-{
-    // Unreal defaults to centimeters so we might as well do the same
-    static EUnit ret = EUnit::Unspecified;
-    if (ret == EUnit::Unspecified)
-    {
-        ret = EUnit::Centimeters;
-
-        FString ValueReceived;
-        if (!GConfig->GetString(TEXT("/Script/UnrealEd.EditorProjectAppearanceSettings"), TEXT("DistanceUnits"), ValueReceived, GEditorIni))
-            return ret;
-
-        TOptional<EUnit> currentUnit = FUnitConversion::UnitFromString(*ValueReceived);
-        if (currentUnit.IsSet())
-            ret = currentUnit.GetValue();
-    }
-    return ret;
-}
-
 FRenderStreamProjectionPolicy::FRenderStreamProjectionPolicy(const FString& _ViewportId, const TMap<FString, FString>& _Parameters)
     : ViewportId(_ViewportId)
     , Parameters(_Parameters)
@@ -124,12 +105,7 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
                 ClonedDefinition->UnregisterCamera();
 
             Camera->SetOwner(Template->GetOwner());
-            Camera->AttachToActor(Template->GetAttachParentActor(), FAttachmentTransformRules::KeepWorldTransform);
-
-            USceneComponent* RootComponent = Template->GetRootComponent();
-            if (RootComponent)
-                Camera->SetActorRelativeTransform(Template->GetRootComponent()->GetRelativeTransform());
-
+            Camera->AttachToActor(Template->GetParentActor(), FAttachmentTransformRules::KeepWorldTransform);
             if (Definition)
                 Definition->AddCameraInstance(Camera);
 
@@ -187,9 +163,9 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
         SceneComponent->SetRelativeRotation(rotationQuat);
 
         FVector pos;
-        pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, distanceUnit());
-        pos.Y = FUnitConversion::Convert(float(cameraData.x), EUnit::Meters, distanceUnit());
-        pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, distanceUnit());
+        pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        pos.Y = FUnitConversion::Convert(float(cameraData.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
         SceneComponent->SetRelativeLocation(pos);
     }
 }

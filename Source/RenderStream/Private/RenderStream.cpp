@@ -47,9 +47,19 @@
 #include "ShaderCompiler.h"
 #include "Stats/StatsData.h"
 
+#include "Engine/Public/HardwareInfo.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
+
+namespace 
+{
+    ID3D11Device* GetDX11Device() {
+        auto dx11device = static_cast<ID3D11Device*>(GDynamicRHI->RHIGetNativeDevice());
+        return dx11device;
+    }
+}
 
 class FRenderStreamMonitor : public FRunnable
 {
@@ -133,7 +143,19 @@ void FRenderStreamModule::StartupModule()
     {
         m_logDevice = MakeShared<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe>();
 
-        int errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+        int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
+        
+        auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
+
+        if (toggle == "D3D11")
+        {
+            ID3D11Device* device = GetDX11Device();
+            errCode = RenderStreamLink::instance().rs_initialiseWithDX11Device(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR, device);
+        }
+        else
+        {
+            errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+        }
         if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
@@ -237,6 +259,25 @@ void FRenderStreamModule::ApplyScene(uint32_t sceneId)
     check(m_sceneSelector != nullptr);
     check(m_World != nullptr);
     m_sceneSelector->ApplyScene(*m_World, sceneId);
+}
+
+EUnit FRenderStreamModule::distanceUnit()
+{
+    // Unreal defaults to centimeters so we might as well do the same
+    static EUnit ret = EUnit::Unspecified;
+    if (ret == EUnit::Unspecified)
+    {
+        ret = EUnit::Centimeters;
+
+        FString ValueReceived;
+        if (!GConfig->GetString(TEXT("/Script/UnrealEd.EditorProjectAppearanceSettings"), TEXT("DistanceUnits"), ValueReceived, GEditorIni))
+            return ret;
+
+        TOptional<EUnit> currentUnit = FUnitConversion::UnitFromString(*ValueReceived);
+        if (currentUnit.IsSet())
+            ret = currentUnit.GetValue();
+    }
+    return ret;
 }
 
 bool FRenderStreamModule::PopulateStreamPool()

@@ -1,9 +1,22 @@
 #pragma once
 
+#include "RenderStreamLink.h"
 #include "CoreMinimal.h"
 #include "RenderStreamChannelCacheAsset.generated.h"
 
 //DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelCacheAsset, Log, All);
+
+UENUM()
+enum class RenderStreamParameterType : uint8
+{
+    Float,
+    Image,
+    Pose,
+    Transform,
+    Text,
+};
+
+RENDERSTREAM_API RenderStreamLink::RemoteParameterType RenderStreamParameterTypeToLink(RenderStreamParameterType type);
 
 USTRUCT()
 struct FRenderStreamExposedParameterEntry
@@ -18,13 +31,15 @@ public:
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     FString Key;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
+    RenderStreamParameterType Type;
+    UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     float Min;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     float Max;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     float Step;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    float DefaultValue;
+    FString DefaultValue;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     TArray<FString> Options;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")

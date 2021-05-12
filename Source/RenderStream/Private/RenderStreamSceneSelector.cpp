@@ -1,9 +1,12 @@
 #include "RenderStreamSceneSelector.h"
 #include "Core.h"
 #include "GameFramework/Actor.h"
+#include "Engine/TextureRenderTarget2D.h"
 #include <string.h>
 #include <malloc.h>
+#include <algorithm>
 #include "RenderStream.h"
+#include "RSUCHelpers.inl"
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
@@ -70,13 +73,19 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 }
 
 
-static bool validateField(FString key_, FString undecoratedSuffix, const RenderStreamLink::RemoteParameter& parameter)
+static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamLink::RemoteParameterType expectedType, const RenderStreamLink::RemoteParameter& parameter)
 {
     FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
 
     if (key != parameter.key)
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Parameter mismatch - expected %s, got %s"), UTF8_TO_TCHAR(parameter.key), *key);
+        UE_LOG(LogRenderStream, Error, TEXT("Parameter mismatch - expected key %s, got %s"), UTF8_TO_TCHAR(parameter.key), *key);
+        return false;
+    }
+
+    if (expectedType != parameter.type)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Parameter mismatch - expected type %d, got %d"), parameter.type, expectedType);
         return false;
     }
     return true;
@@ -129,7 +138,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -141,7 +150,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -153,7 +162,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -165,7 +174,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -180,9 +189,9 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "x", parameters[nParameters + 0]) ||
-                    !validateField(Name, "y", parameters[nParameters + 1]) ||
-                    !validateField(Name, "z", parameters[nParameters + 2]))
+                if (!validateField(Name, "x", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
+                    !validateField(Name, "y", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
+                    !validateField(Name, "z", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]))
                 {
                     return SIZE_MAX;
                 }
@@ -196,10 +205,10 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "r", parameters[nParameters + 0]) ||
-                    !validateField(Name, "g", parameters[nParameters + 1]) ||
-                    !validateField(Name, "b", parameters[nParameters + 2]) ||
-                    !validateField(Name, "a", parameters[nParameters + 3]))
+                if (!validateField(Name, "r", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
+                    !validateField(Name, "g", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
+                    !validateField(Name, "b", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]) ||
+                    !validateField(Name, "a", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 3]))
                 {
                     return SIZE_MAX;
                 }
@@ -213,19 +222,61 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "r", parameters[nParameters + 0]) ||
-                    !validateField(Name, "g", parameters[nParameters + 1]) ||
-                    !validateField(Name, "b", parameters[nParameters + 2]) ||
-                    !validateField(Name, "a", parameters[nParameters + 3]))
+                if (!validateField(Name, "r", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
+                    !validateField(Name, "g", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
+                    !validateField(Name, "b", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]) ||
+                    !validateField(Name, "a", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 3]))
                 {
                     return SIZE_MAX;
                 }
                 nParameters += 4;
             }
+            else if (StructProperty->Struct == TBaseStructure<FTransform>::Get())
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed transform property: %s"), *Name);
+                if (numParameters < nParameters + 1)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_TRANSFORM, parameters[nParameters]);
+                ++nParameters;
+            }
             else
             {
                 UE_LOG(LogRenderStream, Warning, TEXT("Unknown struct property: %s"), *Name);
             }
+        }
+        else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
+        {
+            const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
+            if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed render texture property: %s"), *Name);
+                if (numParameters < nParameters + 1)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameters[nParameters]);
+                ++nParameters;
+            }
+            else
+            {
+                UE_LOG(LogRenderStream, Warning, TEXT("Unknown object property: %s"), *Name);
+            }
+        }
+        else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("Exposed text property: %s"), *Name);
+            if (numParameters < nParameters + 1)
+            {
+                UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                return SIZE_MAX;
+            }
+            validateField(Name, "", RenderStreamLink::RS_PARAMETER_TEXT, parameters[nParameters]);
+            ++nParameters;
         }
         else
         {
@@ -236,14 +287,40 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
     return nParameters;
 }
 
-void RenderStreamSceneSelector::ApplyParameters(size_t sceneId, std::initializer_list<AActor*> Actors) const
+void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) const
 {
     check(sceneId < Schema().scenes.nScenes);
     const RenderStreamLink::RemoteParameters& params = Schema().scenes.scenes[sceneId];
 
-    size_t nFloatParams = params.nParameters;
-
+    size_t nFloatParams = 0;
+    size_t nImageParams = 0;
+    size_t nTextParams = 0;
+    for (size_t i = 0; i < params.nParameters ; ++i)
+    {
+        const RenderStreamLink::RemoteParameter& param = params.parameters[i];
+        switch (param.type)
+        {
+        case RenderStreamLink::RS_PARAMETER_NUMBER:
+            nFloatParams++;
+            break;
+        case RenderStreamLink::RS_PARAMETER_IMAGE:
+            nImageParams++;
+            break;
+        case RenderStreamLink::RS_PARAMETER_POSE:
+        case RenderStreamLink::RS_PARAMETER_TRANSFORM:
+            nFloatParams += 16;
+            break;
+        case RenderStreamLink::RS_PARAMETER_TEXT:
+            nTextParams++;
+            break;
+        default:
+            UE_LOG(LogRenderStream, Error, TEXT("Unhandled parameter type"));
+            return;
+        }
+    }
+    
     std::vector<float> floatValues(nFloatParams);
+    std::vector<RenderStreamLink::ImageFrameData> imageValues(nImageParams);
 
     RenderStreamLink::RS_ERROR res = RenderStreamLink::instance().rs_getFrameParameters(params.hash, floatValues.data(), floatValues.size() * sizeof(float));
     if (res != RenderStreamLink::RS_ERROR_SUCCESS)
@@ -251,20 +328,48 @@ void RenderStreamSceneSelector::ApplyParameters(size_t sceneId, std::initializer
         UE_LOG(LogRenderStream, Error, TEXT("Unable to get float frame parameters - %d"), res);
         return;
     }
+    res = RenderStreamLink::instance().rs_getFrameImageData(params.hash, imageValues.data(), imageValues.size());
+    if (res != RenderStreamLink::RS_ERROR_SUCCESS)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Unable to get image frame parameters - %d"), res);
+        return;
+    }
 
-    size_t offset = 0;
-
+    // These are updated by ApplyParameters to allow each actor to operate on the next set of data.
+    const RenderStreamLink::RemoteParameter* paramsPtr = params.parameters;
+    const float* floatValuesPtr = floatValues.data();
+    const RenderStreamLink::ImageFrameData* imageValuesPtr = imageValues.data();
     for (AActor* actor : Actors)
     {
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
-        offset += ApplyParameters(actor, floatValues, offset);
+        ApplyParameters(actor, params.hash, &paramsPtr, &floatValuesPtr, &imageValuesPtr);
     }
 }
 
-size_t RenderStreamSceneSelector::ApplyParameters(AActor* Root, const std::vector<float>& parameters, const size_t offset) const
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const float** ppFloatValues, const RenderStreamLink::ImageFrameData** ppImageValues) const
 {
-    size_t i = offset;
+    auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
+    struct
+    {
+        RenderStreamLink::RSPixelFormat fmt;
+        EPixelFormat ue;
+    } formatMap[] = {
+        // NB. FTextureRenderTargetResource::IsSupportedFormat
+        { RenderStreamLink::RS_FMT_INVALID, EPixelFormat::PF_Unknown },
+        { RenderStreamLink::RS_FMT_BGRA8, EPixelFormat::PF_B8G8R8A8 },
+        { RenderStreamLink::RS_FMT_BGRX8, EPixelFormat::PF_B8G8R8A8 },
+        { RenderStreamLink::RS_FMT_RGBA32F, EPixelFormat::PF_FloatRGBA},
+        { RenderStreamLink::RS_FMT_RGBA16, EPixelFormat::PF_A16B16G16R16 },
+    };
+
+    size_t iParam = 0;
+    const RenderStreamLink::RemoteParameter* params = *ppParams;
+    size_t iFloat = 0;
+    const float* floatValues = *ppFloatValues;
+    size_t iImage = 0;
+    const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
+    size_t iText = 0;
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
     {
         FProperty* Property = *PropIt;
@@ -274,50 +379,157 @@ size_t RenderStreamSceneSelector::ApplyParameters(AActor* Root, const std::vecto
         }
         else if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
         {
-            const bool v = bool(parameters.at(i));
+            const bool v = bool(floatValues[iFloat]);
             BoolProperty->SetPropertyValue_InContainer(Root, v);
-            ++i;
+            ++iFloat;
         }
         else if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
         {
-            const uint8 v = uint8(parameters.at(i));
+            const uint8 v = uint8(floatValues[iFloat]);
             ByteProperty->SetPropertyValue_InContainer(Root, v);
-            ++i;
+            ++iFloat;
         }
         else if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
         {
-            const int32 v = int(parameters.at(i));
+            const int32 v = int(floatValues[iFloat]);
             IntProperty->SetPropertyValue_InContainer(Root, v);
-            ++i;
+            ++iFloat;
         }
         else if (FFloatProperty* FloatProperty = CastField<FFloatProperty>(Property))
         {
-            const float v = parameters.at(i);
+            const float v = floatValues[iFloat];
             FloatProperty->SetPropertyValue_InContainer(Root, v);
-            ++i;
+            ++iFloat;
         }
         else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
         {
             void* StructAddress = StructProperty->ContainerPtrToValuePtr<void>(Root);
             if (StructProperty->Struct == TBaseStructure<FVector>::Get())
             {
-                FVector v(parameters.at(i), parameters.at(i + 1), parameters.at(i + 2));
+                FVector v(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                i += 3;
+                iFloat += 3;
             }
             else if (StructProperty->Struct == TBaseStructure<FColor>::Get())
             {
-                FColor v(parameters.at(i) * 255, parameters.at(i + 1) * 255, parameters.at(i + 2) * 255, parameters.at(i + 3) * 255);
+                FColor v(floatValues[iFloat] * 255, floatValues[iFloat + 1] * 255, floatValues[iFloat + 2] * 255, floatValues[iFloat + 3] * 255);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                i += 4;
+                iFloat += 4;
             }
             else if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get())
             {
-                FLinearColor v(parameters.at(i), parameters.at(i + 1), parameters.at(i + 2), parameters.at(i + 3));
+                FLinearColor v(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                i += 4;
+                iFloat += 4;
+            }
+            else if (StructProperty->Struct == TBaseStructure<FTransform>::Get())
+            {
+                static const FMatrix YUpMatrix(FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f));
+                static const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
+
+                const FMatrix m(
+                    FPlane(floatValues[iFloat + 0], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]),
+                    FPlane(floatValues[iFloat + 4], floatValues[iFloat + 5], floatValues[iFloat + 6], floatValues[iFloat + 7]),
+                    FPlane(floatValues[iFloat + 8], floatValues[iFloat + 9], floatValues[iFloat + 10], floatValues[iFloat + 11]),
+                    FPlane(floatValues[iFloat + 12], floatValues[iFloat + 13], floatValues[iFloat + 14], floatValues[iFloat + 15])
+                );
+                FTransform v(YUpMatrix * m * YUpMatrixInv);
+                v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+                StructProperty->CopyCompleteValue(StructAddress, &v);
+                iFloat += 16;
             }
         }
+        else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
+        {
+            const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
+            if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
+            {
+                const RenderStreamLink::ImageFrameData& frameData = imageValues[iImage];
+                if (!Texture->bGPUSharedFlag || Texture->GetFormat() != formatMap[frameData.format].ue)
+                {
+                    Texture->bGPUSharedFlag = true;
+                    Texture->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
+                }
+                else
+                {
+                    Texture->ResizeTarget(frameData.width, frameData.height);
+                }
+
+                static ID3D12Fence* s_Fence = nullptr;
+                static int s_FenceValue = 1;
+
+                if (toggle == "D3D12")
+                {
+                    if (s_Fence == nullptr)
+                    {
+                        s_Fence = RSUCHelpers::CreateDX12Fence();
+                    }
+                }
+
+                ID3D12Fence* Fence = s_Fence;
+                int FenceValue = s_FenceValue;
+
+                ENQUEUE_RENDER_COMMAND(GetTex)(
+                [this, toggle, Texture, frameData, Fence, FenceValue](FRHICommandListImmediate& RHICmdList)
+                {
+                    auto rtResource = Texture->GetRenderTargetResource();
+                    if (!rtResource)
+                    {
+                        return;
+                    }
+                    void* resource = rtResource->TextureRHI->GetNativeResource();
+
+                    RenderStreamLink::SenderFrameTypeData data = { 0 };
+                    if (toggle == "D3D11")
+                    {
+                        data.dx11.resource = static_cast<ID3D11Resource*>(resource);
+                        auto err = RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data);
+                    }
+                    else if (toggle == "D3D12")
+                    {
+                        
+                        RHICmdList.EnqueueLambda([Fence, FenceValue](FRHICommandListImmediate& RHICmdList) {
+                            auto cmdQueue = RSUCHelpers::GetDX12Queue(RHICmdList);
+                            cmdQueue->Signal(Fence, FenceValue);
+                            cmdQueue->Wait(Fence, FenceValue + 1);
+                        });
+                        
+
+                        data.dx12.resource = static_cast<ID3D12Resource*>(resource);
+                        data.dx12.fence = Fence;
+                        data.dx12.fenceValue = FenceValue;
+
+                        auto err = RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data);
+                    }
+                    else
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
+                        //++iImage;
+                        //continue;
+                        return;
+                    }
+
+                });
+
+                s_FenceValue = s_FenceValue + 2;
+                ++iImage;
+            }
+        }
+        else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
+        {
+            const char* cString = nullptr;
+            if (RenderStreamLink::instance().rs_getFrameText(specHash, iText, &cString) == RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                TextProperty->SetPropertyValue_InContainer(Root, FText::FromString(UTF8_TO_TCHAR(cString)));
+            }
+            ++iText;
+        }
+
+        ++iParam;
     }
-    return i;
+    
+    *ppFloatValues += iFloat;
+    *ppImageValues += iImage;
+    *ppParams += iParam;
 }
