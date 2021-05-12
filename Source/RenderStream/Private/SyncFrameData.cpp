@@ -4,6 +4,7 @@
 #include "RenderStreamStatus.h"
 #include "RenderStream.h"
 #include "RenderStreamStats.h"
+#include "RenderStreamEventHandler.h"
 
 bool FRenderStreamSyncFrameData::IsActive() const
 {
@@ -79,7 +80,12 @@ void FRenderStreamSyncFrameData::ControllerReceive()
 
     if (Ret == RenderStreamLink::RS_ERROR_STREAMS_CHANGED)
     {
-        // This is a helpful notification. Which we don't use. We need to actually get frame data, go back.
+        // Update the streams
+        FRenderStreamModule* Module = FRenderStreamModule::Get();
+        check(Module);
+        Module->PopulateStreamPool();
+
+        // We need to actually get frame data, go back.
         ControllerReceive();
     }
     else if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)

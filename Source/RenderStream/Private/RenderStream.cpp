@@ -47,6 +47,8 @@
 #include "ShaderCompiler.h"
 #include "Stats/StatsData.h"
 
+#include "RenderStreamEventHandler.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -270,18 +272,39 @@ bool FRenderStreamModule::PopulateStreamPool()
 
         const RenderStreamLink::StreamDescriptions* header = nBytes >= sizeof(RenderStreamLink::StreamDescriptions) ? reinterpret_cast<const RenderStreamLink::StreamDescriptions*>(descMem.data()) : nullptr;
         const size_t numStreams = header ? header->nStreams : 0;
+        TArray<FStreamInfo> streamInfoArray;
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
             const FString Name(description.name);
             const FIntPoint Resolution(description.width, description.height);
             const FString Channel(description.channel);
-            if (!StreamPool->GetStream(Name))
+            streamInfoArray.Push({ Channel, Name });
+            if (TSharedPtr<FFrameStream> Stream = StreamPool->GetStream(Name))
             {
+                // Stream exists in pool but might have changed, update config
+                UE_LOG(LogRenderStream, Log, TEXT("Updating config for existing stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
+                check(Resolution == Stream->Resolution());  // Changing stream resolution is not currently supported
+                Stream->Setup(Name, Resolution, Channel, description.clipping, description.handle, description.format);
+
+                // Update corresponding projection policy
+                for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
+                {
+                    if (policy->GetViewportId() == Name)
+                        policy->ConfigureCapture();
+                }
+            }
+            else
+            {
+                // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
             }
         }
+
+        // Broadcast streams changed event
+        for (ARenderStreamEventHandler* eventHandler : EventHandlers())
+            eventHandler->onStreamsChanged(streamInfoArray);
 
         return true;
     }
@@ -293,7 +316,8 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
     for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
     {
         const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(policy->GetViewportId());
-        check(stream);
+        if (!stream)
+            continue;
 
         RenderStreamLink::CameraData cameraData;
         if (RenderStreamLink::instance().rs_getFrameCamera(stream->Handle(), &cameraData) == RenderStreamLink::RS_ERROR_SUCCESS)
@@ -366,6 +390,34 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
         check(ClusterMgr);
         // Manager is cleared on map load, so register here instead of on module load
         ClusterMgr->RegisterSyncObject(&m_syncFrame, EDisplayClusterSyncGroup::PreTick);
+    }
+
+    // Find all event handlers
+    if (InWorld)
+    {
+        m_eventHandlers = TArray<ARenderStreamEventHandler*>();
+        TArray<AActor*> FoundActors;
+        UGameplayStatics::GetAllActorsOfClass(InWorld, ARenderStreamEventHandler::StaticClass(), FoundActors);
+
+        for (AActor* Actor : FoundActors)
+        {
+            if (ARenderStreamEventHandler* EventHandler = Cast<ARenderStreamEventHandler>(Actor))
+                m_eventHandlers.Add(EventHandler);
+        }
+    }
+
+    // Broadcast streams changed event with initial streams
+    if (StreamPool)
+    {
+        TArray<FStreamInfo> streamInfoArray;
+        for (const TSharedPtr<FFrameStream>& stream : StreamPool->GetAllStreams())
+        {
+            if (stream)
+                streamInfoArray.Push({ FString(stream->Channel()), FString(stream->Name()) });
+        }
+
+        for (ARenderStreamEventHandler* eventHandler : m_eventHandlers)
+            eventHandler->onStreamsChanged(streamInfoArray);
     }
 
     EnableStats();

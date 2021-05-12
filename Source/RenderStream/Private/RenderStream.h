@@ -7,6 +7,7 @@
 #include "Cluster/IDisplayClusterClusterManager.h"
 #include <set>
 #include <memory>
+#include <vector>
 
 #include "RenderStreamLogOutputDevice.h"
 
@@ -20,6 +21,7 @@ class UCameraComponent;
 class AActor;
 class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
+class ARenderStreamEventHandler;
 
 class FRenderStreamModule : public IModuleInterface
 {
@@ -38,6 +40,8 @@ protected:
 
     void EnableStats() const;
 
+    TArray<ARenderStreamEventHandler*> m_eventHandlers;
+
 public:
     bool PopulateStreamPool();
 
@@ -54,6 +58,8 @@ public:
 
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
+
+    const TArray<ARenderStreamEventHandler*>& EventHandlers() const { return m_eventHandlers; }
 
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;

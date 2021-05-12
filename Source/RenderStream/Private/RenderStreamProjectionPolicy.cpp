@@ -62,11 +62,33 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
     check(IsInGameThread());
     check(World);
 
-
     Module = FRenderStreamModule::Get();
     check(Module);
 
     Module->LoadSchemas(*World);
+
+    // Get player controller
+    if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(World, PlayerControllerID))
+    {
+        Controller = ExistingController;
+    }
+    else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(World))
+    {
+        PlayerControllerID = UGameplayStatics::GetPlayerControllerID(NewController);
+        Controller = NewController;
+    }
+    else
+        UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing."));
+
+    ConfigureCapture();
+}
+
+void FRenderStreamProjectionPolicy::ConfigureCapture()
+{
+    check(IsInGameThread());
+
+    Module = FRenderStreamModule::Get();
+    check(Module);
 
     const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
     check(ConfigMgr);
@@ -133,15 +155,10 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
             if (Definition)
                 Definition->AddCameraInstance(Camera);
 
-            if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(World, PlayerControllerID))
-                ExistingController->SetViewTargetWithBlend(Camera.Get());
-            else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(World))
-            {
-                PlayerControllerID = UGameplayStatics::GetPlayerControllerID(NewController);
-                NewController->SetViewTargetWithBlend(Camera.Get());
-            }
+            if (Controller.IsValid())
+                Controller->SetViewTargetWithBlend(Camera.Get());
             else
-                UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturng."));
+                UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing, no valid controller."));
         }
         else
             UE_LOG(LogRenderStreamPolicy, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
@@ -273,20 +290,22 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
 
 void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect)
 {
-    check(Stream);
-    RenderStreamLink::CameraResponseData frameResponse;
+    if (Stream)
     {
-        std::lock_guard<std::mutex> guard(m_frameResponsesLock);
-        if (m_frameResponses.empty())
+        RenderStreamLink::CameraResponseData frameResponse;
         {
-            // First frame can have no response data, so do not send a response to nothing.
-            return;
-        }
+            std::lock_guard<std::mutex> guard(m_frameResponsesLock);
+            if (m_frameResponses.empty())
+            {
+                // First frame can have no response data, so do not send a response to nothing.
+                return;
+            }
 
-        frameResponse = m_frameResponses.front();
-        m_frameResponses.pop_front();
+            frameResponse = m_frameResponses.front();
+            m_frameResponses.pop_front();
+        }
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
     }
-    Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
 }
 
 const ACameraActor* FRenderStreamProjectionPolicy::GetTemplateCamera() const

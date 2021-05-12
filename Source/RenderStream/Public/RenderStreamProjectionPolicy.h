@@ -47,6 +47,8 @@ public:
 
     void ApplyCameraData(const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData);
 
+    void ConfigureCapture();
+
     const int32_t GetPlayerControllerID() const { return PlayerControllerID; }
 
 protected:
@@ -61,6 +63,7 @@ protected:
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TSharedPtr<FFrameStream> Stream = nullptr;
     int32_t PlayerControllerID = INDEX_NONE;
+    TWeakObjectPtr<APlayerController> Controller = nullptr;
 
     FRenderStreamModule* Module;
 
