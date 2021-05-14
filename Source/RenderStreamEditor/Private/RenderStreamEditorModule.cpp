@@ -14,6 +14,7 @@
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
 #include "Engine/World.h"
+#include "Engine/TextureRenderTarget2D.h"
 
 #include "ISettingsModule.h"
 #include "RenderStreamChannelCacheAsset.h"
@@ -108,7 +109,7 @@ void FRenderStreamEditorModule::DeleteCaches(const TArray<FAssetData>& InCachesT
         ObjectTools::ForceDeleteObjects(Objects, false);
 }
 
-void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, float min, float max, float step, float defaultValue, TArray<FString> options = {})
+void CreateFieldInternal(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min = 0.f, float max = 255.f, float step = 1.f, FString defaultValue = "0", TArray<FString> options = {})
 {
     FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
     FString displayName = displayName_ + (suffix.IsEmpty() ? "" : " " + suffix);
@@ -123,6 +124,7 @@ void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, F
     parameter.Group = group;
     parameter.DisplayName = displayName;
     parameter.Key = key;
+    parameter.Type = type;
     parameter.Min = min;
     parameter.Max = max;
     parameter.Step = step;
@@ -131,6 +133,26 @@ void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, F
     parameter.DmxOffset = -1; // Auto
     parameter.DmxType = 2; // Dmx16BigEndian
 }
+
+void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min, float max, float step, float defaultValue, TArray<FString> options = {})
+{
+    check(type == RenderStreamParameterType::Float);
+    CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, min, max, step, FString::SanitizeFloat(defaultValue), options);
+}
+
+void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, FString defaultValue)
+{
+    check(type == RenderStreamParameterType::Text);
+    CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, 0, 0, 0, defaultValue);
+}
+
+void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type)
+{
+    check(type != RenderStreamParameterType::Float);
+    check(type != RenderStreamParameterType::Text);
+    CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, 0, 0, 0, "");
+}
+
 
 static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, const TArray<FRenderStreamExposedParameterEntry>& input)
 {
@@ -141,10 +163,18 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         parameter.group = _strdup(TCHAR_TO_UTF8(*entry.Group));
         parameter.displayName = _strdup(TCHAR_TO_UTF8(*entry.DisplayName));
         parameter.key = _strdup(TCHAR_TO_UTF8(*entry.Key));
-        parameter.min = entry.Min;
-        parameter.max = entry.Max;
-        parameter.step = entry.Step;
-        parameter.defaultValue = entry.DefaultValue;
+        parameter.type = RenderStreamParameterTypeToLink(entry.Type);
+        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER)
+        {
+            parameter.defaults.number.min = entry.Min;
+            parameter.defaults.number.max = entry.Max;
+            parameter.defaults.number.step = entry.Step;
+            parameter.defaults.number.defaultValue = FCString::Atof(*entry.DefaultValue);
+        }
+        else if (parameter.type == RenderStreamLink::RS_PARAMETER_TEXT)
+        {
+            parameter.defaults.text.defaultValue = _strdup(TCHAR_TO_UTF8(*entry.DefaultValue));
+        }
         parameter.nOptions = uint32_t(entry.Options.Num());
         parameter.options = static_cast<const char**>(malloc(parameter.nOptions * sizeof(const char*)));
         for (size_t j = 0; j < parameter.nOptions; ++j)
@@ -189,7 +219,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
         {
             const bool v = BoolProperty->GetPropertyValue_InContainer(Root);
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed bool property: %s is %d"), *Name, v);
-            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", 0.f, 1.f, 1.f, v ? 1.f : 0.f, { "Off", "On" });
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, 0.f, 1.f, 1.f, v ? 1.f : 0.f, { "Off", "On" });
         }
         else if (const FByteProperty* ByteProperty = CastField<const FByteProperty>(Property))
         {
@@ -199,7 +229,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
             const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : 0;
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : 255;
-            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", Min, Max, 1.f, float(v), Options);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 1.f, float(v), Options);
         }
         else if (const FIntProperty* IntProperty = CastField<const FIntProperty>(Property))
         {
@@ -209,7 +239,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
             const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1000;
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1000;
-            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", Min, Max, 1.f, float(v), Options);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 1.f, float(v), Options);
         }
         else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Property))
         {
@@ -218,7 +248,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
             const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
-            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", Min, Max, 0.001f, v);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 0.001f, v);
         }
         else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property))
         {
@@ -228,34 +258,60 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 FVector v;
                 StructProperty->CopyCompleteValue(&v, StructAddress);
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed vector property: %s is <%f, %f, %f>"), *Name, v.X, v.Y, v.Z);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "x", Name, "x", -1.f, +1.f, 0.001f, v.X);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "y", Name, "y", -1.f, +1.f, 0.001f, v.Y);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "z", Name, "z", -1.f, +1.f, 0.001f, v.Z);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "x", Name, "x", RenderStreamParameterType::Float, -1.f, +1.f, 0.001f, v.X);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "y", Name, "y", RenderStreamParameterType::Float, -1.f, +1.f, 0.001f, v.Y);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "z", Name, "z", RenderStreamParameterType::Float, -1.f, +1.f, 0.001f, v.Z);
             }
             else if (StructProperty->Struct == TBaseStructure<FColor>::Get())
             {
                 FColor v;
                 StructProperty->CopyCompleteValue(&v, StructAddress);
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed colour property: %s is <%d, %d, %d, %d>"), *Name, v.R, v.G, v.B, v.A);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "r", Name, "r", 0.f, 1.f, 0.0001f, v.R / 255.f);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "g", Name, "g", 0.f, 1.f, 0.0001f, v.G / 255.f);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "b", Name, "b", 0.f, 1.f, 0.0001f, v.B / 255.f);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "a", Name, "a", 0.f, 1.f, 0.0001f, v.A / 255.f);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "r", Name, "r", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.R / 255.f);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "g", Name, "g", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.G / 255.f);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "b", Name, "b", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.B / 255.f);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "a", Name, "a", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.A / 255.f);
             }
             else if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get())
             {
                 FLinearColor v;
                 StructProperty->CopyCompleteValue(&v, StructAddress);
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed linear colour property: %s is <%f, %f, %f, %f>"), *Name, v.R, v.G, v.B, v.A);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "r", Name, "r", 0.f, 1.f, 0.0001f, v.R);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "g", Name, "g", 0.f, 1.f, 0.0001f, v.G);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "b", Name, "b", 0.f, 1.f, 0.0001f, v.B);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "a", Name, "a", 0.f, 1.f, 0.0001f, v.A);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "r", Name, "r", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.R);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "g", Name, "g", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.G);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "b", Name, "b", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.B);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "a", Name, "a", RenderStreamParameterType::Float, 0.f, 1.f, 0.0001f, v.A);
+            }
+            else if (StructProperty->Struct == TBaseStructure<FTransform>::Get())
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed transform property: %s"), *Name);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Transform);
             }
             else
             {
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed struct property: %s"), *Name);
             }
+        }
+        else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
+        {
+            const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
+            if (const UTextureRenderTarget2D* Texture = Cast<const UTextureRenderTarget2D>(o))
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed render texture property: %s"), *Name);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Image);
+            }
+            else
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed object property: %s"), *Name);
+            }
+        }
+        else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
+        {
+            const FText v = TextProperty->GetPropertyValue_InContainer(Root);
+            const FString s = v.ToString();
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed text property: %s is %s"), *Name, *s);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Text, s);
         }
         else
         {
@@ -582,3 +638,4 @@ void FRenderStreamEditorModule::UnregisterSettings()
 #undef LOCTEXT_NAMESPACE
 
 IMPLEMENT_MODULE(FRenderStreamEditorModule, RenderStreamEditor);
+#pragma optimize("", on)
