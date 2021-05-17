@@ -180,11 +180,16 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
     USceneComponent* SceneComponent = Camera->K2_GetRootComponent();
     UCameraComponent* CameraComponent = Camera->GetCameraComponent();
 
-    if (UCineCameraComponent* CineCamera = dynamic_cast<UCineCameraComponent*>(CameraComponent))
+    if (CameraComponent && cameraData.orthoWidth > 0.f)  // Use an orthographic camera
+    {
+        CameraComponent->ProjectionMode = ECameraProjectionMode::Orthographic;
+        CameraComponent->OrthoWidth = FUnitConversion::Convert(float(cameraData.orthoWidth), EUnit::Meters, distanceUnit());
+        CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
+    }
+    else if (UCineCameraComponent* CineCamera = dynamic_cast<UCineCameraComponent*>(CameraComponent))
     {
         CineCamera->Filmback.SensorWidth = cameraData.sensorX;
         CineCamera->Filmback.SensorHeight = cameraData.sensorY;
-
         CineCamera->CurrentFocalLength = cameraData.focalLength;
     }
     else if (CameraComponent)
@@ -261,28 +266,48 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
         return false;
     }
 
-    const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
-    const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1/AssignedCamera->AspectRatio));
-    
-    const RenderStreamLink::ProjectionClipping& Clipping = Stream->Clipping();
-    const float l = (-0.5f + Clipping.left) * 2.f * FMath::Tan(0.5f * FieldOfViewH);
-    const float r = (-0.5f + Clipping.right) * 2.f * FMath::Tan(0.5f * FieldOfViewH);
-    const float t = (-0.5f + 1.f - Clipping.top) * 2.f * FMath::Tan(0.5f * FieldOfViewV);
-    const float b = (-0.5f + 1.f - Clipping.bottom) * 2.f * FMath::Tan(0.5f * FieldOfViewV);
+    FMatrix PrjMatrix;
+    if (AssignedCamera->ProjectionMode == ECameraProjectionMode::Orthographic)
+    {
+        const float OrthoWidth = 0.5f * AssignedCamera->OrthoWidth;
+        const float OrthoHeight = OrthoWidth / AssignedCamera->AspectRatio;
+        const float ZScale = 1.f / (AssignedCamera->OrthoFarClipPlane - AssignedCamera->OrthoNearClipPlane);
+        const float ZOffset = -AssignedCamera->OrthoNearClipPlane;
+        PrjMatrix = FReversedZOrthoMatrix(OrthoWidth, OrthoHeight, ZScale, ZOffset);
+    }
+    else
+    {
+        const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
+        const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1 / AssignedCamera->AspectRatio));
 
-    FTransform clippingTransform;
+        const float l = -FMath::Tan(0.5f * FieldOfViewH);
+        const float r = FMath::Tan(0.5f * FieldOfViewH);
+        const float t = FMath::Tan(0.5f * FieldOfViewV);
+        const float b = -FMath::Tan(0.5f * FieldOfViewV);
+
+        PrjMatrix = DisplayClusterHelpers::math::GetProjectionMatrixFromOffsets(NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP);
+    }
+
+    // Center shift
+    FVector centerShift = { 0.f, 0.f, 0.f };
     {
         std::lock_guard<std::mutex> guard(m_frameResponsesLock);
         if (!m_frameResponses.empty())
         {
             // first frame can have no frame response.
             const RenderStreamLink::CameraResponseData& thisFrameResponse = m_frameResponses.back();
-            clippingTransform.SetTranslation({ thisFrameResponse.camera.cx, thisFrameResponse.camera.cy, 0.f });
+            centerShift = { thisFrameResponse.camera.cx, thisFrameResponse.camera.cy, 0.f };
         }
     }
+
+    // Clipping
+    FTransform clippingTransform;
+    const RenderStreamLink::ProjectionClipping& Clipping = Stream->Clipping();
+    FVector clippingScale = { 1.f / (Clipping.right - Clipping.left), -1.f / (Clipping.top - Clipping.bottom), 1.f };
+    FVector clippingOffset = (FVector(1.f - (Clipping.right + Clipping.left), -1.f + (Clipping.top + Clipping.bottom), 0.f) + centerShift) * clippingScale;
+    clippingTransform.SetTranslationAndScale3D(clippingOffset, clippingScale);
     FMatrix clippingMatrix = clippingTransform.ToMatrixWithScale();
 
-    FMatrix PrjMatrix = DisplayClusterHelpers::math::GetProjectionMatrixFromOffsets(NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP);
     OutPrjMatrix = PrjMatrix * clippingMatrix;
 
     return true;

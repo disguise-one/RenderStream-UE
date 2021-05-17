@@ -84,6 +84,7 @@ public:
         float sensorX, sensorY;
         float cx, cy;
         float nearZ, farZ;
+        float orthoWidth;  // If > 0, an orthographic camera should be used
         D3TrackingData d3Tracking;
     } CameraData;
 
@@ -215,7 +216,7 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 23
+#define RENDER_STREAM_VERSION_MINOR 25
 
     enum SenderFrameType
     {
