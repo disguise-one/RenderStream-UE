@@ -88,6 +88,8 @@ if ($GitUncommitted -or $GitTagsNotClean) {
 $Uplugin.FriendlyName = $FriendlyName
 $Uplugin.VersionName = $NewVersionName
 
-Write-Information -MessageData ".uplugin file generated:" -InformationAction Continue
-Write-Information -MessageData (Out-String -InputObject $Uplugin) -InformationAction Continue
-$Uplugin | ConvertTo-Json -Depth 10 | Out-File "RenderStream-UE.uplugin"
+$PluginFileName = "RenderStream-UE.uplugin"
+
+Write-Information -MessageData ('{1}{0} file generated: {1}  FriendlyName: {2} {1}  VersionName: {3}{1}' -f $PluginFileName, [Environment]::NewLine, $Uplugin.FriendlyName, $Uplugin.VersionName) -InformationAction Continue
+
+$Uplugin | ConvertTo-Json -Depth 10 | Out-File $PluginFileName
