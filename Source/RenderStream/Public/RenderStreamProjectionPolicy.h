@@ -51,10 +51,6 @@ public:
 
     const int32_t GetPlayerControllerID() const { return PlayerControllerID; }
 
-    void UpdateStream(const FString& StreamName);
-
-    bool isInitialised = false;
-
 protected:
     FString ViewportId;
     TMap<FString, FString> Parameters;
@@ -73,6 +69,8 @@ protected:
 
     std::mutex m_frameResponsesLock;
     std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
+    
+    bool m_isInitialised = false;
 };
 
 

@@ -280,47 +280,26 @@ bool FRenderStreamModule::PopulateStreamPool()
             const FIntPoint Resolution(description.width, description.height);
             const FString Channel(description.channel);
             streamInfoArray.Push({ Channel, Name });
+
             if (TSharedPtr<FFrameStream> Stream = StreamPool->GetStream(Name))
             {
                 // Stream exists in pool but might have changed, update config
                 UE_LOG(LogRenderStream, Log, TEXT("Updating config for existing stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 check(Resolution == Stream->Resolution());  // Changing stream resolution is not currently supported
                 Stream->Setup(Name, Resolution, Channel, description.clipping, description.handle, description.format);
-
-                // Update corresponding projection policy
-                for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
-                {
-                    if (policy->GetViewportId() == Name)
-                        policy->ConfigureCapture();
-                }
             }
             else
             {
                 // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
+            }
 
-                // Check if this stream has a policy associated with it
-                bool policyExistsForStream = false;
-                for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
-                {
-                    if (policy->GetViewportId() == Name)
-                    {
-                        policyExistsForStream = true;
-                        if (policy->isInitialised)
-                            policy->ConfigureCapture();
-                    }
-                }
-
-                // Assign stream to existing policy without a stream
-                // TODO: May not need this...
-                if (!policyExistsForStream)
-                {
-                    for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
-                    {
-                        policy->UpdateStream(Name);
-                    }
-                }
+            // Update corresponding projection policy
+            for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
+            {
+                if (policy->GetViewportId() == Name)
+                    policy->ConfigureCapture();
             }
         }
 
