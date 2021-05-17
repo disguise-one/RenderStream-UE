@@ -3,10 +3,10 @@
 [hashtable]$DefaultEngineDirectories = @{
     "4.24.([0-9])" = "C:\Program Files\Epic Games\UE_4.24";
     "4.25.([0-9])" = "C:\Program Files\Epic Games\UE_4.25";
-    "4.26.([0-9])" = "D:\Epic\UE\UE_4.26"
+    "4.26.([0-9])" = "C:\Program Files\Epic Games\UE_4.26"
 }
 
-$PluginName = "RenderStream-UE"
+$PluginName = "disguiseuerenderstream"
 $UPluginName = ("{0}.uplugin" -f $PluginName)
 
 $Uplugin = Get-Content -Raw -Path $UPluginName | ConvertFrom-Json
