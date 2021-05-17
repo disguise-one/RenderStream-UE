@@ -58,13 +58,13 @@ namespace {
      *****************************************************************************/
 
     BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, )
-        SHADER_PARAMETER(FVector2D, UVScale)
-        SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
-        SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
-        END_GLOBAL_SHADER_PARAMETER_STRUCT()
+    SHADER_PARAMETER(FVector2D, UVScale)
+    SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
+    SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
+    END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
-        IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
-    IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/DisguiseUERenderStream/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
+    IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
+    IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
 
     void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions)
     {

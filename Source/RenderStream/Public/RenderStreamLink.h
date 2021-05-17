@@ -9,6 +9,8 @@ struct ID3D11Resource;
 struct ID3D12Resource;
 struct ID3D12Fence;
 
+#define RS_PLUGIN_NAME "RenderStream-UE"
+
 class RenderStreamLink
 {
 public:

@@ -1,6 +1,7 @@
 // Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "RenderStream.h"
+#include "RenderStreamLink.h"
 
 #include "RenderStreamSettings.h"
 #include "RenderStreamStatus.h"
@@ -128,8 +129,8 @@ void FRenderStreamModule::StartupModule()
 {
     m_World = nullptr;
 
-    FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("DisguiseUERenderStream"))->GetBaseDir(), TEXT("Shaders"));
-    AddShaderSourceDirectoryMapping("/DisguiseUERenderStream", ShaderDirectory);
+    FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME))->GetBaseDir(), TEXT("Shaders"));
+    AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
     // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
     RenderStreamStatus().InputOutput("Initialising stream", "Waiting for data from d3", RSSTATUS_ORANGE);

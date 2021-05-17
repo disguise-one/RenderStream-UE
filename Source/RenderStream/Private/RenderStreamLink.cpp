@@ -65,7 +65,7 @@ bool RenderStreamLink::loadExplicit()
      */
     auto GetDevD3Path = [&DevEnv]() -> FString
     {
-        FString DevEnvJson = IPluginManager::Get().FindPlugin("DisguiseUERenderStream")->GetBaseDir() + "/devenv.json";
+        FString DevEnvJson = IPluginManager::Get().FindPlugin(RS_PLUGIN_NAME)->GetBaseDir() + "/devenv.json";
         if (FPaths::FileExists(DevEnvJson))
         {
             DevEnv = true;
