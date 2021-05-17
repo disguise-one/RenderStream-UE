@@ -2,3 +2,5 @@ Binaries/
 Intermediate/
 Content/Cache/
 .vs/
+RenderStream-UE.uplugin
+disguiseuerenderstream.uplugin
