@@ -299,6 +299,28 @@ bool FRenderStreamModule::PopulateStreamPool()
                 // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
+
+                // Check if this stream has a policy associated with it
+                bool policyExistsForStream = false;
+                for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
+                {
+                    if (policy->GetViewportId() == Name)
+                    {
+                        policyExistsForStream = true;
+                        if (policy->isInitialised)
+                            policy->ConfigureCapture();
+                    }
+                }
+
+                // Assign stream to existing policy without a stream
+                // TODO: May not need this...
+                if (!policyExistsForStream)
+                {
+                    for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
+                    {
+                        policy->UpdateStream(Name);
+                    }
+                }
             }
         }
 

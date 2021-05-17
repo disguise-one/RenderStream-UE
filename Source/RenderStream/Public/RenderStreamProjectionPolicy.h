@@ -51,8 +51,12 @@ public:
 
     const int32_t GetPlayerControllerID() const { return PlayerControllerID; }
 
+    void UpdateStream(const FString& StreamName);
+
+    bool isInitialised = false;
+
 protected:
-    const FString ViewportId;
+    FString ViewportId;
     TMap<FString, FString> Parameters;
 
     // Near/far clip planes

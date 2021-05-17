@@ -80,7 +80,13 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
     else
         UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing."));
 
+    Stream = Module->StreamPool->GetStream(GetViewportId());
+    if (!Stream)
+        Module->PopulateStreamPool();
+
     ConfigureCapture();
+
+    isInitialised = true;
 }
 
 void FRenderStreamProjectionPolicy::ConfigureCapture()
@@ -104,22 +110,17 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
 
     // Allocate the stream.
     Stream = Module->StreamPool->GetStream(GetViewportId());
-    if (!Stream && Module->PopulateStreamPool())
-    {
-        Stream = Module->StreamPool->GetStream(GetViewportId());
-    }
     if (!Stream)
     {
-        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created for unknown stream"), *GetViewportId());
-        return;
+        UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Policy '%s' created for unknown stream"), *GetViewportId());
     }
-    if (Stream->Resolution() != Resolution)
+    if (Stream && Stream->Resolution() != Resolution)
     {
         UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetViewportId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         return;
     }
 
-    const FString& Channel = Stream->Channel();
+    const FString Channel = Stream ? Stream->Channel() : "";
     const TWeakObjectPtr<ACameraActor> ChannelCamera = URenderStreamChannelDefinition::GetChannelCamera(Channel);
     if (Template != ChannelCamera)
     {
@@ -163,6 +164,16 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
         else
             UE_LOG(LogRenderStreamPolicy, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
     }
+}
+
+void FRenderStreamProjectionPolicy::UpdateStream(const FString& StreamName)
+{
+    // Do nothing if this projection policy already has a stream
+    if (Stream)
+        return;
+
+    ViewportId = StreamName;
+    ConfigureCapture();
 }
 
 void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
@@ -261,7 +272,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
 
     UCameraComponent* AssignedCamera = Camera.IsValid() ? Camera->GetCameraComponent() : nullptr;
 
-    if (!AssignedCamera || !Stream)
+    if (!AssignedCamera)
     {
         return false;
     }
@@ -302,7 +313,9 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
 
     // Clipping
     FTransform clippingTransform;
-    const RenderStreamLink::ProjectionClipping& Clipping = Stream->Clipping();
+    RenderStreamLink::ProjectionClipping Clipping = { 0.f, 1.f, 0.f, 1.f };  // Default clipping in case no streams
+    if (Stream)
+        Clipping = Stream->Clipping();
     FVector clippingScale = { 1.f / (Clipping.right - Clipping.left), -1.f / (Clipping.top - Clipping.bottom), 1.f };
     FVector clippingOffset = (FVector(1.f - (Clipping.right + Clipping.left), -1.f + (Clipping.top + Clipping.bottom), 0.f) + centerShift) * clippingScale;
     clippingTransform.SetTranslationAndScale3D(clippingOffset, clippingScale);
