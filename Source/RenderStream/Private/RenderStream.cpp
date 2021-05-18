@@ -298,7 +298,7 @@ bool FRenderStreamModule::PopulateStreamPool()
             // Update corresponding projection policy
             for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
             {
-                if (policy->GetViewportId() == Name)
+                if (policy->GetId() == Name)
                     policy->ConfigureCapture();
             }
         }
@@ -316,7 +316,7 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 {
     for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
     {
-        const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(policy->GetViewportId());
+        const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(policy->GetId());
         if (!stream)
             continue;
 
