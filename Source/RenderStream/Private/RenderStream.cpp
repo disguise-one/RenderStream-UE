@@ -281,14 +281,7 @@ bool FRenderStreamModule::PopulateStreamPool()
             const FString Channel(description.channel);
             streamInfoArray.Push({ Channel, Name });
 
-            if (TSharedPtr<FFrameStream> Stream = StreamPool->GetStream(Name))
-            {
-                // Stream exists in pool but might have changed, update config
-                UE_LOG(LogRenderStream, Log, TEXT("Updating config for existing stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
-                check(Resolution == Stream->Resolution());  // Changing stream resolution is not currently supported
-                Stream->Setup(Name, Resolution, Channel, description.clipping, description.handle, description.format);
-            }
-            else
+            if (!StreamPool->GetStream(Name))  // Stream does not already exist in pool
             {
                 // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
@@ -304,7 +297,7 @@ bool FRenderStreamModule::PopulateStreamPool()
         }
 
         // Broadcast streams changed event
-        for (ARenderStreamEventHandler* eventHandler : EventHandlers())
+        for (TSharedPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
             eventHandler->onStreamsChanged(streamInfoArray);
 
         return true;
@@ -396,14 +389,14 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
     // Find all event handlers
     if (InWorld)
     {
-        m_eventHandlers = TArray<ARenderStreamEventHandler*>();
+        m_eventHandlers = TArray<TSharedPtr<ARenderStreamEventHandler>>();
         TArray<AActor*> FoundActors;
         UGameplayStatics::GetAllActorsOfClass(InWorld, ARenderStreamEventHandler::StaticClass(), FoundActors);
 
         for (AActor* Actor : FoundActors)
         {
             if (ARenderStreamEventHandler* EventHandler = Cast<ARenderStreamEventHandler>(Actor))
-                m_eventHandlers.Add(EventHandler);
+                m_eventHandlers.Add(MakeShareable(EventHandler));
         }
     }
 
@@ -417,7 +410,7 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
                 streamInfoArray.Push({ FString(stream->Channel()), FString(stream->Name()) });
         }
 
-        for (ARenderStreamEventHandler* eventHandler : m_eventHandlers)
+        for (TSharedPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
             eventHandler->onStreamsChanged(streamInfoArray);
     }
 
