@@ -40,7 +40,7 @@ protected:
 
     void EnableStats() const;
 
-    TArray<ARenderStreamEventHandler*> m_eventHandlers;
+    TArray<TSharedPtr<ARenderStreamEventHandler>> m_eventHandlers;
 
 public:
     bool PopulateStreamPool();
@@ -58,8 +58,6 @@ public:
 
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
-
-    const TArray<ARenderStreamEventHandler*>& EventHandlers() const { return m_eventHandlers; }
 
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
