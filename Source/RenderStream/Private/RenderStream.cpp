@@ -50,6 +50,8 @@
 
 #include "Engine/Public/HardwareInfo.h"
 
+#include "RSUCHelpers.inl"
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -143,20 +145,9 @@ void FRenderStreamModule::StartupModule()
     else
     {
         m_logDevice = MakeShared<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe>();
-
-        int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
         
-        auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
-
-        if (toggle == "D3D11")
-        {
-            ID3D11Device* device = GetDX11Device();
-            errCode = RenderStreamLink::instance().rs_initialiseWithDX11Device(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR, device);
-        }
-        else
-        {
-            errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
-        }
+        int errCode = errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+        
         if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
@@ -172,6 +163,7 @@ void FRenderStreamModule::StartupModule()
             RenderStreamLink::instance().unloadExplicit();
             return;
         }
+        
 
         FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FRenderStreamModule::OnPostLoadMapWithWorld);
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
@@ -345,6 +337,38 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 
 void FRenderStreamModule::OnPostEngineInit()
 {
+
+    int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
+
+    auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
+
+    if (toggle == "D3D11")
+    {
+        ID3D11Device* device = GetDX11Device();
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX11Device(device);
+    }
+    else if (toggle == "D3D12")
+    {
+        FRHICommandListImmediate& RHICmdList = GRHICommandList.GetImmediateCommandList();
+        void* queue = nullptr, * list = nullptr;
+        D3D12RHI::GetGfxCommandListAndQueue(RHICmdList, list, queue);
+        ID3D12CommandQueue* cmdQueue = reinterpret_cast<ID3D12CommandQueue*>(queue);
+        auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
+
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, cmdQueue);
+    }
+
+    if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
+        RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
+        RenderStreamLink::instance().unloadExplicit();
+        return;
+    }
+
+
+
+
     StreamPool = MakeUnique<FStreamPool>();
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
@@ -369,6 +393,8 @@ void FRenderStreamModule::OnPostEngineInit()
         UE_LOG(LogRenderStream, Error, TEXT("Unknown scene selector option %d - defaulting to none"), settings->SceneSelector);
         m_sceneSelector = std::make_unique<SceneSelector_None>();
     }
+
+
 }
 
 void FRenderStreamModule::OnBeginFrame()

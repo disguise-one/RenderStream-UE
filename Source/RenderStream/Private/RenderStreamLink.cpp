@@ -155,7 +155,8 @@ bool RenderStreamLink::loadExplicit()
     }
 
     LOAD_FN(rs_initialise);
-    LOAD_FN(rs_initialiseWithDX11Device);
+    LOAD_FN(rs_initialiseGpGpuWithDX11Device);
+    LOAD_FN(rs_initialiseGpGpuWithDX12DeviceAndQueue);
     LOAD_FN(rs_shutdown);
 
     LOAD_FN(rs_registerLoggingFunc);

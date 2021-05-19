@@ -5,6 +5,8 @@
 #include <memory>
 
 struct ID3D11Device;
+struct ID3D12Device;
+struct ID3D12CommandQueue;
 struct ID3D11Resource;
 struct ID3D12Resource;
 struct ID3D12Fence;
@@ -283,7 +285,9 @@ private:
     typedef void rs_unregisterVerboseLoggingFuncFn();
 
     typedef RS_ERROR rs_initialiseFn(int expectedVersionMajor, int expectedVersionMinor);
-    typedef RS_ERROR rs_initialiseWithDX11DeviceFn(int expectedVersionMajor, int expectedVersionMinor, ID3D11Device* device);
+    typedef RS_ERROR rs_initialiseGpGpuWithDX11DeviceFn(ID3D11Device* device);
+    typedef RS_ERROR rs_initialiseGpGpuWithDX12DeviceAndQueueFn(ID3D12Device* device, ID3D12CommandQueue* queue);
+
     typedef RS_ERROR rs_shutdownFn();
     // non-isolated functions, these require init prior to use
     typedef RS_ERROR rs_saveSchemaFn(const char* assetPath, Schema* schema); // Save schema for project file/custom executable at (assetPath)
@@ -389,7 +393,8 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_unregisterVerboseLoggingFuncFn* rs_unregisterVerboseLoggingFunc = nullptr;
 
     rs_initialiseFn* rs_initialise = nullptr;
-    rs_initialiseWithDX11DeviceFn* rs_initialiseWithDX11Device = nullptr;
+    rs_initialiseGpGpuWithDX11DeviceFn* rs_initialiseGpGpuWithDX11Device = nullptr;
+    rs_initialiseGpGpuWithDX12DeviceAndQueueFn* rs_initialiseGpGpuWithDX12DeviceAndQueue = nullptr;
     rs_setSchemaFn* rs_setSchema = nullptr;
     rs_saveSchemaFn* rs_saveSchema = nullptr;
     rs_loadSchemaFn* rs_loadSchema = nullptr;
