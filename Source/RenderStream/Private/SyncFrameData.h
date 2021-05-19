@@ -21,6 +21,7 @@ public:
 protected:
     void FollowerReceive() const; // Follower receives from master, validates with RenderStream, calls Apply.
     void Apply() const;           // Applies changes from RS API to the engine, locally.
+
 public:
     bool m_frameDataValid = false;
     RenderStreamLink::FrameData m_frameData;
