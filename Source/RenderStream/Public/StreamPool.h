@@ -25,6 +25,8 @@ public:
     // get the allocated streams which are all considered "active"
     const TMap<uint32, TSharedPtr<FFrameStream>>& GetActiveStreams() const;
 
+    const TArray<TSharedPtr<FFrameStream>>& GetAllStreams() const { return m_pool; }
+
     uint32_t PoolCount() const;
     uint32_t StreamCount() const;
 
