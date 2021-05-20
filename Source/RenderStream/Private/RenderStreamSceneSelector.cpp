@@ -499,6 +499,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                             cmdQueue->Wait(Fence, FenceValue + 1);
                         });
                         
+                        {
+                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                        }
 
                         data.dx12.resource = static_cast<ID3D12Resource*>(resource);
                         data.dx12.fence = Fence;

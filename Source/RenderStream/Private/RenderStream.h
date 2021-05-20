@@ -7,6 +7,7 @@
 #include "Cluster/IDisplayClusterClusterManager.h"
 #include <set>
 #include <memory>
+#include <vector>
 
 #include "RenderStreamLogOutputDevice.h"
 #include "Math/UnitConversion.h"
@@ -21,6 +22,7 @@ class UCameraComponent;
 class AActor;
 class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
+class ARenderStreamEventHandler;
 
 class FRenderStreamModule : public IModuleInterface
 {
@@ -37,6 +39,8 @@ protected:
     void OnEndFrame();
 
     void EnableStats() const;
+
+    TArray<TSharedPtr<ARenderStreamEventHandler>> m_eventHandlers;
 
 public:
     static EUnit distanceUnit();

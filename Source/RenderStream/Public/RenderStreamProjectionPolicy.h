@@ -47,10 +47,12 @@ public:
 
     void ApplyCameraData(const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData);
 
+    void ConfigureCapture();
+
     const int32_t GetPlayerControllerID() const { return PlayerControllerID; }
 
 protected:
-    const FString ViewportId;
+    FString ViewportId;
     TMap<FString, FString> Parameters;
 
     // Near/far clip planes
@@ -61,11 +63,14 @@ protected:
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TSharedPtr<FFrameStream> Stream = nullptr;
     int32_t PlayerControllerID = INDEX_NONE;
+    TWeakObjectPtr<APlayerController> Controller = nullptr;
 
     FRenderStreamModule* Module;
 
     std::mutex m_frameResponsesLock;
     std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
+    
+    bool m_isInitialised = false;
 };
 
 
