@@ -26,7 +26,7 @@ public:
     
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Visible")
     TSet<AActor*> EditorVisible;
-    UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hidden")
+    UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")
     TSet<AActor*> EditorHidden;
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)
     EVisibilty DefaultVisibility;
