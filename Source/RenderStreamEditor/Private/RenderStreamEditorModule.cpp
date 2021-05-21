@@ -35,7 +35,7 @@ DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
-const FString CacheFolder = TEXT("/disguiseuerenderstream/Cache");
+const FString CacheFolder = TEXT("/" RS_PLUGIN_NAME "/Cache");
 
 void FRenderStreamEditorModule::StartupModule()
 {
