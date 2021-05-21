@@ -42,10 +42,6 @@ void FRenderStreamEditorModule::StartupModule()
         auto& PropertyModule = FModuleManager::LoadModuleChecked< FPropertyEditorModule >("PropertyEditor");
 
         PropertyModule.RegisterCustomClassLayout(
-            "RenderStreamChannelVisibility",
-            FOnGetDetailCustomizationInstance::CreateStatic(&MakeVisibilityCustomizationInstance)
-        );
-        PropertyModule.RegisterCustomClassLayout(
             "RenderStreamChannelDefinition",
             FOnGetDetailCustomizationInstance::CreateStatic(&MakeDefinitionCustomizationInstance)
         );
@@ -70,7 +66,8 @@ void FRenderStreamEditorModule::ShutdownModule()
     if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
     {
         auto& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-        PropertyModule.UnregisterCustomClassLayout("RenderStreamChannelVisibility");
+        PropertyModule.UnregisterCustomClassLayout("RenderStreamChannelDefinition");
+        PropertyModule.UnregisterCustomClassLayout("RenderStreamSettings");
     }
 
     FEditorDelegates::PostSaveWorld.RemoveAll(this);
