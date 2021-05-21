@@ -9,6 +9,6 @@ public class RenderStreamEditor : ModuleRules
         PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
         PrivateIncludePaths.AddRange(new string[] {"RenderStreamEditor/Private"});
         PublicDependencyModuleNames.AddRange(new string[] { "Core", "InputCore" });
-        PrivateDependencyModuleNames.AddRange (new string[] { "CoreUObject", "Engine", "EngineSettings", "UnrealEd", "RenderStream", "DisplayCluster", "Slate", "SlateCore", "EditorStyle" });
+        PrivateDependencyModuleNames.AddRange (new string[] { "CoreUObject", "Engine", "EngineSettings", "UnrealEd", "RenderStream", "DisplayCluster", "Slate", "SlateCore", "EditorStyle", "PropertyEditor" });
     }
 }
