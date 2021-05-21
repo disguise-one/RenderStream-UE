@@ -12,7 +12,7 @@ URenderStreamStatusWidget::URenderStreamStatusWidget(const FObjectInitializer& O
 	: Super(ObjectInitializer)
 {
 	// Get logo texture
-	auto plugin = IPluginManager::Get().FindPlugin(TEXT("DisguiseUERenderStream"));
+	auto plugin = IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME));
 	if (plugin)
 	{
 		FString assetDir = plugin->GetMountedAssetPath();
