@@ -231,8 +231,10 @@ void URenderStreamChannelDefinition::OnRegister()
 {
     Super::OnRegister();
     UpdateShowFlags();
+#if WITH_EDITOR
     UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
     UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
+#endif
 }
 
 void URenderStreamChannelDefinition::BeginPlay()
