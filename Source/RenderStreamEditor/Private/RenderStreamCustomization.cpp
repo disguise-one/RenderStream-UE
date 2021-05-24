@@ -1,6 +1,7 @@
 #include "RenderStreamCustomization.h"
 #include "PropertyEditing.h"
 #include "RenderStreamChannelDefinition.h"
+#include "RenderStreamChannelVisibility.h"
 #include "RenderStreamEditorModule.h"
 #include "RenderStreamSettings.h"
 #include "Components/SceneCaptureComponent.h"
@@ -8,6 +9,7 @@
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Windows/WindowsPlatformApplicationMisc.h"
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
@@ -243,6 +245,31 @@ namespace
                     }
                 })
             ), FText::FromString("Add from Selection")
+        );
+
+        NewRow.AddCustomContextMenuAction(
+            FUIAction(
+                FExecuteAction::CreateLambda([Property]()
+                {
+                    for (TObjectIterator<URenderStreamChannelVisibility> It; It; ++It)
+                    {
+                        for (const auto& Entry : It->Entries)
+                        {
+                            ACameraActor* Camera = Entry.Camera.IsValid() ? Entry.Camera.Get() : nullptr;
+                            if (Camera)
+                            {
+                                URenderStreamChannelDefinition* Definition = Camera->FindComponentByClass<URenderStreamChannelDefinition>();
+                                if (Definition)
+                                {
+                                    TSet<AActor*>& Set = Entry.Visible ? Definition->EditorVisible : Definition->EditorHidden;
+                                    Set.Add(It->GetOwner());
+                                    Definition->MarkPackageDirty();
+                                }
+                            }
+                        }
+                    }
+                })
+            ), FText::FromString("Import from Visibility component")
         );
     }
 
