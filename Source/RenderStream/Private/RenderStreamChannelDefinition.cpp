@@ -191,7 +191,6 @@ void URenderStreamChannelDefinition::UpdateShowFlags()
     }
 }
 
-#if WITH_EDITOR
 void UpdateVisibilitySet(TSet<TWeakObjectPtr<AActor>>& Destination, TSet<TWeakObjectPtr<AActor>>& OldSet, const TSet<AActor*>& NewSet)
 {
     Destination = Destination.Difference(OldSet);
@@ -203,6 +202,7 @@ void UpdateVisibilitySet(TSet<TWeakObjectPtr<AActor>>& Destination, TSet<TWeakOb
     }
 }
 
+#if WITH_EDITOR
 void URenderStreamChannelDefinition::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
     const FName MemberPropertyName = (PropertyChangedEvent.MemberProperty != nullptr) ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
