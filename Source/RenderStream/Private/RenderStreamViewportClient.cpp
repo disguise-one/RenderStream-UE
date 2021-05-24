@@ -51,6 +51,8 @@
 
 #include "CustomStaticScreenPercentage.h"
 
+#include "RenderStreamStereoRenderDevice.h"
+
 URenderStreamViewportClient::URenderStreamViewportClient(FVTableHelper& Helper)
     : Super(Helper)
 {}
@@ -99,6 +101,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
     {
         return UGameViewportClient::Draw(InViewport, SceneCanvas);
     }
+
+    FRenderStreamStereoRenderDevice* RSRenderDevice = static_cast<FRenderStreamStereoRenderDevice* const>(DCRenderDevice);
 
     ////////////////////////////////
     // Otherwise we use our own version of the UGameViewportClient::Draw which is basically
@@ -150,6 +154,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
     const int32 NumViews = DCRenderDevice->GetDesiredNumberOfViews(bStereoRendering);
     const int32 NumViewsPerFamily = 1;
     const int32 NumFamilies = NumViews / NumViewsPerFamily;
+    
+    if(RSRenderDevice) RSRenderDevice->UpdateNumViewFamilies(NumFamilies);
 
     UWorld* const MyWorld = GetWorld();
     APlayerController* const PlayerController = GEngine->GetFirstLocalPlayerController(GetWorld());
@@ -171,6 +177,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
     for (int32 ViewFamilyIdx = 0; ViewFamilyIdx < NumFamilies; ++ViewFamilyIdx)
     {
+        
         // Create the view family for rendering the world scene to the viewport's render target
         FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(InViewport, MyWorld->Scene, EngineShowFlags)
             .SetRealtimeUpdate(true)
@@ -627,12 +634,14 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 void URenderStreamViewportClient::FinalizeViewFamily(int32 ViewFamilyIdx, FSceneViewFamily* ViewFamily, const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap)
 {
     IDisplayClusterRenderDevice* const DCRenderDevice = static_cast<IDisplayClusterRenderDevice* const>(GEngine->StereoRenderingDevice.Get());
+    const uint32 ViewsAmountPerViewport = DCRenderDevice->GetViewsAmountPerViewport();
+	CurrentView = 0;
 
     for (const FSceneView* const& ViewConst : ViewFamily->Views)
     {
         TSet<FPrimitiveComponentId> Collection;
         FSceneView* View = const_cast<FSceneView*>(ViewConst);
-
+		const int32 ViewportIdx = CurrentView / ViewsAmountPerViewport;
         IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
         const FRenderStreamProjectionPolicyFactory* Factory = static_cast<FRenderStreamProjectionPolicyFactory*>(RenderMgr->GetProjectionPolicyFactory(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType).Get());
         const TSharedPtr<FRenderStreamProjectionPolicy> Policy = Factory->GetPolicyBySceneViewFamily(ViewFamilyIdx);
@@ -666,3 +675,4 @@ void URenderStreamViewportClient::FinalizeViewFamily(int32 ViewFamilyIdx, FScene
 
     FinalizeViews(ViewFamily, PlayerViewMap);
 }
+

@@ -13,6 +13,8 @@ public:
     URenderStreamViewportClient(FVTableHelper& Helper);
     virtual ~URenderStreamViewportClient();
 
-    virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
+    virtual void Draw(FViewport* InViewport, FCanvas* Canvas) override;
     virtual void FinalizeViewFamily(int32 ViewFamilyIdx, class FSceneViewFamily* ViewFamily, const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap);
+private:
+    uint32 CurrentView;
 };

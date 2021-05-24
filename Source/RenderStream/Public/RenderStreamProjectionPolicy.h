@@ -49,6 +49,9 @@ public:
 
     const int32_t GetPlayerControllerID() const { return PlayerControllerID; }
 
+    void SendEnhancedContent_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, FRHITexture2D* DepthTexture,
+        FRHITexture2D* NormalsTexture, FRHITexture2D* AlbedoTexture, FRHITexture2D* DistortionTexture, const FIntRect& ViewportRect);
+
 protected:
     const FString ViewportId;
     TMap<FString, FString> Parameters;
@@ -66,6 +69,7 @@ protected:
 
     std::mutex m_frameResponsesLock;
     std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
+
 };
 
 

@@ -35,19 +35,26 @@ public class RenderStream : ModuleRules
                 "D3D11RHI", 
                 "D3D12RHI", 
                 "RenderCore", 
+                "Renderer",
                 "Projects", 
                 "Json", 
                 "JsonUtilities", 
                 "DisplayCluster",
-                "HeadMountedDisplay"
+                "HeadMountedDisplay",
+                "TextureShare",
+                "TextureShareCore"
             });
 
         PrivateIncludePaths.AddRange(
             new string[]
             {
+                Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Public"),
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private"),
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private/Windows"),
-                Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include")
+                Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include"),
+                Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Private"),
+                Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Private/PostProcess"),
+                Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Public")
             });
 
         DynamicallyLoadedModuleNames.AddRange(new string[] { });
@@ -57,7 +64,7 @@ public class RenderStream : ModuleRules
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "AMD_AGS");
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");
-        //AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");	}
+        //AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");	
 
         using (var md5 = MD5.Create())
         {

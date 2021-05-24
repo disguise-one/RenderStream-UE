@@ -67,6 +67,32 @@ public:
     void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions);
 };
 
+class RSResizeDepthCopy
+    : public RSResizeCopy
+{
+    DECLARE_EXPORTED_SHADER_TYPE(RSResizeDepthCopy, Global, /* RenderStream */);
+public:
+
+    static bool ShouldCache(EShaderPlatform Platform)
+    {
+        return true;
+    }
+
+    static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+    {
+        return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::ES3_1);
+    }
+
+    RSResizeDepthCopy() { }
+
+    RSResizeDepthCopy(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+        : RSResizeCopy(Initializer)
+    { }
+
+
+    //void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions);
+};
+
 
 /* FRGBConvertPS shader
  *****************************************************************************/
@@ -79,6 +105,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
 IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/DisguiseUERenderStream/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, RSResizeDepthCopy, TEXT("/DisguiseUERenderStream/Private/copy.usf"), TEXT("RSDepthCopyPS"), SF_Pixel);
 
 void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions)
 {
@@ -124,12 +151,22 @@ void RSUCHelpers::SendFrame(const RenderStreamLink::StreamHandle Handle,
     GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
     GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 
-    TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
-    GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+    if (FrameData.enhancedCaptureType == RenderStreamLink::EnhancedCaptureFrameType::SCENE_DEPTH)
+    {
+        TShaderMapRef<RSResizeDepthCopy> ConvertShader(ShaderMap);
+        GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+        ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+    }
+    else
+    {
+        TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
+        GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+        ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+    }
+    
     SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
     auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
-    ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
-
+    
     // draw full size quad into render target
     float ULeft = CropU.X;
     float URight = CropU.Y;

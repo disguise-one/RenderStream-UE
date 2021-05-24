@@ -19,6 +19,8 @@
 
 #include "RenderStreamChannelDefinition.h"
 
+#include "Renderer/Private/PostProcess/SceneRenderTargets.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
 static EUnit distanceUnit()
@@ -219,7 +221,7 @@ void FRenderStreamProjectionPolicy::HandleRemoveViewport()
 bool FRenderStreamProjectionPolicy::CalculateView(const uint32 ViewIdx, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float InNCP, const float InFCP)
 {
     check(IsInGameThread());
-
+ 
     UCameraComponent* AssignedCamera = Camera.IsValid() ? Camera->GetCameraComponent() : nullptr;
 
     InOutViewLocation = (AssignedCamera ? AssignedCamera->GetComponentLocation() : FVector::ZeroVector);
@@ -268,6 +270,50 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
     OutPrjMatrix = PrjMatrix * clippingMatrix;
 
     return true;
+}
+
+void FRenderStreamProjectionPolicy::SendEnhancedContent_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, FRHITexture2D* DepthTexture,
+    FRHITexture2D* NormalsTexture, FRHITexture2D* AlbedoTexture, FRHITexture2D* DistortionTexture, const FIntRect& ViewportRect)
+{
+    check(Stream);
+    RenderStreamLink::CameraResponseData frameResponse;
+    {
+        std::lock_guard<std::mutex> guard(m_frameResponsesLock);
+        if (m_frameResponses.empty())
+        {
+            // First frame can have no response data, so do not send a response to nothing.
+            return;
+        }
+
+        frameResponse = m_frameResponses.front();
+        m_frameResponses.pop_front();
+    }
+
+    if (SrcTexture)
+    {
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::RENDERED_FRAME;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
+    }
+    if (DepthTexture)
+    {
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::SCENE_DEPTH;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, DepthTexture, ViewportRect);
+    }
+    if (NormalsTexture)
+    {
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::WORLD_NORMALS;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, NormalsTexture, ViewportRect);
+    }
+    if (AlbedoTexture)
+    {
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::ALBEDO_AO;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, AlbedoTexture, ViewportRect);
+    }
+    if (DistortionTexture)
+    {
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::DISTORTION;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, DistortionTexture, ViewportRect);
+    }
 }
 
 void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect)

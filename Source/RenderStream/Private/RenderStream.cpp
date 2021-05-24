@@ -44,8 +44,11 @@
 #include <vector>
 
 #include "RenderStreamStats.h"
+#include "RenderStreamStereoRenderDevice.h"
+#include "Misc/DisplayClusterStrings.h"
 #include "ShaderCompiler.h"
 #include "Stats/StatsData.h"
+
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -345,6 +348,14 @@ void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason
         IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
         check(RenderMgr);
         {
+
+            // Create Render Device Factory
+            // Unregister existing factory and register custom stereo renderer
+            TSharedPtr<IDisplayClusterRenderDeviceFactory> RenderFactory;
+            RenderFactory = MakeShareable(new FRenderStreamRenderDeviceFactory);
+            RenderMgr->UnregisterRenderDeviceFactory(DisplayClusterStrings::args::dev::Mono);
+            RenderMgr->RegisterRenderDeviceFactory(DisplayClusterStrings::args::dev::Mono, RenderFactory);
+
             // Policies need to be available early for view setup
             ProjectionPolicyFactory = MakeShared<FRenderStreamProjectionPolicyFactory>();
             UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> projection policy factory..."), FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType);

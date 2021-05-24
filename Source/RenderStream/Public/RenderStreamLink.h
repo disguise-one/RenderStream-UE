@@ -61,6 +61,27 @@ public:
         FRAMEDATA_RESET = 1
     };
 
+    enum EnhancedCaptureFrameType
+    {
+        RENDERED_FRAME = 1,
+        SCENE_DEPTH = 2,
+        ALBEDO_AO = 4,
+        WORLD_NORMALS = 8,
+        DISTORTION = 16,
+        ALL = RENDERED_FRAME | SCENE_DEPTH | ALBEDO_AO | WORLD_NORMALS | DISTORTION
+    };
+
+    enum PredictedFrameType
+    {
+        OFF = 0,
+        PREDICTED0 = 1,
+        PREDICTED1 = 2,
+        PREDICTED2 = 3,
+        PREDICTED3 = 4,
+        PREDICTED4 = 5,
+        PREDICTED5 = 6
+    };
+
     typedef uint64_t StreamHandle;
     typedef uint64_t CameraHandle;
     typedef void (*logger_t)(const char*);
@@ -102,6 +123,8 @@ public:
     {
         double tTracked;
         CameraData camera;
+        EnhancedCaptureFrameType enhancedCaptureType;
+        PredictedFrameType predictedFrameType;
     } CameraResponseData;
 
     typedef struct
