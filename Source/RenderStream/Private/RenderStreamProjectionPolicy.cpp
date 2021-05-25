@@ -18,6 +18,7 @@
 #include "FrameStream.h"
 
 #include "RenderStreamChannelDefinition.h"
+#include "RenderStreamChannelVisibility.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
@@ -109,7 +110,7 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
             if (Definition)
             {
                 const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
-                const TSet<TWeakObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
+                const TArray<TWeakObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
                     URenderStreamChannelDefinition::GetChannelCameraNum(Channel), Actors.Num(), *TypeString);

@@ -645,7 +645,7 @@ void URenderStreamViewportClient::FinalizeViewFamily(int32 ViewFamilyIdx, FScene
         {
             // This only really works if we have a single view per view family which is currently the case in nDisplay.
             ViewFamily->EngineShowFlags = Definition->ShowFlags;
-            const TSet<TWeakObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EVisibilty::Visible ? Definition->Hidden : Definition->Visible;
+            const TArray<TWeakObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EVisibilty::Visible ? Definition->Hidden : Definition->Visible;
             for (const TWeakObjectPtr<AActor> Actor : Actors)
             {
                 if (Actor.IsValid())

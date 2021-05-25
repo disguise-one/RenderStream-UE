@@ -1,14 +1,11 @@
 #include "RenderStreamCustomization.h"
+#include "RenderStreamChannelVisibility.h" // The class we're customizing
 #include "PropertyEditing.h"
-#include "RenderStreamChannelDefinition.h"
 #include "RenderStreamEditorModule.h"
 #include "RenderStreamSettings.h"
-#include "Components/SceneCaptureComponent.h"
-#include "Engine/Selection.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Kismet/GameplayStatics.h"
-#include "Windows/WindowsPlatformApplicationMisc.h"
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
@@ -30,8 +27,6 @@ namespace
     public:
         // IDetailCustomization interface
         virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-        void CustomizeShowFlagSettings(IDetailCategoryBuilder& CategoryBuilder, TSharedPtr<IPropertyHandle> InShowFlagSettingsProperty);
-        void CustomizeVisibility(IDetailLayoutBuilder& DetailBuilder, TSharedPtr<IPropertyHandle> Property);
 
     private:
         ECheckBoxState OnGetDisplayCheckState(FString ShowFlagName) const;
@@ -40,17 +35,23 @@ namespace
         TSharedPtr<IPropertyHandle> ShowFlagSettingsProperty;
     };
 
-    void FDefinitionCustomization::CustomizeShowFlagSettings(IDetailCategoryBuilder& CategoryBuilder, TSharedPtr<IPropertyHandle> InShowFlagSettingsProperty)
+    void FDefinitionCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
     {
-        ShowFlagSettingsProperty = InShowFlagSettingsProperty;
+        IDetailCategoryBuilder& SceneCaptureCategoryBuilder = DetailBuilder.EditCategory("SceneCapture");
+
+        ShowFlagSettingsProperty = DetailBuilder.GetProperty("ShowFlagSettings", URenderStreamChannelDefinition::StaticClass());
         check(ShowFlagSettingsProperty->IsValidHandle());
         ShowFlagSettingsProperty->MarkHiddenByCustomization();
 
         TArray<TSharedRef<IPropertyHandle>> SceneCaptureCategoryDefaultProperties;
-        CategoryBuilder.GetDefaultProperties(SceneCaptureCategoryDefaultProperties);
+        SceneCaptureCategoryBuilder.GetDefaultProperties(SceneCaptureCategoryDefaultProperties);
         for (TSharedRef<IPropertyHandle> Handle : SceneCaptureCategoryDefaultProperties)
+        {
             if (Handle->GetProperty() != ShowFlagSettingsProperty->GetProperty())
-                CategoryBuilder.AddProperty(Handle);
+            {
+                SceneCaptureCategoryBuilder.AddProperty(Handle);
+            }
+        }
 
         TArray<FEngineShowFlags::EShowFlag> ShowFlagsToAllowForCaptures;
 
@@ -93,7 +94,9 @@ namespace
         // Create array of flag name strings for each group
         TArray< TArray<FString> > ShowFlagsByGroup;
         for (int32 GroupIndex = 0; GroupIndex < SFG_Max; ++GroupIndex)
+        {
             ShowFlagsByGroup.Add(TArray<FString>());
+        }
 
         // Add the show flags we want to expose to their group's array
         for (FEngineShowFlags::EShowFlag AllowedFlag : ShowFlagsToAllowForCaptures)
@@ -109,7 +112,9 @@ namespace
 
         // Sort the flags in their respective group alphabetically
         for (TArray<FString>& ShowFlagGroup : ShowFlagsByGroup)
+        {
             ShowFlagGroup.Sort(SortAlphabeticallyByLocalizedText);
+        }
 
         // Add each group
         for (int32 GroupIndex = 0; GroupIndex < SFG_Max; ++GroupIndex)
@@ -159,7 +164,7 @@ namespace
                 }
 
                 const FName GroupFName = FName(*(GroupName.ToString()));
-                IDetailGroup& Group = CategoryBuilder.AddGroup(GroupFName, GroupName, true);
+                IDetailGroup& Group = SceneCaptureCategoryBuilder.AddGroup(GroupFName, GroupName, true);
 
                 // Add each show flag for this group
                 for (FString& FlagName : ShowFlagsByGroup[GroupIndex])
@@ -179,89 +184,12 @@ namespace
                         [
                             SNew(SCheckBox)
                             .OnCheckStateChanged(this, &FDefinitionCustomization::OnShowFlagCheckStateChanged, FlagName)
-                        .IsChecked(this, &FDefinitionCustomization::OnGetDisplayCheckState, FlagName)
+                            .IsChecked(this, &FDefinitionCustomization::OnGetDisplayCheckState, FlagName)
                         ]
                     .FilterString(LocalizedText);
                 }
             }
         }
-    }
-
-    void FDefinitionCustomization::CustomizeVisibility(IDetailLayoutBuilder& DetailBuilder, TSharedPtr<IPropertyHandle> Property)
-    {
-        check(Property->IsValidHandle());
-
-        IDetailPropertyRow* IRow = DetailBuilder.EditDefaultProperty(Property);
-        TSharedPtr<SWidget> Name;
-        TSharedPtr<SWidget> Value;
-        FDetailWidgetRow Row;
-        IRow->GetDefaultWidgets(Name, Value, Row);
-        // Sigh, why can't I just modify the row instead of recreating it...
-        FDetailWidgetRow& NewRow = IRow->CustomWidget(true);
-        NewRow.CopyMenuAction = Row.CopyMenuAction;
-        NewRow.DiffersFromDefaultAttr = Row.DiffersFromDefaultAttr;
-        NewRow.FilterTextString = Row.FilterTextString;
-        NewRow.IsEnabledAttr = Row.IsEnabledAttr;
-        NewRow.PasteMenuAction = Row.PasteMenuAction;
-        NewRow.PropertyHandles = Row.PropertyHandles;
-        NewRow.RowTagName = Row.RowTagName;
-        NewRow.VisibilityAttr = Row.VisibilityAttr;
-
-        NewRow.ValueWidget.Widget = Row.ValueWidget.Widget;
-        NewRow.ValueWidget.HorizontalAlignment = Row.ValueWidget.HorizontalAlignment;
-        NewRow.ValueWidget.VerticalAlignment = Row.ValueWidget.VerticalAlignment;
-        NewRow.ValueWidget.MaxWidth = Row.ValueWidget.MaxWidth;
-        NewRow.ValueWidget.MinWidth = Row.ValueWidget.MinWidth;
-
-        NewRow.NameWidget.Widget = Row.NameWidget.Widget;
-        NewRow.NameWidget.HorizontalAlignment = Row.NameWidget.HorizontalAlignment;
-        NewRow.NameWidget.VerticalAlignment = Row.NameWidget.VerticalAlignment;
-        NewRow.NameWidget.MaxWidth = Row.NameWidget.MaxWidth;
-        NewRow.NameWidget.MinWidth = Row.NameWidget.MinWidth;
-
-        NewRow.AddCustomContextMenuAction(
-            FUIAction(
-                FExecuteAction::CreateLambda([Property]()
-                {
-                    TSet<AActor*> ActorsInSelection;
-                    USelection* Selection = GEditor->GetSelectedActors();
-                    for (int i = 0; i < Selection->Num(); ++i)
-                    {
-                        AActor* Actor = Cast<AActor>(Selection->GetSelectedObject(i));
-                        if (Actor)
-                            ActorsInSelection.Add(Actor);
-                    }
-
-                    TArray<void*> RawData;
-                    Property->AccessRawData(RawData);
-                    for (int32 ObjectIdx = 0; ObjectIdx < RawData.Num(); ++ObjectIdx)
-                    {
-                        void* Data = RawData[ObjectIdx];
-                        check(Data);
-                        TSet<AActor*>& Actors = *static_cast<TSet<AActor*>*>(Data);
-                        Actors = Actors.Union(ActorsInSelection);
-                    }
-                })
-            ), FText::FromString("Add from Selection")
-        );
-    }
-
-    void FDefinitionCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-    {
-        CustomizeShowFlagSettings(
-            DetailBuilder.EditCategory("SceneCapture"),
-            DetailBuilder.GetProperty("ShowFlagSettings", URenderStreamChannelDefinition::StaticClass())
-        );
-
-        CustomizeVisibility(
-            DetailBuilder,
-            DetailBuilder.GetProperty("EditorVisible", URenderStreamChannelDefinition::StaticClass())
-        );
-
-        CustomizeVisibility(
-            DetailBuilder,
-            DetailBuilder.GetProperty("EditorHidden", URenderStreamChannelDefinition::StaticClass())
-        );
     }
 
     static bool FindShowFlagSetting(
@@ -385,6 +313,328 @@ namespace
                     ShowFlagSettings.Add(NewFlagSetting);
                 }
             }
+        }
+    }
+
+    class SVisibilityCombo final : public SCompoundWidget
+    {
+    public:
+        enum class EOptions
+        {
+            Default,
+            Visible,
+            Hidden,
+            Multiple
+        };
+
+        SLATE_BEGIN_ARGS(SVisibilityCombo): _Property(), _ChannelVisibility(), _CameraActor(nullptr), _Override(nullptr), _YOffset(0)
+        {}
+        SLATE_ARGUMENT(TSharedPtr<IPropertyHandle>, Property)
+        SLATE_ARGUMENT(TArray<TWeakObjectPtr<UObject>>, ChannelVisibility)
+        SLATE_ARGUMENT(ACameraActor*, CameraActor)
+        SLATE_ARGUMENT(TSharedPtr<SVerticalBox>, Override)
+        SLATE_ARGUMENT(int, YOffset)
+        SLATE_END_ARGS()
+
+        typedef EOptions FComboItemType;
+
+        void Construct(const FArguments& InArgs)
+        {
+            Property = InArgs._Property;
+            ChannelVisibility = InArgs._ChannelVisibility;
+            CameraActor = InArgs._CameraActor;
+
+            CurrentItem = EOptions::Multiple;
+            for (auto Entry : ChannelVisibility)
+            {
+                FChannelVisibilityEntry* Value = Cast<URenderStreamChannelVisibility>(Entry)->FindEntry(CameraActor);
+                FComboItemType Next;
+                if (Value)
+                    Next = Value->Visible ? EOptions::Visible : EOptions::Hidden;
+                else
+                    Next = EOptions::Default;
+
+                if (CurrentItem == EOptions::Multiple)
+                    CurrentItem = Next;
+
+                if (CurrentItem != Next)
+                {
+                    CurrentItem = EOptions::Multiple;
+                    break;
+                }
+            }
+
+            TSharedPtr<SHorizontalBox> Data;
+            ChildSlot[
+                SAssignNew(Data, SHorizontalBox)
+            ];
+
+            Data->AddSlot()
+                .FillWidth(2)
+                .Padding(10, 5, 0, 5)
+                [
+                    SNew(STextBlock)
+                    .Text(FText::FromString(CameraActor->GetName()))
+                    .Font(IDetailLayoutBuilder::GetDetailFont())
+                ];
+
+            Data->AddSlot()
+                .HAlign(HAlign_Right)
+                .VAlign(VAlign_Center)
+                .AutoWidth()
+                .Padding(0, 0, 20, 0)
+                .MaxWidth(16)
+                [
+                    SAssignNew(VisibilityIcon, SImage)
+                        .Image_Raw(this, &SVisibilityCombo::GetVisiblityIcon)
+                ];
+
+            TSharedPtr<SHorizontalBox> Overrides;
+            InArgs._Override->AddSlot()
+                .VAlign(VAlign_Center)
+                .HAlign(HAlign_Fill)
+                [
+                    SAssignNew(Overrides, SHorizontalBox)
+                ];
+
+            Overrides->AddSlot()
+                .VAlign(VAlign_Center)
+                .HAlign(HAlign_Center)
+                .Padding(10, 5)
+                [
+                    SAssignNew(VisibleOverride, SCheckBox)
+                    .OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { this->OnCheckStateChanged(EOptions::Visible, State); })
+                    .IsChecked_Lambda([this]() -> ECheckBoxState { return IsChecked(EOptions::Visible); })
+                ];
+
+            Overrides->AddSlot()
+                .VAlign(VAlign_Center)
+                .HAlign(HAlign_Center)
+                .Padding(10, 5)
+                [
+                    SAssignNew(HiddenOverride, SCheckBox)
+                    .OnCheckStateChanged_Lambda([this](const ECheckBoxState State) { this->OnCheckStateChanged(EOptions::Hidden, State); })
+                    .IsChecked_Lambda([this]() -> ECheckBoxState { return IsChecked(EOptions::Hidden); })
+                ];
+        }
+
+        const FSlateBrush* GetVisiblityIcon() const
+        {
+            if (CurrentItem == EOptions::Visible)
+                return IconVisible;
+            if (CurrentItem == EOptions::Hidden)
+                return IconHidden;
+
+            const URenderStreamChannelDefinition* Component = CameraActor->FindComponentByClass<URenderStreamChannelDefinition>();
+            return Component->DefaultVisibility == EVisibilty::Visible ? IconVisible : IconHidden;
+        }
+
+        ECheckBoxState IsChecked(const EOptions Option) const
+        {
+            if (CurrentItem == Option)
+                return ECheckBoxState::Checked;
+
+            if (CurrentItem == EOptions::Multiple)
+                return ECheckBoxState::Undetermined;
+
+            return ECheckBoxState::Unchecked;
+        }
+
+        void OnCheckStateChanged(const EOptions Option, const ECheckBoxState State)
+        {
+            FScopedTransaction Transaction(
+                FText::Format(
+                    FText::FromString("Change visibility of object on channel {0}"),
+                    FText::FromString(CameraActor->GetName())
+                )
+            );
+
+            if (State == ECheckBoxState::Checked)
+            {
+                CurrentItem = Option;
+                const bool Visible = Option == EOptions::Visible;
+                const TSharedPtr<SCheckBox>& CheckBox = Visible ? HiddenOverride : VisibleOverride;
+                CheckBox->SetIsChecked(false);
+                for (auto Entry : ChannelVisibility)
+                {
+                    URenderStreamChannelVisibility* CastEntry = Cast<URenderStreamChannelVisibility>(Entry);
+                    CastEntry->Modify();
+                    CastEntry->FindOrAddEntry(CameraActor).Visible = Visible;
+                }
+            }
+            else
+            {
+                CurrentItem = EOptions::Default;
+                for (auto Entry : ChannelVisibility)
+                {
+                    auto CastEntry = Cast<URenderStreamChannelVisibility>(Entry);
+                    CastEntry->Modify();
+
+                    // Unreal has a check for references to elements inside the container so we need to create a copy here.
+                    FChannelVisibilityEntry Value = CastEntry->FindOrAddEntry(CameraActor);
+                    CastEntry->Entries.Remove(Value);
+                }
+            }
+
+            VisibilityIcon->Invalidate(EInvalidateWidgetReason::Paint);
+        }
+
+        const FSlateBrush* IconVisible = FEditorStyle::GetBrush("Level.VisibleIcon16x");
+        const FSlateBrush* IconHidden = FEditorStyle::GetBrush("Level.NotVisibleIcon16x");
+        const FSlateBrush* IconUndetermined = FEditorStyle::GetBrush("NoBrush");
+
+        TSharedPtr<IPropertyHandle> Property;
+        FComboItemType CurrentItem;
+        TSharedPtr<SImage> VisibilityIcon;
+        TSharedPtr<SCheckBox> VisibleOverride;
+        TSharedPtr<SCheckBox> HiddenOverride;
+
+        ACameraActor* CameraActor;
+        TArray<TWeakObjectPtr<UObject>> ChannelVisibility;
+    };
+
+    class FVisibilityCustomization final : public IDetailCustomization
+    {
+    public:
+        // IDetailCustomization interface
+        virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
+
+    private:
+        void CreateVisibilityCustomization(TArray<TWeakObjectPtr<UObject>> Objects, IDetailCategoryBuilder& Category, TSharedRef<IPropertyHandle> InVisibilityHandle) const;
+    };
+
+    void FVisibilityCustomization::CreateVisibilityCustomization(TArray<TWeakObjectPtr<UObject>> Objects, IDetailCategoryBuilder& Category, TSharedRef<IPropertyHandle> InVisibilityHandle) const
+    {
+        // Clean up invalid entries.
+        for (TWeakObjectPtr<UObject> Object : Objects)
+        {
+            URenderStreamChannelVisibility* Visibility = Cast<URenderStreamChannelVisibility>(Object);
+            for (int i = Visibility->Entries.Num() - 1; i >= 0; i--)
+                if (!Visibility->Entries[i].Camera.IsValid())
+                    Visibility->Entries.RemoveAt(i);
+        }
+
+        InVisibilityHandle->MarkHiddenByCustomization();
+        InVisibilityHandle->MarkResetToDefaultCustomized();
+        TSharedPtr<SHorizontalBox> VisibilityPanel;
+        FDetailWidgetRow& VisibilityRow = Category.AddCustomRow(FText::FromString("Visibility"));
+        VisibilityRow
+            .NameContent()
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("Visibility", "Visibility"))
+                .Font(IDetailLayoutBuilder::GetDetailFont())
+            ]
+            .ValueContent()
+            .MaxDesiredWidth(0)
+            .MinDesiredWidth(0)
+            .HAlign(HAlign_Fill)
+            [
+                SAssignNew(VisibilityPanel, SHorizontalBox)
+            ];
+
+        TSharedPtr<SVerticalBox> VisiblityDataPanel;
+        TSharedPtr<SVerticalBox> VisiblityOverridePanel;
+        VisibilityPanel->AddSlot()
+            .FillWidth(4)
+            [
+                SAssignNew(VisiblityDataPanel, SVerticalBox)
+            ];
+
+        VisibilityPanel->AddSlot()
+            .AutoWidth()
+            .MaxWidth(1)
+            [
+                SNew(SBorder)
+            ];
+
+        VisibilityPanel->AddSlot()
+            .FillWidth(3)
+            [
+                SAssignNew(VisiblityOverridePanel, SVerticalBox)
+            ];
+
+        // Header
+        VisiblityDataPanel->AddSlot()
+            .VAlign(VAlign_Center)
+            .HAlign(HAlign_Left)
+            .Padding(5, 5)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("Camera", "Camera"))
+                .Font(IDetailLayoutBuilder::GetDetailFontBold())
+            ];
+
+        TSharedPtr<SHorizontalBox> VisibilityLabels;
+        VisiblityOverridePanel->AddSlot()
+            .VAlign(VAlign_Center)
+            .HAlign(HAlign_Fill)
+            [
+                SAssignNew(VisibilityLabels, SHorizontalBox)
+            ];
+
+        VisibilityLabels->AddSlot()
+            .MaxWidth(0)
+            .FillWidth(0)
+            .Padding(0, 25);
+
+        VisibilityLabels->AddSlot()
+            .VAlign(VAlign_Center)
+            .HAlign(HAlign_Center)
+            .Padding(10, 5)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("Force\nVisible", "Force\nVisible"))
+                .Font(IDetailLayoutBuilder::GetDetailFontBold())
+            ];
+
+        VisibilityLabels->AddSlot()
+            .VAlign(VAlign_Center)
+            .HAlign(HAlign_Center)
+            .Padding(10, 5)
+            [
+                SNew(STextBlock)
+                .Text(LOCTEXT("Force\nHidden", "Force\nHidden"))
+                .Font(IDetailLayoutBuilder::GetDetailFontBold())
+            ];
+
+        // Entries
+        const UWorld* World = GEditor->GetEditorWorldContext().World();
+        TArray<AActor*> Actors;
+        UGameplayStatics::GetAllActorsOfClass(World, ACameraActor::StaticClass(), Actors);
+
+        int i = 1;
+        for (AActor* Actor : Actors)
+        {
+            URenderStreamChannelDefinition* Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (Definition)
+            {
+                VisiblityDataPanel->AddSlot()
+                    .VAlign(VAlign_Center)
+                    .HAlign(HAlign_Fill)
+                    [
+                        SNew(SVisibilityCombo)
+                        .Property(InVisibilityHandle)
+                        .CameraActor(Cast<ACameraActor>(Actor))
+                        .ChannelVisibility(Objects)
+                        .Override(VisiblityOverridePanel)
+                        .YOffset(i)
+                    ];
+
+                ++i;
+            }
+        }
+    }
+
+    void FVisibilityCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
+    {
+        const TSharedRef<IPropertyHandle> Property = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(URenderStreamChannelVisibility, Entries));
+        if (Property->IsValidHandle())
+        {
+            TArray<TWeakObjectPtr<UObject>> Objects;
+            DetailBuilder.GetObjectsBeingCustomized(Objects);
+            IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Visibility");
+            CreateVisibilityCustomization(Objects, Category, Property);
         }
     }
 
@@ -519,6 +769,11 @@ namespace
 TSharedRef<IDetailCustomization> MakeDefinitionCustomizationInstance()
 {
     return MakeShareable(new FDefinitionCustomization);
+}
+
+TSharedRef<IDetailCustomization> MakeVisibilityCustomizationInstance()
+{
+    return MakeShareable(new FVisibilityCustomization);
 }
 
 TSharedRef<IDetailCustomization> MakeSettingsCustomizationInstance()
