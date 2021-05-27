@@ -298,10 +298,10 @@ bool FRenderStreamModule::PopulateStreamPool()
 
         // Broadcast streams changed event
         for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
-			if (eventHandler.IsValid())
-			{
-				eventHandler->onStreamsChanged(streamInfoArray);
-			}
+        {
+            if (eventHandler.IsValid())
+                eventHandler->onStreamsChanged(streamInfoArray);
+        }
 
         return true;
     }
@@ -414,8 +414,10 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
         }
 
         for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
-			if(eventHandler.IsValid())
-				eventHandler->onStreamsChanged(streamInfoArray);
+        {
+            if (eventHandler.IsValid())
+                eventHandler->onStreamsChanged(streamInfoArray);
+        }
     }
 
     EnableStats();
