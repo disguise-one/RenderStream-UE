@@ -330,8 +330,11 @@ bool FRenderStreamModule::PopulateStreamPool()
         }
 
         // Broadcast streams changed event
-        for (TSharedPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
-            eventHandler->onStreamsChanged(streamInfoArray);
+        for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
+        {
+            if (eventHandler.IsValid())
+                eventHandler->onStreamsChanged(streamInfoArray);
+        }
 
         return true;
     }
@@ -456,14 +459,14 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
     // Find all event handlers
     if (InWorld)
     {
-        m_eventHandlers = TArray<TSharedPtr<ARenderStreamEventHandler>>();
+        m_eventHandlers.Empty();
         TArray<AActor*> FoundActors;
         UGameplayStatics::GetAllActorsOfClass(InWorld, ARenderStreamEventHandler::StaticClass(), FoundActors);
 
         for (AActor* Actor : FoundActors)
         {
             if (ARenderStreamEventHandler* EventHandler = Cast<ARenderStreamEventHandler>(Actor))
-                m_eventHandlers.Add(MakeShareable(EventHandler));
+                m_eventHandlers.Add(EventHandler);
         }
     }
 
@@ -477,8 +480,11 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
                 streamInfoArray.Push({ FString(stream->Channel()), FString(stream->Name()) });
         }
 
-        for (TSharedPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
-            eventHandler->onStreamsChanged(streamInfoArray);
+        for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
+        {
+            if (eventHandler.IsValid())
+                eventHandler->onStreamsChanged(streamInfoArray);
+        }
     }
 
     EnableStats();

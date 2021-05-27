@@ -40,7 +40,7 @@ protected:
 
     void EnableStats() const;
 
-    TArray<TSharedPtr<ARenderStreamEventHandler>> m_eventHandlers;
+    TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
 
 public:
     static EUnit distanceUnit();
