@@ -89,6 +89,7 @@ namespace
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_EyeAdaptation);
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_Game);
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_ToneCurve);
+        ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_Tonemapper);
 
         // Create array of flag name strings for each group
         TArray< TArray<FString> > ShowFlagsByGroup;
