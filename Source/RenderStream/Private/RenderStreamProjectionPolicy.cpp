@@ -136,7 +136,7 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
             if (Definition)
             {
                 const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
-                const TSet<TWeakObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
+                const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
                     URenderStreamChannelDefinition::GetChannelCameraNum(Channel), Actors.Num(), *TypeString);

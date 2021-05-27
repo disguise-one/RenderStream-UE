@@ -25,9 +25,9 @@ public:
     URenderStreamChannelDefinition();
     
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Visible")
-    TSet<AActor*> EditorVisible;
+    TSet<TSoftObjectPtr<AActor>> Visible;
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")
-    TSet<AActor*> EditorHidden;
+    TSet<TSoftObjectPtr<AActor>> Hidden;
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)
     EVisibilty DefaultVisibility;
     UPROPERTY(EditAnywhere, interp, Category = SceneCapture)
@@ -50,17 +50,6 @@ public:
     static TWeakObjectPtr<ACameraActor> GetChannelCamera(const FString& Channel);
 
     void UpdateShowFlags();
-
-#if WITH_EDITOR
-    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-    virtual void PostEditUndo() override;
-#endif
-
-    TSet<TWeakObjectPtr<AActor>> ResolvedEditorVisible;
-    TSet<TWeakObjectPtr<AActor>> ResolvedEditorHidden;
-
-    TSet<TWeakObjectPtr<AActor>> Visible;
-    TSet<TWeakObjectPtr<AActor>> Hidden;
 
     // This isn't a USTRUCT so we can't expose it directly.
     FEngineShowFlags ShowFlags;

@@ -191,48 +191,25 @@ void URenderStreamChannelDefinition::UpdateShowFlags()
     }
 }
 
-void UpdateVisibilitySet(TSet<TWeakObjectPtr<AActor>>& Destination, TSet<TWeakObjectPtr<AActor>>& OldSet, const TSet<AActor*>& NewSet)
+void UpdateVisibilitySet(TSet<TWeakObjectPtr<AActor>>& Destination, TSet<TWeakObjectPtr<AActor>>& OldSet, const TSet<TSoftObjectPtr<AActor>>& NewSet)
 {
     Destination = Destination.Difference(OldSet);
     OldSet.Empty();
-    for (auto* Entry : NewSet)
+    for (auto Entry : NewSet)
     {
-        OldSet.Add(Entry);
-        Destination.Add(Entry);
+        if (Entry.IsValid())
+        {
+            AActor* Actor = Entry.Get();
+            OldSet.Add(Actor);
+            Destination.Add(Actor);
+        }
     }
 }
-
-#if WITH_EDITOR
-void URenderStreamChannelDefinition::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-    const FName MemberPropertyName = (PropertyChangedEvent.MemberProperty != nullptr) ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
-
-    // If our ShowFlagSetting UStruct changed, (or if PostEditChange was called without specifying a property) update the actual show flags.
-    if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, ShowFlagSettings) || MemberPropertyName.IsNone())
-        UpdateShowFlags();
-    else if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, EditorVisible))
-        UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
-    else if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, EditorHidden))
-        UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
-
-    Super::PostEditChangeProperty(PropertyChangedEvent);
-}
-
-void URenderStreamChannelDefinition::PostEditUndo()
-{
-    UpdateShowFlags();
-    UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
-    UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
-    Super::PostEditUndo();
-}
-#endif
 
 void URenderStreamChannelDefinition::OnRegister()
 {
     Super::OnRegister();
     UpdateShowFlags();
-    UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
-    UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
 }
 
 void URenderStreamChannelDefinition::BeginPlay()
