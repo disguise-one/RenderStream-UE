@@ -492,13 +492,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     }
                     else if (toggle == "D3D12")
                     {
-                        
-                        RHICmdList.EnqueueLambda([Fence, FenceValue](FRHICommandListImmediate& RHICmdList) {
-                            auto cmdQueue = RSUCHelpers::GetDX12Queue(RHICmdList);
-                            cmdQueue->Signal(Fence, FenceValue);
-                            cmdQueue->Wait(Fence, FenceValue + 1);
-                        });
-                        
                         {
                             SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
                             RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
@@ -507,14 +500,13 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         data.dx12.resource = static_cast<ID3D12Resource*>(resource);
                         data.dx12.fence = Fence;
                         data.dx12.fenceValue = FenceValue;
-
+                        
                         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
-                        // this signals data.dx12.fenceValue + 1 if it succeedes
                         if (RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data) != RenderStreamLink::RS_ERROR_SUCCESS)
                         {
-                            // Signal fence ourselves if there's an error, so RHI thread doesn't deadlock
-                            Fence->Signal(data.dx12.fenceValue + 1);
+
                         }
+                        
                     }
                     else
                     {

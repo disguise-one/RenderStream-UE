@@ -175,12 +175,6 @@ namespace RSUCHelpers
         }
         else if (toggle == "D3D12")
         {
-            RHICmdList.EnqueueLambda([Fence, FenceValue](FRHICommandListImmediate& RHICmdList) {
-                auto cmdQueue = GetDX12Queue(RHICmdList);
-                cmdQueue->Signal(Fence, FenceValue + 1);
-                cmdQueue->Wait(Fence, FenceValue + 2);
-            });
-
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
@@ -193,11 +187,8 @@ namespace RSUCHelpers
 
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                // this signals data.dx12.fenceValue + 1 if it succeedes
                 if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &FrameData) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
-                    // Signal fence ourselves if there's an error, so RHI thread doesn't deadlock
-                    Fence->Signal(data.dx12.fenceValue + 1);
                 }
             }
         }
