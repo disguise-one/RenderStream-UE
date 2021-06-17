@@ -253,11 +253,14 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             if (StructProperty->Struct == TBaseStructure<FVector>::Get())
             {
                 FVector v;
+                const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
+                const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
+                const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
                 StructProperty->CopyCompleteValue(&v, StructAddress);
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed vector property: %s is <%f, %f, %f>"), *Name, v.X, v.Y, v.Z);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "x", Name, "x", RenderStreamParameterType::Float, -1.f, +1.f, 0.001f, v.X);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "y", Name, "y", RenderStreamParameterType::Float, -1.f, +1.f, 0.001f, v.Y);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "z", Name, "z", RenderStreamParameterType::Float, -1.f, +1.f, 0.001f, v.Z);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "x", Name, "x", RenderStreamParameterType::Float, Min, Max, 0.001f, v.X);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "y", Name, "y", RenderStreamParameterType::Float, Min, Max, 0.001f, v.Y);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "z", Name, "z", RenderStreamParameterType::Float, Min, Max, 0.001f, v.Z);
             }
             else if (StructProperty->Struct == TBaseStructure<FColor>::Get())
             {
