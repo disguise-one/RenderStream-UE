@@ -23,7 +23,6 @@
 #include <array>
 
 class FRHITexture2D;
-class D3D12Fence;
 
 namespace {
 
@@ -99,8 +98,6 @@ namespace RSUCHelpers
 
     static void SendFrame(const RenderStreamLink::StreamHandle Handle,
         FTextureRHIRef& BufTexture,
-        ID3D12Fence* Fence,
-        int FenceValue,
         FRHICommandListImmediate& RHICmdList,
         RenderStreamLink::CameraResponseData FrameData,
         FRHITexture2D* InSourceTexture,
@@ -182,8 +179,6 @@ namespace RSUCHelpers
 
             RenderStreamLink::SenderFrameTypeData data = {};
             data.dx12.resource = static_cast<ID3D12Resource*>(resource);
-            data.dx12.fence = Fence;
-            data.dx12.fenceValue = FenceValue + 1;
 
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
@@ -198,22 +193,7 @@ namespace RSUCHelpers
         }
     }
 
-    static ID3D12Fence* CreateDX12Fence()
-    {
-        auto dx12device = GetDX12Device();
-        ID3D12Fence* fence = nullptr;
-        if (dx12device->CreateFence(0, D3D12_FENCE_FLAG_SHARED, __uuidof(ID3D12Fence), reinterpret_cast<void**>(&fence)) != 0)
-        {
-            UE_LOG(LogRenderStream, Error, TEXT("Failed to create DX12 fence."));
-            RenderStreamStatus().Output("Error: Failed create a DX12 fence.", RSSTATUS_RED);
-            return nullptr;
-        }
-
-        return fence;
-    }
-
     static bool CreateStreamResources(/*InOut*/ FTextureRHIRef& BufTexture,
-        /*InOut*/ ID3D12Fence*& Fence,
         const FIntPoint& Resolution,
         RenderStreamLink::RSPixelFormat rsFormat)
     {
@@ -235,7 +215,6 @@ namespace RSUCHelpers
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D12")
         {
-            Fence = CreateDX12Fence();
             BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, ETextureCreateFlags::TexCreate_Shared | ETextureCreateFlags::TexCreate_RenderTargetable, info);
         }
         else if (toggle == "D3D11")

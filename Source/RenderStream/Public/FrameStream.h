@@ -31,8 +31,6 @@ private:
     FString m_channel;
     RenderStreamLink::ProjectionClipping m_clipping;
     FTextureRHIRef m_bufTexture;
-    ID3D12Fence* m_fence;
-    int m_fenceValue = 1;
     FIntPoint m_resolution;
     RenderStreamLink::StreamHandle m_handle;
 };

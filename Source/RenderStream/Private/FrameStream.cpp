@@ -16,8 +16,7 @@ void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdLis
     float URight = (float)ViewportRect.Max.X / (float)SourceTexture->GetSizeX();
     float VTop = (float)ViewportRect.Min.Y / (float)SourceTexture->GetSizeY();
     float VBottom = (float)ViewportRect.Max.Y / (float)SourceTexture->GetSizeY();
-    RSUCHelpers::SendFrame(m_handle, m_bufTexture, m_fence, m_fenceValue, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
-    m_fenceValue += 2;
+    RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
 }
 
 bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat fmt)
@@ -31,7 +30,7 @@ bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const
     m_resolution = Resolution;
     m_streamName = name;
 
-    if (!RSUCHelpers::CreateStreamResources(m_bufTexture, m_fence, m_resolution, fmt))
+    if (!RSUCHelpers::CreateStreamResources(m_bufTexture, m_resolution, fmt))
         return false; // helper method logs on failure
 
     if (m_handle == 0) {
