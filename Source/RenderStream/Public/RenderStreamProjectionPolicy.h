@@ -42,6 +42,7 @@ public:
     //////////////////////////////////////////////////////////////////////////////////////////////
     // RenderStream specific
     //////////////////////////////////////////////////////////////////////////////////////////////
+    const FString& GetViewportId() const { return ViewportId; }
     const ACameraActor* GetTemplateCamera() const;
 
     const TMap<FString, FString>& GetParameters() const
@@ -61,6 +62,7 @@ public:
 
 protected:
     FString ProjectionPolicyId;
+    FString ViewportId;
     TMap<FString, FString> Parameters;
 
     // Near/far clip planes

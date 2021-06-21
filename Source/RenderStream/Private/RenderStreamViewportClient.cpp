@@ -52,6 +52,7 @@
 //#include "IDisplayCluster.h"
 //#include "Game/IDisplayClusterGameManager.h"
 
+#include "Kismet/GameplayStatics.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewport.h"
 
@@ -307,9 +308,11 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
                         /// !!!! disguise customizations
                         const TSharedPtr<FRenderStreamProjectionPolicy> Policy = RenderStreamFactory->GetPolicyByViewport(DCView.Viewport->GetId());
-                        if (APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Policy->GetPlayerControllerID()))
+                        if (Policy)
                         {
-                            LocalPlayer = PolicyController->GetLocalPlayer();
+                            APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Policy->GetPlayerControllerID());
+                            if (PolicyController)
+                                LocalPlayer = PolicyController->GetLocalPlayer();
                         }
                         /// !!!! disguise customizations
 
@@ -323,7 +326,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                             Views.Add(View);
 
                             /// !!!! disguise customizations
-                            UpdateViewWithPolicy(&ViewFamily, View, Policy.Get());
+                            if (Policy)
+                                UpdateViewWithPolicy(&ViewFamily, View, Policy.Get());
                             /// !!!! disguise customizations
 
                             // Apply viewport context settings to view (crossGPU, visibility, etc)
@@ -744,8 +748,8 @@ void URenderStreamViewportClient::UpdateViewWithPolicy(FSceneViewFamily* ViewFam
     {
         // This only really works if we have a single view per view family which is currently the case in nDisplay.
         ViewFamily->EngineShowFlags = Definition->ShowFlags;
-        const TArray<TWeakObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EVisibilty::Visible ? Definition->Hidden : Definition->Visible;
-        for (const TWeakObjectPtr<AActor> Actor : Actors)
+        const TSet<TSoftObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EVisibilty::Visible ? Definition->Hidden : Definition->Visible;
+        for (const TSoftObjectPtr<AActor> Actor : Actors)
         {
             if (Actor.IsValid())
             {

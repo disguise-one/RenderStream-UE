@@ -20,7 +20,6 @@
 #include "FrameStream.h"
 
 #include "RenderStreamChannelDefinition.h"
-#include "RenderStreamChannelVisibility.h"
 #include "..\Public\RenderStreamProjectionPolicy.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
@@ -46,6 +45,7 @@ static EUnit distanceUnit()
 
 FRenderStreamProjectionPolicy::FRenderStreamProjectionPolicy(const FString& _ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
     : ProjectionPolicyId(_ProjectionPolicyId)
+    , ViewportId(_ProjectionPolicyId.Replace(TEXT("proj_"), TEXT("")))
     , Parameters(InConfigurationProjectionPolicy->Parameters)
     , NCP(0)
     , FCP(0)
@@ -95,7 +95,7 @@ bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewpo
         return false;
     }
 
-    Stream = Module->StreamPool->GetStream(GetId());
+    Stream = Module->StreamPool->GetStream(GetViewportId());
     if (!Stream)
         Module->PopulateStreamPool();
 
@@ -114,24 +114,24 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
     const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
     check(ConfigMgr);
 
-    const UDisplayClusterConfigurationViewport* Viewport = ConfigMgr->GetLocalViewport(GetId());
+    const UDisplayClusterConfigurationViewport* Viewport = ConfigMgr->GetLocalViewport(GetViewportId());
     if (!Viewport)
     {
-        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created without corresponding viewport"), *GetId());
+        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created without corresponding viewport"), *GetViewportId());
         return;
     }
     const FIntPoint Offset(Viewport->Region.X, Viewport->Region.Y);
     const FIntPoint Resolution(Viewport->Region.W, Viewport->Region.H);
 
     // Allocate the stream.
-    Stream = Module->StreamPool->GetStream(GetId());
+    Stream = Module->StreamPool->GetStream(GetViewportId());
     if (!Stream)
     {
-        UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Policy '%s' created for unknown stream"), *GetId());
+        UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Policy '%s' created for unknown stream"), *GetViewportId());
     }
     if (Stream && Stream->Resolution() != Resolution)
     {
-        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
+        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetViewportId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         return;
     }
 
@@ -148,7 +148,7 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
             if (Definition)
             {
                 const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
-                const TArray<TWeakObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
+                const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
                     URenderStreamChannelDefinition::GetChannelCameraNum(Channel), Actors.Num(), *TypeString);
@@ -381,7 +381,7 @@ TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::
 {
     for (auto& It : Policies)
     {
-        if (!ViewportId.Compare(It->GetId(), ESearchCase::IgnoreCase))
+        if (!ViewportId.Compare(It->GetViewportId(), ESearchCase::IgnoreCase))
         {
             return It;
         }
