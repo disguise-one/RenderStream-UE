@@ -115,6 +115,33 @@ URenderStreamChannelDefinition::URenderStreamChannelDefinition()
     , Registered(false)
 {}
 
+void URenderStreamChannelDefinition::ResetDefaultVisibility(AActor* Actor)
+{
+    Visible.Remove(Actor);
+    Hidden.Remove(Actor);
+}
+
+void URenderStreamChannelDefinition::SetVisibility(AActor* Actor, bool IsVisible)
+{
+    if (IsVisible)
+    {
+        Visible.Add(Actor);
+        Hidden.Remove(Actor);
+    }
+    else
+    {
+        Visible.Remove(Actor);
+        Hidden.Add(Actor);
+    }
+}
+
+bool URenderStreamChannelDefinition::GetVisibility(AActor* Actor) const
+{
+    return DefaultVisibility == EVisibilty::Visible
+        ? Hidden.Contains(Actor)
+        : Visible.Contains(Actor);
+}
+
 TArray<ACameraActor*> URenderStreamChannelDefinition::GetInstancedCameras()
 {
     TArray<ACameraActor*> ValidCameras;
@@ -164,26 +191,20 @@ void URenderStreamChannelDefinition::UpdateShowFlags()
     }
 }
 
-#if WITH_EDITOR
-void URenderStreamChannelDefinition::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+void UpdateVisibilitySet(TSet<TWeakObjectPtr<AActor>>& Destination, TSet<TWeakObjectPtr<AActor>>& OldSet, const TSet<TSoftObjectPtr<AActor>>& NewSet)
 {
-    const FName MemberPropertyName = (PropertyChangedEvent.MemberProperty != nullptr) ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
-
-    // If our ShowFlagSetting UStruct changed, (or if PostEditChange was called without specifying a property) update the actual show flags.
-    if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, ShowFlagSettings) || MemberPropertyName.IsNone())
+    Destination = Destination.Difference(OldSet);
+    OldSet.Empty();
+    for (auto Entry : NewSet)
     {
-        UpdateShowFlags();
+        if (Entry.IsValid())
+        {
+            AActor* Actor = Entry.Get();
+            OldSet.Add(Actor);
+            Destination.Add(Actor);
+        }
     }
-
-    Super::PostEditChangeProperty(PropertyChangedEvent);
 }
-
-void URenderStreamChannelDefinition::PostEditUndo()
-{
-    UpdateShowFlags();
-    Super::PostEditUndo();
-}
-#endif
 
 void URenderStreamChannelDefinition::OnRegister()
 {

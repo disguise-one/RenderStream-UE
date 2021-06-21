@@ -13,6 +13,9 @@ struct FStreamInfo
 
     UPROPERTY(BlueprintReadOnly)
     FString Name;
+
+    UPROPERTY(BlueprintReadOnly)
+    FBox2D Region;
 };
 
 

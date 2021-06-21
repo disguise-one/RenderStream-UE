@@ -23,29 +23,33 @@ class RENDERSTREAM_API URenderStreamChannelDefinition : public UActorComponent
 public:
     // Sets default values for this component's properties
     URenderStreamChannelDefinition();
-
+    
+    UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Visible")
+    TSet<TSoftObjectPtr<AActor>> Visible;
+    UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")
+    TSet<TSoftObjectPtr<AActor>> Hidden;
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)
     EVisibilty DefaultVisibility;
-
     UPROPERTY(EditAnywhere, interp, Category = SceneCapture)
     TArray<struct FEngineShowFlagsSetting> ShowFlagSettings;
 
     UFUNCTION(BlueprintCallable, Category = SceneCapture)
     TArray<ACameraActor*> GetInstancedCameras();
-    void AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera) { InstancedCameras.Add(Camera); }
+    
+    UFUNCTION(BlueprintCallable)
+    void ResetDefaultVisibility(AActor* Actor);
+    UFUNCTION(BlueprintCallable)
+    void SetVisibility(AActor* Actor, bool IsVisible);
+    UFUNCTION(BlueprintPure)
+    bool GetVisibility(AActor* Actor) const;
 
+    void AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera) { InstancedCameras.Add(Camera); }
     void UnregisterCamera();
 
     static uint32 GetChannelCameraNum(const FString& Channel);
     static TWeakObjectPtr<ACameraActor> GetChannelCamera(const FString& Channel);
 
     void UpdateShowFlags();
-#if WITH_EDITOR
-    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-    virtual void PostEditUndo() override;
-#endif
-    TArray<TWeakObjectPtr<AActor>> Visible;
-    TArray<TWeakObjectPtr<AActor>> Hidden;
 
     // This isn't a USTRUCT so we can't expose it directly.
     FEngineShowFlags ShowFlags;
