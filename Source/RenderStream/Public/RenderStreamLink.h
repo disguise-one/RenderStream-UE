@@ -127,8 +127,6 @@ public:
     typedef struct
     {
         ID3D12Resource* resource;
-        ID3D12Fence* fence;
-        int32_t fenceValue;
     } Dx12Data;
 
     typedef union
