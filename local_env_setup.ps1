@@ -6,7 +6,7 @@ if (-not(Test-Path ".\local_env.json")){
 
     $default = '{
         "unreal_engine_directory" : "",
-        "project_root" : ""
+        "plugin_folder" : ""
     }'
 
     New-Item ".\local_env.json" -ItemType "file" -value $default 
@@ -21,13 +21,13 @@ write-host ""
 $env = Get-Content ".\local_env.json" | ConvertFrom-Json
 
 $unreal_path = $env.unreal_engine_directory
-$project_root = $env.project_root
+$plugin_folder = $env.plugin_folder
 
 
 write-host "unreal path: $unreal_path"
-write-host "project root: $project_root"
+write-host "project root: $plugin_folder"
 
-$command = ".\package_plugin.ps1 -unreal_engine_path $unreal_path -project_root $project_root"
+$command = ".\package_plugin.ps1 -unreal_engine_path $unreal_path -plugin_folder $plugin_folder"
 
 Write-Host $command
 Invoke-Expression $command
