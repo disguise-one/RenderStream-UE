@@ -16,7 +16,7 @@ if (-not(Test-Path ".\local_env.json")){
 } 
 
 write-host "found local_env.json"
-wirte-host ""
+write-host ""
 
 $env = Get-Content ".\local_env.json" | ConvertFrom-Json
 
