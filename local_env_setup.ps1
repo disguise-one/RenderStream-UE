@@ -27,7 +27,7 @@ $plugin_folder = $env.plugin_folder
 write-host "unreal path: $unreal_path"
 write-host "project root: $plugin_folder"
 
-$command = ".\package_plugin.ps1 -unreal_engine_path $unreal_path -plugin_folder $plugin_folder"
+$command = ".\package_plugin.ps1 -unreal_engine_path '$unreal_path' -plugin_folder '$plugin_folder'"
 
 Write-Host $command
 Invoke-Expression $command
