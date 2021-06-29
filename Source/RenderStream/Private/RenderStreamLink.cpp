@@ -167,6 +167,8 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_unregisterErrorLoggingFunc);
     LOAD_FN(rs_unregisterVerboseLoggingFunc);
 
+    LOAD_FN(rs_useDX12SharedHeapFlag);
+
     LOAD_FN(rs_setSchema);
     LOAD_FN(rs_saveSchema);
     LOAD_FN(rs_loadSchema);

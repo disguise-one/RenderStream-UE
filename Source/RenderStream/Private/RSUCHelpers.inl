@@ -215,7 +215,11 @@ namespace RSUCHelpers
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D12")
         {
-            BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, ETextureCreateFlags::TexCreate_Shared | ETextureCreateFlags::TexCreate_RenderTargetable, info);
+            ETextureCreateFlags flags = ETextureCreateFlags::TexCreate_RenderTargetable;
+            RenderStreamLink::UseDX12SharedHeapFlag rs_flag = RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG;
+            RenderStreamLink::instance().rs_useDX12SharedHeapFlag(&rs_flag);
+            flags = static_cast<ETextureCreateFlags>(flags | ((rs_flag == RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG) ? ETextureCreateFlags::TexCreate_Shared : 0));
+            BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, flags, info);
         }
         else if (toggle == "D3D11")
         {
