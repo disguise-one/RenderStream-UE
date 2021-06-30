@@ -43,6 +43,10 @@ void FRenderStreamEditorModule::StartupModule()
         auto& PropertyModule = FModuleManager::LoadModuleChecked< FPropertyEditorModule >("PropertyEditor");
 
         PropertyModule.RegisterCustomClassLayout(
+            "RenderStreamChannelVisibility",
+            FOnGetDetailCustomizationInstance::CreateStatic(&MakeVisibilityCustomizationInstance)
+        );
+        PropertyModule.RegisterCustomClassLayout(
             "RenderStreamChannelDefinition",
             FOnGetDetailCustomizationInstance::CreateStatic(&MakeDefinitionCustomizationInstance)
         );
@@ -67,8 +71,7 @@ void FRenderStreamEditorModule::ShutdownModule()
     if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
     {
         auto& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-        PropertyModule.UnregisterCustomClassLayout("RenderStreamChannelDefinition");
-        PropertyModule.UnregisterCustomClassLayout("RenderStreamSettings");
+        PropertyModule.UnregisterCustomClassLayout("RenderStreamChannelVisibility");
     }
 
     FEditorDelegates::PostSaveWorld.RemoveAll(this);
@@ -544,7 +547,11 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
 
             GenerateScene(*SceneParameters++, MainMap, nullptr);
             for (FSoftObjectPath Path : MainMap->SubLevels)
-                GenerateScene(*SceneParameters++, LevelParams[Path], MainMap);
+            {
+                URenderStreamChannelCacheAsset** Cache = LevelParams.Find(Path);
+                if (Cache != nullptr)
+                    GenerateScene(*SceneParameters++, *Cache, MainMap);
+            }
         }
         else
             UE_LOG(LogRenderStreamEditor, Error, TEXT("No default map defined, either use Maps scene selector or define a default map."));
@@ -558,7 +565,11 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
         {
             for (FSoftObjectPath Path : Cache->SubLevels)
-                LevelParents.Add(LevelParams[Path], Cache);
+            {
+                URenderStreamChannelCacheAsset** Parent = LevelParams.Find(Path);
+                if (Parent != nullptr)
+                    LevelParents.Add(*Parent, Cache);
+            }
         }
 
         Schema.schema.scenes.nScenes = ChannelCaches.Num();

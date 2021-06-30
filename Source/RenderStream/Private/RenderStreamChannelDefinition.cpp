@@ -115,33 +115,6 @@ URenderStreamChannelDefinition::URenderStreamChannelDefinition()
     , Registered(false)
 {}
 
-void URenderStreamChannelDefinition::ResetDefaultVisibility(AActor* Actor)
-{
-    Visible.Remove(Actor);
-    Hidden.Remove(Actor);
-}
-
-void URenderStreamChannelDefinition::SetVisibility(AActor* Actor, bool IsVisible)
-{
-    if (IsVisible)
-    {
-        Visible.Add(Actor);
-        Hidden.Remove(Actor);
-    }
-    else
-    {
-        Visible.Remove(Actor);
-        Hidden.Add(Actor);
-    }
-}
-
-bool URenderStreamChannelDefinition::GetVisibility(AActor* Actor) const
-{
-    return DefaultVisibility == EVisibilty::Visible
-        ? Hidden.Contains(Actor)
-        : Visible.Contains(Actor);
-}
-
 TArray<ACameraActor*> URenderStreamChannelDefinition::GetInstancedCameras()
 {
     TArray<ACameraActor*> ValidCameras;
@@ -191,17 +164,6 @@ void URenderStreamChannelDefinition::UpdateShowFlags()
     }
 }
 
-void UpdateVisibilitySet(TSet<TWeakObjectPtr<AActor>>& Destination, TSet<TWeakObjectPtr<AActor>>& OldSet, const TSet<AActor*>& NewSet)
-{
-    Destination = Destination.Difference(OldSet);
-    OldSet.Empty();
-    for (auto* Entry : NewSet)
-    {
-        OldSet.Add(Entry);
-        Destination.Add(Entry);
-    }
-}
-
 #if WITH_EDITOR
 void URenderStreamChannelDefinition::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
@@ -209,11 +171,9 @@ void URenderStreamChannelDefinition::PostEditChangeProperty(FPropertyChangedEven
 
     // If our ShowFlagSetting UStruct changed, (or if PostEditChange was called without specifying a property) update the actual show flags.
     if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, ShowFlagSettings) || MemberPropertyName.IsNone())
+    {
         UpdateShowFlags();
-    else if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, EditorVisible))
-        UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
-    else if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(URenderStreamChannelDefinition, EditorHidden))
-        UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
+    }
 
     Super::PostEditChangeProperty(PropertyChangedEvent);
 }
@@ -221,8 +181,6 @@ void URenderStreamChannelDefinition::PostEditChangeProperty(FPropertyChangedEven
 void URenderStreamChannelDefinition::PostEditUndo()
 {
     UpdateShowFlags();
-    UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
-    UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
     Super::PostEditUndo();
 }
 #endif
@@ -231,8 +189,6 @@ void URenderStreamChannelDefinition::OnRegister()
 {
     Super::OnRegister();
     UpdateShowFlags();
-    UpdateVisibilitySet(Visible, ResolvedEditorVisible, EditorVisible);
-    UpdateVisibilitySet(Hidden, ResolvedEditorHidden, EditorHidden);
 }
 
 void URenderStreamChannelDefinition::BeginPlay()

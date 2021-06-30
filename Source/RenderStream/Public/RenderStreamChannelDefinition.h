@@ -24,43 +24,28 @@ public:
     // Sets default values for this component's properties
     URenderStreamChannelDefinition();
     
-    UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Visible")
-    TSet<AActor*> EditorVisible;
-    UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")
-    TSet<AActor*> EditorHidden;
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)
     EVisibilty DefaultVisibility;
+
     UPROPERTY(EditAnywhere, interp, Category = SceneCapture)
     TArray<struct FEngineShowFlagsSetting> ShowFlagSettings;
 
     UFUNCTION(BlueprintCallable, Category = SceneCapture)
     TArray<ACameraActor*> GetInstancedCameras();
-    
-    UFUNCTION(BlueprintCallable)
-    void ResetDefaultVisibility(AActor* Actor);
-    UFUNCTION(BlueprintCallable)
-    void SetVisibility(AActor* Actor, bool IsVisible);
-    UFUNCTION(BlueprintPure)
-    bool GetVisibility(AActor* Actor) const;
-
     void AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera) { InstancedCameras.Add(Camera); }
+
     void UnregisterCamera();
 
     static uint32 GetChannelCameraNum(const FString& Channel);
     static TWeakObjectPtr<ACameraActor> GetChannelCamera(const FString& Channel);
 
     void UpdateShowFlags();
-
 #if WITH_EDITOR
     virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
     virtual void PostEditUndo() override;
 #endif
-
-    TSet<TWeakObjectPtr<AActor>> ResolvedEditorVisible;
-    TSet<TWeakObjectPtr<AActor>> ResolvedEditorHidden;
-
-    TSet<TWeakObjectPtr<AActor>> Visible;
-    TSet<TWeakObjectPtr<AActor>> Hidden;
+    TArray<TWeakObjectPtr<AActor>> Visible;
+    TArray<TWeakObjectPtr<AActor>> Hidden;
 
     // This isn't a USTRUCT so we can't expose it directly.
     FEngineShowFlags ShowFlags;
