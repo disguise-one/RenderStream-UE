@@ -10,11 +10,15 @@ if ($plugin_folder -eq ""){
     write-host "project too set to $plugin_folder"
 }
 
-$plugin_name = "RenderStream-UE"
+$plugin_name = "disguiseuerenderstream"
 $build_tool = "$($unreal_engine_path)\Engine\Build\BatchFiles\RunUAT.bat"
 $plugin_path = "$($plugin_folder)\$($plugin_name).uplugin"
 $out_path = "$($plugin_folder)\Packaged"
 $local_intermediate = "$($plugin_folder)\Intermediate"
+
+# Ensure spaces in the build_tool path are hard spaces or Invoke-Expression will fail. Important since default location of Unreal is, eg,
+# C:/Program Files/Epic Games/UE_4.26
+$build_tool = $build_tool -replace ' ','` '
 
 write-host "current paths"
 Get-Variable -Scope script
@@ -42,12 +46,12 @@ if ($LASTEXITCODE -eq 0) {
 	# Remove the intermediate results from the packaging process - not useful for distribution
 	Remove-Item -Path (Join-Path -Path "$out_path" -ChildPath "Intermediate") -Recurse
 
-    $out_file = '$($plugin_name)_{0}.zip' -f '$Uplugin.VersionName'
+    $out_file = "$($plugin_name)_{0}.zip" -f "$($Uplugin.VersionName)"
     $destination = Join-Path -Path "$out_path" -ChildPath "$out_file"
     $compress = @{
-        Path = '$out_path'
+        Path = "$out_path"
         CompressionLevel = 'Optimal'
-        DestinationPath = '$destination'
+        DestinationPath = "$destination"
     }
     
     Compress-Archive @compress
