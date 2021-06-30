@@ -10,7 +10,7 @@ if ($plugin_folder -eq ""){
     write-host "project too set to $plugin_folder"
 }
 
-$plugin_name = "disguiseuerenderstream"
+$plugin_name = "RenderStream-UE"
 $build_tool = "$($unreal_engine_path)\Engine\Build\BatchFiles\RunUAT.bat"
 $plugin_path = "$($plugin_folder)\$($plugin_name).uplugin"
 $out_path = "$($plugin_folder)\Packaged"

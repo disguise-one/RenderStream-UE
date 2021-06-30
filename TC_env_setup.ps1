@@ -15,7 +15,7 @@ $PsBoundParameters | Format-Table
 # gets the file name from the uplugin_template.json  
 function select-UE_engine_from_json
  {    
-    $Uplugin = Get-Content -Raw -Path 'disguiseuerenderstream.uplugin' | ConvertFrom-Json
+    $Uplugin = Get-Content -Raw -Path 'RenderStream-UE.uplugin' | ConvertFrom-Json
     $EngineVersion = $Uplugin.EngineVersion
     $major, $minor, $micro = $EngineVersion -split "\."
     return "UE_$major.$minor"
