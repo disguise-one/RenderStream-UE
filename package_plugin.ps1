@@ -1,3 +1,5 @@
+# Note: this script is called by Team City (via TC_env_setup.ps1). Please be careful when modifying it!
+
 param(
     [Parameter(Mandatory=$true)][string]$unreal_engine_path, # path to the Unreal engine
     [string]$plugin_folder = $null, # Optional project root path defualt is set to relative to current directory 
