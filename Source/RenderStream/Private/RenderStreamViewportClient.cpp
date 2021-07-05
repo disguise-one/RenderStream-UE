@@ -307,7 +307,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                         const FDisplayClusterViewport_Context ViewportContext = DCView.Viewport->GetContexts()[DCView.ContextNum];
 
                         /// !!!! disguise customizations
-                        const TSharedPtr<FRenderStreamProjectionPolicy> Policy = RenderStreamFactory->GetPolicyByViewport(DCView.Viewport->GetId());
+                        const auto Policy = RenderStreamFactory->GetPolicyByViewport(DCView.Viewport->GetId());
                         if (Policy)
                         {
                             APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Policy->GetPlayerControllerID());

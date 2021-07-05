@@ -349,7 +349,7 @@ void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(FRHICommandListI
 
         TArray<FRHITexture2D*> Resources;
         TArray<FIntRect> Rects;
-        InViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::OutputFrameTargetableResource, Resources, Rects);
+        InViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
@@ -372,12 +372,12 @@ FRenderStreamProjectionPolicyFactory::~FRenderStreamProjectionPolicyFactory()
 {
 }
 
-TArray<TSharedPtr<FRenderStreamProjectionPolicy>> FRenderStreamProjectionPolicyFactory::GetPolicies()
+TArray<FRenderStreamProjectionPolicyFactory::PolicyPtr> FRenderStreamProjectionPolicyFactory::GetPolicies()
 {
     return Policies;
 }
 
-TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::GetPolicyByViewport(const FString& ViewportId) const
+FRenderStreamProjectionPolicyFactory::PolicyPtr FRenderStreamProjectionPolicyFactory::GetPolicyByViewport(const FString& ViewportId) const
 {
     for (auto& It : Policies)
     {
@@ -390,7 +390,7 @@ TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::
     return nullptr;
 }
 
-TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::GetPolicyBySceneViewFamily(int32 ViewFamilyIdx) const
+FRenderStreamProjectionPolicyFactory::PolicyPtr FRenderStreamProjectionPolicyFactory::GetPolicyBySceneViewFamily(int32 ViewFamilyIdx) const
 {
     check(ViewFamilyIdx < Policies.Num());
 
@@ -398,13 +398,13 @@ TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::
 }
 
 
-TSharedPtr<IDisplayClusterProjectionPolicy> FRenderStreamProjectionPolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
+FRenderStreamProjectionPolicyFactory::BasePolicyPtr FRenderStreamProjectionPolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
 {
     UE_LOG(LogRenderStreamPolicy, Log, TEXT("Instantiating projection policy <%s>..."), *InConfigurationProjectionPolicy->Type);
 
     if (!InConfigurationProjectionPolicy->Type.Compare(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType, ESearchCase::IgnoreCase))
     {
-        TSharedPtr<FRenderStreamProjectionPolicy> Result = MakeShareable(new FRenderStreamProjectionPolicy(ProjectionPolicyId, InConfigurationProjectionPolicy));
+        PolicyPtr Result = MakeShareable(new FRenderStreamProjectionPolicy(ProjectionPolicyId, InConfigurationProjectionPolicy));
         Policies.Add(Result);
         return StaticCastSharedPtr<IDisplayClusterProjectionPolicy>(Result);
     }

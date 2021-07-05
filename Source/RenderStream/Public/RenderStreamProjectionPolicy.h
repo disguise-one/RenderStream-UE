@@ -87,6 +87,9 @@ class FRenderStreamProjectionPolicyFactory
     : public IDisplayClusterProjectionPolicyFactory
 {
 public:
+    using BasePolicyPtr = TSharedPtr<IDisplayClusterProjectionPolicy, ESPMode::ThreadSafe>;
+    using PolicyPtr = TSharedPtr<FRenderStreamProjectionPolicy, ESPMode::ThreadSafe>;
+
     FRenderStreamProjectionPolicyFactory();
     virtual ~FRenderStreamProjectionPolicyFactory();
 
@@ -94,14 +97,14 @@ public:
     //////////////////////////////////////////////////////////////////////////////////////////////
     // IDisplayClusterProjectionPolicyFactory
     //////////////////////////////////////////////////////////////////////////////////////////////
-    virtual TSharedPtr<IDisplayClusterProjectionPolicy> Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy) override;
+    virtual BasePolicyPtr Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy) override;
 
-    TArray<TSharedPtr<FRenderStreamProjectionPolicy>> GetPolicies();
-    TSharedPtr<FRenderStreamProjectionPolicy>         GetPolicyByViewport(const FString& ViewportId) const;
-    TSharedPtr<FRenderStreamProjectionPolicy>         GetPolicyBySceneViewFamily(int32 ViewFamilyIdx) const;
+    TArray<PolicyPtr> GetPolicies();
+    PolicyPtr         GetPolicyByViewport(const FString& ViewportId) const;
+    PolicyPtr         GetPolicyBySceneViewFamily(int32 ViewFamilyIdx) const;
 
     static constexpr auto RenderStreamPolicyType = TEXT("renderstream");
 
 private:
-    TArray<TSharedPtr<FRenderStreamProjectionPolicy>> Policies;
+    TArray<PolicyPtr> Policies;
 };
