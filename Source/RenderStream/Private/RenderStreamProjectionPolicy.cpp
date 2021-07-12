@@ -292,7 +292,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
     }
     else
     {
-        const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
+        const float FieldOfViewH = AssignedCamera->FieldOfView;
         const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1 / AssignedCamera->AspectRatio));
 
         const float l = -FMath::Tan(0.5f * FieldOfViewH);
@@ -354,6 +354,9 @@ void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(FRHICommandListI
         check(Rects.Num() == 1);
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
     }
+
+    // Uncomment this to restore client display
+    // InViewportProxy->ResolveResources(RHICmdList, EDisplayClusterViewportResourceType::InputShaderResource, InViewportProxy->GetOutputResourceType());
 }
 
 const ACameraActor* FRenderStreamProjectionPolicy::GetTemplateCamera() const
