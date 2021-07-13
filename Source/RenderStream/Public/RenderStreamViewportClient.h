@@ -13,6 +13,13 @@ public:
     URenderStreamViewportClient(FVTableHelper& Helper);
     virtual ~URenderStreamViewportClient();
 
+    virtual void Init(struct FWorldContext& WorldContext, UGameInstance* OwningGameInstance, bool bCreateNewAudioDevice = true) override;
     virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
-    virtual void FinalizeViewFamily(int32 ViewFamilyIdx, class FSceneViewFamily* ViewFamily, const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap);
+
+protected:
+    void UpdateViewWithPolicy(class FSceneViewFamily* ViewFamily, class FSceneView* View, const class FRenderStreamProjectionPolicy* Policy);
+
+//#if WITH_EDITOR
+//    bool Draw_PIE(FViewport* InViewport, FCanvas* SceneCanvas);
+//#endif /*WITH_EDITOR*/
 };

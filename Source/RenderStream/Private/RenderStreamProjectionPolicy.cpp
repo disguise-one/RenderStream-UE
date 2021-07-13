@@ -3,6 +3,8 @@
 #include "Misc/DisplayClusterHelpers.h"
 
 #include "IDisplayCluster.h"
+#include "Render/Viewport/IDisplayClusterViewport.h"
+#include "Render/Viewport/IDisplayClusterViewportProxy.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "DisplayClusterConfigurationTypes.h"
 
@@ -18,15 +20,35 @@
 #include "FrameStream.h"
 
 #include "RenderStreamChannelDefinition.h"
+#include "..\Public\RenderStreamProjectionPolicy.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
-FRenderStreamProjectionPolicy::FRenderStreamProjectionPolicy(const FString& _ViewportId, const TMap<FString, FString>& _Parameters)
-    : ViewportId(_ViewportId)
-    , Parameters(_Parameters)
+static EUnit distanceUnit()
+{
+    // Unreal defaults to centimeters so we might as well do the same
+    static EUnit ret = EUnit::Unspecified;
+    if (ret == EUnit::Unspecified)
+    {
+        ret = EUnit::Centimeters;
+
+        FString ValueReceived;
+        if (!GConfig->GetString(TEXT("/Script/UnrealEd.EditorProjectAppearanceSettings"), TEXT("DistanceUnits"), ValueReceived, GEditorIni))
+            return ret;
+
+        TOptional<EUnit> currentUnit = FUnitConversion::UnitFromString(*ValueReceived);
+        if (currentUnit.IsSet())
+            ret = currentUnit.GetValue();
+    }
+    return ret;
+}
+
+FRenderStreamProjectionPolicy::FRenderStreamProjectionPolicy(const FString& _ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
+    : ProjectionPolicyId(_ProjectionPolicyId)
+    , ViewportId(_ProjectionPolicyId.Replace(TEXT("proj_"), TEXT("")))
+    , Parameters(InConfigurationProjectionPolicy->Parameters)
     , NCP(0)
     , FCP(0)
-    , Module(nullptr)
 {
 }
 
@@ -37,46 +59,56 @@ FRenderStreamProjectionPolicy::~FRenderStreamProjectionPolicy()
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicy
 //////////////////////////////////////////////////////////////////////////////////////////////
-void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
+const FString FRenderStreamProjectionPolicy::GetTypeId() const
+{
+    return FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType;
+}
+
+bool FRenderStreamProjectionPolicy::IsConfigurationChanged(const FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy) const
+{
+    return false;
+}
+
+bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewport* InViewport)
 {
     check(IsInGameThread());
-    check(World);
+    check(InViewport);
 
-    Module = FRenderStreamModule::Get();
+    FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
 
-    Module->LoadSchemas(*World);
+    Module->LoadSchemas(*GWorld);
 
     // Get player controller
-    if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(World, PlayerControllerID))
+    if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(GWorld, PlayerControllerID))
     {
         Controller = ExistingController;
     }
-    else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(World))
+    else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(GWorld))
     {
         PlayerControllerID = UGameplayStatics::GetPlayerControllerID(NewController);
         Controller = NewController;
     }
     else
+    {
         UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing."));
+        return false;
+    }
 
     Stream = Module->StreamPool->GetStream(GetViewportId());
     if (!Stream)
         Module->PopulateStreamPool();
 
-    m_isInitialised = true;
     ConfigureCapture();
 
+    return true;
 }
 
 void FRenderStreamProjectionPolicy::ConfigureCapture()
 {
-    if (!m_isInitialised)
-        return;  // Don't do anything if this function is called before StartScene
-
     check(IsInGameThread());
 
-    Module = FRenderStreamModule::Get();
+    FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
 
     const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
@@ -95,11 +127,10 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
     Stream = Module->StreamPool->GetStream(GetViewportId());
     if (!Stream)
     {
-        UE_LOG(LogRenderStreamPolicy, Log, TEXT("Policy '%s' created for unknown stream. Not expected unless this instance is an understudy."), *GetViewportId());
+        UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Policy '%s' created for unknown stream"), *GetViewportId());
     }
     if (Stream && Stream->Resolution() != Resolution)
     {
-        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetViewportId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetViewportId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         return;
     }
@@ -148,6 +179,16 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
         else
             UE_LOG(LogRenderStreamPolicy, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
     }
+}
+
+void FRenderStreamProjectionPolicy::UpdateStream(const FString& StreamName)
+{
+    // Do nothing if this projection policy already has a stream
+    if (Stream)
+        return;
+
+    ProjectionPolicyId = StreamName;
+    ConfigureCapture();
 }
 
 void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
@@ -201,7 +242,7 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
     }
 }
 
-void FRenderStreamProjectionPolicy::EndScene()
+void FRenderStreamProjectionPolicy::HandleEndScene(IDisplayClusterViewport* InViewport)
 {
     check(IsInGameThread());
     
@@ -209,22 +250,7 @@ void FRenderStreamProjectionPolicy::EndScene()
     Camera = nullptr;
 }
 
-bool FRenderStreamProjectionPolicy::HandleAddViewport(const FIntPoint& InViewportSize, const uint32 InViewsAmount)
-{
-    check(IsInGameThread());
-
-    UE_LOG(LogRenderStreamPolicy, Log, TEXT("Initializing internals for the viewport '%s'"), *GetViewportId());
-    
-    return true;
-}
-
-void FRenderStreamProjectionPolicy::HandleRemoveViewport()
-{
-    check(IsInGameThread());
-    UE_LOG(LogRenderStreamPolicy, Log, TEXT("Removing viewport '%s'"), *GetViewportId());
-}
-
-bool FRenderStreamProjectionPolicy::CalculateView(const uint32 ViewIdx, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float InNCP, const float InFCP)
+bool FRenderStreamProjectionPolicy::CalculateView(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float InNCP, const float InFCP)
 {
     check(IsInGameThread());
 
@@ -240,7 +266,7 @@ bool FRenderStreamProjectionPolicy::CalculateView(const uint32 ViewIdx, FVector&
     return true;
 }
 
-bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FMatrix& OutPrjMatrix)
+bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FMatrix& OutPrjMatrix)
 {
     check(IsInGameThread());
 
@@ -259,10 +285,14 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
         const float ZScale = 1.f / (AssignedCamera->OrthoFarClipPlane - AssignedCamera->OrthoNearClipPlane);
         const float ZOffset = -AssignedCamera->OrthoNearClipPlane;
         PrjMatrix = FReversedZOrthoMatrix(OrthoWidth, OrthoHeight, ZScale, ZOffset);
+
+        // FIX: Currently nDisplay doesn't allow us to set a projection matrix on the viewport.
+        UE_LOG(LogRenderStream, Error, TEXT("Unable to set ortho matrices into ndisplay, currently"));
+        return false;
     }
     else
     {
-        const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
+        const float FieldOfViewH = AssignedCamera->FieldOfView;
         const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1 / AssignedCamera->AspectRatio));
 
         const float l = -FMath::Tan(0.5f * FieldOfViewH);
@@ -270,7 +300,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
         const float t = FMath::Tan(0.5f * FieldOfViewV);
         const float b = -FMath::Tan(0.5f * FieldOfViewV);
 
-        PrjMatrix = DisplayClusterHelpers::math::GetProjectionMatrixFromOffsets(NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP);
+        InViewport->CalculateProjectionMatrix(InContextNum, NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP, true);
     }
 
     // Center shift
@@ -295,12 +325,12 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
     clippingTransform.SetTranslationAndScale3D(clippingOffset, clippingScale);
     FMatrix clippingMatrix = clippingTransform.ToMatrixWithScale();
 
-    OutPrjMatrix = PrjMatrix * clippingMatrix;
+    OutPrjMatrix = InViewport->GetContexts()[InContextNum].ProjectionMatrix * clippingMatrix;
 
     return true;
 }
 
-void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect)
+void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const class IDisplayClusterViewportProxy* InViewportProxy)
 {
     if (Stream)
     {
@@ -316,8 +346,17 @@ void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(const uint32 Vie
             frameResponse = m_frameResponses.front();
             m_frameResponses.pop_front();
         }
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
+
+        TArray<FRHITexture2D*> Resources;
+        TArray<FIntRect> Rects;
+        InViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
+        check(Resources.Num() == 1);
+        check(Rects.Num() == 1);
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
     }
+
+    // Uncomment this to restore client display
+    // InViewportProxy->ResolveResources(RHICmdList, EDisplayClusterViewportResourceType::InputShaderResource, InViewportProxy->GetOutputResourceType());
 }
 
 const ACameraActor* FRenderStreamProjectionPolicy::GetTemplateCamera() const
@@ -336,12 +375,12 @@ FRenderStreamProjectionPolicyFactory::~FRenderStreamProjectionPolicyFactory()
 {
 }
 
-TArray<TSharedPtr<FRenderStreamProjectionPolicy>> FRenderStreamProjectionPolicyFactory::GetPolicies()
+TArray<FRenderStreamProjectionPolicyFactory::PolicyPtr> FRenderStreamProjectionPolicyFactory::GetPolicies()
 {
     return Policies;
 }
 
-TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::GetPolicyByViewport(const FString& ViewportId)
+FRenderStreamProjectionPolicyFactory::PolicyPtr FRenderStreamProjectionPolicyFactory::GetPolicyByViewport(const FString& ViewportId) const
 {
     for (auto& It : Policies)
     {
@@ -354,7 +393,7 @@ TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::
     return nullptr;
 }
 
-TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::GetPolicyBySceneViewFamily(int32 ViewFamilyIdx) const
+FRenderStreamProjectionPolicyFactory::PolicyPtr FRenderStreamProjectionPolicyFactory::GetPolicyBySceneViewFamily(int32 ViewFamilyIdx) const
 {
     check(ViewFamilyIdx < Policies.Num());
 
@@ -362,13 +401,13 @@ TSharedPtr<FRenderStreamProjectionPolicy> FRenderStreamProjectionPolicyFactory::
 }
 
 
-TSharedPtr<IDisplayClusterProjectionPolicy> FRenderStreamProjectionPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
+FRenderStreamProjectionPolicyFactory::BasePolicyPtr FRenderStreamProjectionPolicyFactory::Create(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
 {
-    UE_LOG(LogRenderStreamPolicy, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
+    UE_LOG(LogRenderStreamPolicy, Log, TEXT("Instantiating projection policy <%s>..."), *InConfigurationProjectionPolicy->Type);
 
-    if (!PolicyType.Compare(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType, ESearchCase::IgnoreCase))
+    if (!InConfigurationProjectionPolicy->Type.Compare(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType, ESearchCase::IgnoreCase))
     {
-        TSharedPtr<FRenderStreamProjectionPolicy> Result = MakeShareable(new FRenderStreamProjectionPolicy(ViewportId, Parameters));
+        PolicyPtr Result = MakeShareable(new FRenderStreamProjectionPolicy(ProjectionPolicyId, InConfigurationProjectionPolicy));
         Policies.Add(Result);
         return StaticCastSharedPtr<IDisplayClusterProjectionPolicy>(Result);
     }

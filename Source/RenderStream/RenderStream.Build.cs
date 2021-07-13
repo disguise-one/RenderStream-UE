@@ -18,8 +18,6 @@ public class RenderStream : ModuleRules
                 "Core", 
                 "Sockets", 
                 "Networking", 
-                "MediaIOCore", 
-                "MediaUtils", 
                 "InputCore", 
                 "UMG"
             });
@@ -63,11 +61,11 @@ public class RenderStream : ModuleRules
         {
             using (var stream = File.OpenRead(Path.Combine(EngineDirectory, "Plugins/Runtime/nDisplay/Source/DisplayCluster/Private/Game/EngineClasses/Basics/DisplayClusterViewportClient.cpp")))
             {
-                byte[] ExpectedDisplayClusterViewPortClientHash = { 129, 125, 54, 121, 82, 208, 1, 85, 113, 228, 11, 71, 10, 47, 160, 45 };
+                byte[] ExpectedDisplayClusterViewPortClientHash = { 72, 211, 111, 141, 239, 30, 217, 37, 194, 82, 132, 249, 100, 201, 19, 104 };
                 byte[] ActualDisplayClusterViewPortClientHash = md5.ComputeHash(stream);
                 if (!ActualDisplayClusterViewPortClientHash.SequenceEqual(ExpectedDisplayClusterViewPortClientHash))
                     throw new BuildException("RenderStreamViewportClient.cpp is out of sync with DisplayClusterViewportClient.cpp.\n" 
-                                             + "Update and change ExpectedDisplayClusterViewPortClientHash in RenderStream.Build.cs to { " + string.Join(", ", ActualDisplayClusterViewPortClientHash) + " }");
+                                             + "Apply all changes to RenderStreamViewportClient.cpp.\nThen change ExpectedDisplayClusterViewPortClientHash in RenderStream.Build.cs to { " + string.Join(", ", ActualDisplayClusterViewPortClientHash) + " }");
             }
         }
     }
