@@ -292,7 +292,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
     }
     else
     {
-        const float FieldOfViewH = AssignedCamera->FieldOfView;
+        const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
         const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1 / AssignedCamera->AspectRatio));
 
         const float l = -FMath::Tan(0.5f * FieldOfViewH);
@@ -300,7 +300,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
         const float t = FMath::Tan(0.5f * FieldOfViewV);
         const float b = -FMath::Tan(0.5f * FieldOfViewV);
 
-        InViewport->CalculateProjectionMatrix(InContextNum, NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP, true);
+        InViewport->CalculateProjectionMatrix(InContextNum, NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP, false);
     }
 
     // Center shift
