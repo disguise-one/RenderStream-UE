@@ -7,7 +7,7 @@ void RSCopyPS(
 	float2 InUV : TEXCOORD0,
 	out float4 OutColor : SV_Target0)
 {
-	float2 ScaledUV = InUV * RSResizeCopyUB.UVScale;
+	float2 ScaledUV = InUV;// * RSResizeCopyUB.UVScale;
 	OutColor = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV);
 	OutColor.a = 1.f - OutColor.a;
 
@@ -18,7 +18,10 @@ void RSDepthCopyPS(
 	float2 InUV : TEXCOORD0,
 	out float4 OutColor : SV_Target0)
 {
-	float2 ScaledUV = InUV * RSResizeCopyUB.UVScale;
-	OutColor =  255.0 * RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV).r;
-    OutColor.a = 1.0 - OutColor.a;
+	float2 ScaledUV = InUV;// * RSResizeCopyUB.UVScale;
+	float val = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV).r;
+    OutColor = val;
+    //OutColor = 250000000 * (val * val * val);
+    //OutColor = 250 * val;
+    //OutColor.a = 1.0 - OutColor.a;
 }

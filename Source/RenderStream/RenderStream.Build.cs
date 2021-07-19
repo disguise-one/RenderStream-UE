@@ -42,7 +42,8 @@ public class RenderStream : ModuleRules
                 "DisplayCluster",
                 "HeadMountedDisplay",
                 "TextureShare",
-                "TextureShareCore"
+                "TextureShareCore",
+                "EngineSettings"
             });
 
         PrivateIncludePaths.AddRange(

@@ -177,6 +177,8 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
         float fovH = 2.f * FMath::Atan(0.5f / throwRatioH);
         CameraComponent->SetFieldOfView(fovH * 180.f / PI);
         CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
+
+        
     }
 
     if (SceneComponent)
@@ -230,7 +232,6 @@ bool FRenderStreamProjectionPolicy::CalculateView(const uint32 ViewIdx, FVector&
     // Store culling data
     NCP = InNCP;
     FCP = InFCP;
-
     return true;
 }
 
@@ -268,7 +269,6 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
 
     FMatrix PrjMatrix = DisplayClusterHelpers::math::GetProjectionMatrixFromOffsets(NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP);
     OutPrjMatrix = PrjMatrix * clippingMatrix;
-
     return true;
 }
 

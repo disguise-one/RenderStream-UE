@@ -52,12 +52,21 @@
 #include "CustomStaticScreenPercentage.h"
 
 #include "RenderStreamStereoRenderDevice.h"
+#include "GameMapsSettings.h"
 
 URenderStreamViewportClient::URenderStreamViewportClient(FVTableHelper& Helper)
     : Super(Helper)
-{}
+{
+    
+}
 
 URenderStreamViewportClient::~URenderStreamViewportClient() {}
+
+void URenderStreamViewportClient::Init(FWorldContext& WorldContext, UGameInstance* OwningGameInstance, bool bCreateNewAudioDevice)
+{
+    MaxSplitscreenPlayers = 8;
+    Super::Init(WorldContext, OwningGameInstance, bCreateNewAudioDevice);
+}
 
 /// DisplayClusterViewportClient.cpp copy-pasta
 
@@ -154,7 +163,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
     const int32 NumViews = DCRenderDevice->GetDesiredNumberOfViews(bStereoRendering);
     const int32 NumViewsPerFamily = 1;
     const int32 NumFamilies = NumViews / NumViewsPerFamily;
-    
+
     if(RSRenderDevice) RSRenderDevice->UpdateNumViewFamilies(NumFamilies);
 
     UWorld* const MyWorld = GetWorld();
@@ -163,12 +172,14 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
     if (PlayerController)
     {
         FirstLocalPlayer = PlayerController->GetLocalPlayer();
+        
     }
 
     if (!PlayerController || !FirstLocalPlayer)
     {
         return Super::Draw(InViewport, SceneCanvas);
     }
+
 
     /// !!!! disguise customizations
     IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
@@ -177,7 +188,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
     for (int32 ViewFamilyIdx = 0; ViewFamilyIdx < NumFamilies; ++ViewFamilyIdx)
     {
-        
         // Create the view family for rendering the world scene to the viewport's render target
         FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(InViewport, MyWorld->Scene, EngineShowFlags)
             .SetRealtimeUpdate(true)
@@ -272,6 +282,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
             FVector		ViewLocation;
             FRotator	ViewRotation;
 
+            // here is a problem, we're using view families but calculating the view based on the global number of views
+            // we need to change this so that each "main" view is view pass 1 and the multi views are 2-4
             EStereoscopicPass PassType = bStereoRendering ? GEngine->StereoRenderingDevice->GetViewPassForIndex(bStereoRendering, DCViewIdx) : eSSP_FULL;
 
             /// !!!! disguise customizations
@@ -285,7 +297,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
             /// !!!! disguise customizations
 
             FSceneView* View = LocalPlayer->CalcSceneView(&ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, PassType);
-
+            
             if (View)
             {
                 Views.Add(View);
@@ -674,5 +686,104 @@ void URenderStreamViewportClient::FinalizeViewFamily(int32 ViewFamilyIdx, FScene
     }
 
     FinalizeViews(ViewFamily, PlayerViewMap);
+}
+
+void URenderStreamViewportClient::UpdateActiveSplitscreenType()
+{
+    ESplitScreenType::Type SplitType = ESplitScreenType::None;
+    const int32 NumPlayers = GEngine->GetNumGamePlayers(GetWorld());
+    const UGameMapsSettings* Settings = GetDefault<UGameMapsSettings>();
+
+    if (Settings->bUseSplitscreen)
+    {
+        switch (NumPlayers)
+        {
+        case 0:
+        case 1:
+            SplitType = ESplitScreenType::None;
+            break;
+
+        case 2:
+            switch (Settings->TwoPlayerSplitscreenLayout)
+            {
+            case ETwoPlayerSplitScreenType::Horizontal:
+                SplitType = ESplitScreenType::TwoPlayer_Horizontal;
+                break;
+
+            case ETwoPlayerSplitScreenType::Vertical:
+                SplitType = ESplitScreenType::TwoPlayer_Vertical;
+                break;
+
+            default:
+                check(0);
+            }
+            break;
+
+        case 3:
+            switch (Settings->ThreePlayerSplitscreenLayout)
+            {
+            case EThreePlayerSplitScreenType::FavorTop:
+                SplitType = ESplitScreenType::ThreePlayer_FavorTop;
+                break;
+
+            case EThreePlayerSplitScreenType::FavorBottom:
+                SplitType = ESplitScreenType::ThreePlayer_FavorBottom;
+                break;
+
+            case EThreePlayerSplitScreenType::Vertical:
+                SplitType = ESplitScreenType::ThreePlayer_Vertical;
+                break;
+
+            case EThreePlayerSplitScreenType::Horizontal:
+                SplitType = ESplitScreenType::ThreePlayer_Horizontal;
+                break;
+
+            default:
+                check(0);
+            }
+            break;
+
+        default:
+            //ensure(NumPlayers == 4);
+            switch (Settings->FourPlayerSplitscreenLayout)
+            {
+            case EFourPlayerSplitScreenType::Grid:
+                SplitType = ESplitScreenType::FourPlayer_Grid;
+                break;
+
+            case EFourPlayerSplitScreenType::Vertical:
+                SplitType = ESplitScreenType::FourPlayer_Vertical;
+                break;
+
+            case EFourPlayerSplitScreenType::Horizontal:
+                SplitType = ESplitScreenType::FourPlayer_Horizontal;
+                break;
+
+            default:
+                check(0);
+            }
+            break;
+        }
+    }
+    else
+    {
+        SplitType = ESplitScreenType::None;
+    }
+
+    ActiveSplitscreenType = SplitType;
+}
+
+void URenderStreamViewportClient::LayoutPlayers()
+{
+    // Initialize the players
+    const TArray<ULocalPlayer*>& PlayerList = GetOuterUEngine()->GetGamePlayers(this);
+
+    for (int32 PlayerIdx = 0; PlayerIdx < PlayerList.Num(); PlayerIdx++)
+    {
+        PlayerList[PlayerIdx]->Size.X = 1.f/(float)PlayerList.Num();
+        PlayerList[PlayerIdx]->Size.Y = 1.f;
+        PlayerList[PlayerIdx]->Origin.X = 0.f;
+        PlayerList[PlayerIdx]->Origin.Y = (float)PlayerIdx/(float)PlayerList.Num();
+    }
 }
 

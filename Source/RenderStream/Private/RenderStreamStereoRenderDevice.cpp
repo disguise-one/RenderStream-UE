@@ -196,7 +196,7 @@ void FRenderStreamStereoRenderDevice::PostRenderViewFamily_RenderThread(FRHIComm
     if (m_depthEnabled)
     {
         FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-        FTexture2DRHIRef depthTex = SceneContext.GetSceneDepthSurface();
+        FTexture2DRHIRef depthTex = SceneContext.GetSceneDepthTexture();
         copyToIntermediateBuffer_RenderThread(RHICmdList, depthTex, m_intermediateDepth);
 
         UE_LOG(LogRenderStreamStereoRendering, Verbose, TEXT("Copied SceneDepth texture on PostRenderViewFamily_RenderThread"));
@@ -596,7 +596,8 @@ IStereoRenderTargetManager* FRenderStreamStereoRenderDevice::GetRenderTargetMana
 
 int32 FRenderStreamStereoRenderDevice::GetDesiredNumberOfViews(bool bStereoRequested) const
 {
-	return bStereoRequested ? 2 : 1;
+	//return bStereoRequested ? FMath::Min(RenderViewports.Num(), 2) : 1;
+	return bStereoRequested ? RenderViewports.Num() : 1;
 }
 
 EStereoscopicPass FRenderStreamStereoRenderDevice::GetViewPassForIndex(bool bStereoRequested, uint32 ViewIndex) const
