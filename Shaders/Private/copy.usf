@@ -20,8 +20,6 @@ void RSDepthCopyPS(
 {
 	float2 ScaledUV = InUV;// * RSResizeCopyUB.UVScale;
 	float val = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV).r;
-    OutColor = val;
-    //OutColor = 250000000 * (val * val * val);
-    //OutColor = 250 * val;
-    //OutColor.a = 1.0 - OutColor.a;
+    OutColor = pow(val, 1.0/50.0); // applies high gamma curve
+    OutColor.a = 1;
 }
