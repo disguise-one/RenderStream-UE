@@ -21,6 +21,7 @@ protected:
     {
         ULevelStreaming* streamingLevel = nullptr;
         AActor* persistentRoot = nullptr;
+        bool loaded = false;
     };
     std::vector<SchemaSpec> m_specs;
 };
