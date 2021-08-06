@@ -70,60 +70,69 @@ URenderStreamViewportClient::~URenderStreamViewportClient()
 /** Util to find named canvas in transient package, and create if not found */
 static UCanvas* GetCanvasByName(FName CanvasName)
 {
-    // Cache to avoid FString/FName conversions/compares
-    static TMap<FName, UCanvas*> CanvasMap;
-    UCanvas** FoundCanvas = CanvasMap.Find(CanvasName);
-    if (!FoundCanvas)
-    {
-        UCanvas* CanvasObject = FindObject<UCanvas>(GetTransientPackage(), *CanvasName.ToString());
-        if (!CanvasObject)
-        {
-            CanvasObject = NewObject<UCanvas>(GetTransientPackage(), CanvasName);
-            CanvasObject->AddToRoot();
-        }
+	// Cache to avoid FString/FName conversions/compares
+	static TMap<FName, UCanvas*> CanvasMap;
+	UCanvas** FoundCanvas = CanvasMap.Find(CanvasName);
+	if (!FoundCanvas)
+	{
+		UCanvas* CanvasObject = FindObject<UCanvas>(GetTransientPackage(), *CanvasName.ToString());
+		if (!CanvasObject)
+		{
+			CanvasObject = NewObject<UCanvas>(GetTransientPackage(), CanvasName);
+			CanvasObject->AddToRoot();
+		}
 
-        CanvasMap.Add(CanvasName, CanvasObject);
-        return CanvasObject;
-    }
+		CanvasMap.Add(CanvasName, CanvasObject);
+		return CanvasObject;
+	}
 
-    return *FoundCanvas;
+	return *FoundCanvas;
 }
 
 void URenderStreamViewportClient::Init(struct FWorldContext& WorldContext, UGameInstance* OwningGameInstance, bool bCreateNewAudioDevice)
 {
-    //const bool bIsNDisplayClusterMode = (GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
-    //if (bIsNDisplayClusterMode)
-    //{
-        // r.CompositionForceRenderTargetLoad
-        IConsoleVariable* const ForceLoadCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CompositionForceRenderTargetLoad"));
-        if (ForceLoadCVar)
-        {
-            ForceLoadCVar->Set(int32(1));
-        }
+    /// !!!! disguise customizations - we must always use this method.
+    const bool bIsNDisplayClusterMode = true; //(GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
+    /// !!!! disguise customizations
+    if (bIsNDisplayClusterMode)
+	{
+		// r.CompositionForceRenderTargetLoad
+		IConsoleVariable* const ForceLoadCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CompositionForceRenderTargetLoad"));
+		if (ForceLoadCVar)
+		{
+			ForceLoadCVar->Set(int32(1));
+		}
 
-        // r.SceneRenderTargetResizeMethodForceOverride
-        IConsoleVariable* const RTResizeForceOverrideCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SceneRenderTargetResizeMethodForceOverride"));
-        if (RTResizeForceOverrideCVar)
-        {
-            RTResizeForceOverrideCVar->Set(int32(1));
-        }
+		// r.SceneRenderTargetResizeMethodForceOverride
+		IConsoleVariable* const RTResizeForceOverrideCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SceneRenderTargetResizeMethodForceOverride"));
+		if (RTResizeForceOverrideCVar)
+		{
+			RTResizeForceOverrideCVar->Set(int32(1));
+		}
 
-        // r.SceneRenderTargetResizeMethod
-        IConsoleVariable* const RTResizeCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SceneRenderTargetResizeMethod"));
-        if (RTResizeCVar)
-        {
-            RTResizeCVar->Set(int32(2));
-        }
+		// r.SceneRenderTargetResizeMethod
+		IConsoleVariable* const RTResizeCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SceneRenderTargetResizeMethod"));
+		if (RTResizeCVar)
+		{
+			RTResizeCVar->Set(int32(2));
+		}
 
-        // RHI.MaximumFrameLatency
-        IConsoleVariable* const MaximumFrameLatencyCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("RHI.MaximumFrameLatency"));
-        if (MaximumFrameLatencyCVar)
-        {
-            MaximumFrameLatencyCVar->Set(int32(1));
-        }
-    //}
+		// RHI.MaximumFrameLatency
+		IConsoleVariable* const MaximumFrameLatencyCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("RHI.MaximumFrameLatency"));
+		if (MaximumFrameLatencyCVar)
+		{
+			MaximumFrameLatencyCVar->Set(int32(1));
+		}
 
-    Super::Init(WorldContext, OwningGameInstance, bCreateNewAudioDevice);
+		// vr.AllowMotionBlurInVR
+		IConsoleVariable* const AllowMotionBlurInVR = IConsoleManager::Get().FindConsoleVariable(TEXT("vr.AllowMotionBlurInVR"));
+		if (AllowMotionBlurInVR)
+		{
+			AllowMotionBlurInVR->Set(int32(1));
+		}
+	}
+
+	Super::Init(WorldContext, OwningGameInstance, bCreateNewAudioDevice);
 }
 
 void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
@@ -131,24 +140,23 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
     ////////////////////////////////
     // For any operation mode other than 'Cluster' we use default UGameViewportClient::Draw pipeline
     /// !!!! disguise customizations - we must always use this method.
-    const bool bIsNDisplayClusterMode = true; // (GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
+    const bool bIsNDisplayClusterMode = true; //(GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
+    /// !!!! disguise customizations
 
     // Get nDisplay stereo device
     IDisplayClusterRenderDevice* const DCRenderDevice = bIsNDisplayClusterMode ? static_cast<IDisplayClusterRenderDevice* const>(GEngine->StereoRenderingDevice.Get()) : nullptr;
-    check(DCRenderDevice != nullptr);
-//
-//    if (!bIsNDisplayClusterMode || !DCRenderDevice)
-//    {
-//#if WITH_EDITOR
-//        // Special render for PIE
-//        if (Draw_PIE(InViewport, SceneCanvas))
-//        {
-//            return;
-//        }
-//#endif
-//        return UGameViewportClient::Draw(InViewport, SceneCanvas);
-//    }
-    /// !!!! disguise customizations
+
+    if (!bIsNDisplayClusterMode || DCRenderDevice == nullptr)
+    {
+#if WITH_EDITOR
+        // Special render for PIE
+        if (!IsRunningGame() && Draw_PIE(InViewport, SceneCanvas))
+        {
+            return;
+        }
+#endif
+        return UGameViewportClient::Draw(InViewport, SceneCanvas);
+    }
 
     //Get world for render
     UWorld* const MyWorld = GetWorld();
@@ -235,227 +243,231 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
         for (FDisplayClusterRenderFrame::FFrameViewFamily& DCViewFamily : DCRenderTarget.ViewFamilies)
         {
-            if (DCViewFamily.NumViewsForRender > 0)
-            {
-                // Create the view family for rendering the world scene to the viewport's render target
-                FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(DCRenderTarget.RenderTargetPtr, MyWorld->Scene, EngineShowFlags)
-                    .SetRealtimeUpdate(true)
-                    .SetAdditionalViewFamily(bAdditionalViewFamily));
+            // Create the view family for rendering the world scene to the viewport's render target
+            FSceneViewFamilyContext ViewFamily(FSceneViewFamily::ConstructionValues(DCRenderTarget.RenderTargetPtr, MyWorld->Scene, EngineShowFlags)
+                .SetRealtimeUpdate(true)
+                .SetAdditionalViewFamily(bAdditionalViewFamily));
 
-                // Disable clean op for all next families on this render target
-                bAdditionalViewFamily = true;
+            // Disable clean op for all next families on this render target
+            bAdditionalViewFamily = true;
 
-                // Configure family flags
-                RenderFrame.ViewportManager->ConfigureViewFamily(DCRenderTarget, DCViewFamily, ViewFamily);
+            // Configure family flags
+            RenderFrame.ViewportManager->ConfigureViewFamily(DCRenderTarget, DCViewFamily, ViewFamily);
 
 #if WITH_EDITOR
-                if (GIsEditor)
-                {
-                    // Force enable view family show flag for HighDPI derived's screen percentage.
-                    ViewFamily.EngineShowFlags.ScreenPercentage = true;
-                }
+            if (GIsEditor)
+            {
+                // Force enable view family show flag for HighDPI derived's screen percentage.
+                ViewFamily.EngineShowFlags.ScreenPercentage = true;
+            }
 #endif
 
-                ViewFamily.ViewMode = EViewModeIndex(ViewModeIndex);
-                EngineShowFlagOverride(ESFIM_Game, ViewFamily.ViewMode, ViewFamily.EngineShowFlags, false);
+            ViewFamily.ViewMode = EViewModeIndex(ViewModeIndex);
+            EngineShowFlagOverride(ESFIM_Game, ViewFamily.ViewMode, ViewFamily.EngineShowFlags, false);
 
-                if (ViewFamily.EngineShowFlags.VisualizeBuffer && AllowDebugViewmodes())
+            if (ViewFamily.EngineShowFlags.VisualizeBuffer && AllowDebugViewmodes())
+            {
+                // Process the buffer visualization console command
+                FName NewBufferVisualizationMode = NAME_None;
+                static IConsoleVariable* ICVar = IConsoleManager::Get().FindConsoleVariable(FBufferVisualizationData::GetVisualizationTargetConsoleCommandName());
+                if (ICVar)
                 {
-                    // Process the buffer visualization console command
-                    FName NewBufferVisualizationMode = NAME_None;
-                    static IConsoleVariable* ICVar = IConsoleManager::Get().FindConsoleVariable(FBufferVisualizationData::GetVisualizationTargetConsoleCommandName());
-                    if (ICVar)
+                    static const FName OverviewName = TEXT("Overview");
+                    FString ModeNameString = ICVar->GetString();
+                    FName ModeName = *ModeNameString;
+                    if (ModeNameString.IsEmpty() || ModeName == OverviewName || ModeName == NAME_None)
                     {
-                        static const FName OverviewName = TEXT("Overview");
-                        FString ModeNameString = ICVar->GetString();
-                        FName ModeName = *ModeNameString;
-                        if (ModeNameString.IsEmpty() || ModeName == OverviewName || ModeName == NAME_None)
+                        NewBufferVisualizationMode = NAME_None;
+                    }
+                    else
+                    {
+                        if (GetBufferVisualizationData().GetMaterial(ModeName) == NULL)
                         {
-                            NewBufferVisualizationMode = NAME_None;
+                            // Mode is out of range, so display a message to the user, and reset the mode back to the previous valid one
+                            UE_LOG(LogConsoleResponse, Warning, TEXT("Buffer visualization mode '%s' does not exist"), *ModeNameString);
+                            NewBufferVisualizationMode = GetCurrentBufferVisualizationMode();
+                            // todo: cvars are user settings, here the cvar state is used to avoid log spam and to auto correct for the user (likely not what the user wants)
+                            ICVar->Set(*NewBufferVisualizationMode.GetPlainNameString(), ECVF_SetByCode);
                         }
                         else
                         {
-                            if (GetBufferVisualizationData().GetMaterial(ModeName) == NULL)
-                            {
-                                // Mode is out of range, so display a message to the user, and reset the mode back to the previous valid one
-                                UE_LOG(LogConsoleResponse, Warning, TEXT("Buffer visualization mode '%s' does not exist"), *ModeNameString);
-                                NewBufferVisualizationMode = GetCurrentBufferVisualizationMode();
-                                // todo: cvars are user settings, here the cvar state is used to avoid log spam and to auto correct for the user (likely not what the user wants)
-                                ICVar->Set(*NewBufferVisualizationMode.GetPlainNameString(), ECVF_SetByCode);
-                            }
-                            else
-                            {
-                                NewBufferVisualizationMode = ModeName;
-                            }
+                            NewBufferVisualizationMode = ModeName;
                         }
-                    }
-
-                    if (NewBufferVisualizationMode != GetCurrentBufferVisualizationMode())
-                    {
-                        SetCurrentBufferVisualizationMode(NewBufferVisualizationMode);
                     }
                 }
 
-                TMap<ULocalPlayer*, FSceneView*> PlayerViewMap;
-                FAudioDeviceHandle RetrievedAudioDevice = MyWorld->GetAudioDevice();
-                TArray<FSceneView*> Views;
-
-                for (FDisplayClusterRenderFrame::FFrameView& DCView : DCViewFamily.Views)
+                if (NewBufferVisualizationMode != GetCurrentBufferVisualizationMode())
                 {
-                    if (DCView.bDisableRender == false)
+                    SetCurrentBufferVisualizationMode(NewBufferVisualizationMode);
+                }
+            }
+
+            TMap<ULocalPlayer*, FSceneView*> PlayerViewMap;
+            FAudioDeviceHandle RetrievedAudioDevice = MyWorld->GetAudioDevice();
+            TArray<FSceneView*> Views;
+
+            for (FDisplayClusterRenderFrame::FFrameView& DCView : DCViewFamily.Views)
+            {
+                const FDisplayClusterViewport_Context ViewportContext = DCView.Viewport->GetContexts()[DCView.ContextNum];
+
+                /// !!!! disguise customizations
+                const auto Policy = RenderStreamFactory->GetPolicyByViewport(DCView.Viewport->GetId());
+                if (Policy)
+                {
+                    APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Policy->GetPlayerControllerID());
+                    if (PolicyController)
+                        LocalPlayer = PolicyController->GetLocalPlayer();
+                }
+                /// !!!! disguise customizations
+
+                // Calculate the player's view information.
+                FVector		ViewLocation;
+                FRotator	ViewRotation;
+                FSceneView* View = LocalPlayer->CalcSceneView(&ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoscopicPass);
+
+                if (View && DCView.bDisableRender)
+                {
+                    ViewFamily.Views.Remove(View);
+
+                    delete View;
+                    View = nullptr;
+                }
+
+                if (View)
+                {
+                    Views.Add(View);
+
+                    /// !!!! disguise customizations
+                    if (Policy)
+                        UpdateViewWithPolicy(&ViewFamily, View, Policy.Get());
+                    /// !!!! disguise customizations
+
+                    // Apply viewport context settings to view (crossGPU, visibility, etc)
+                    DCView.Viewport->SetupSceneView(DCView.ContextNum, World, ViewFamily, *View);
+
+                    // We don't allow instanced stereo currently
+                    View->bIsInstancedStereoEnabled = false;
+                    View->bShouldBindInstancedViewUB = false;
+
+                    if (View->Family->EngineShowFlags.Wireframe)
                     {
-                        const FDisplayClusterViewport_Context ViewportContext = DCView.Viewport->GetContexts()[DCView.ContextNum];
+                        // Wireframe color is emissive-only, and mesh-modifying materials do not use material substitution, hence...
+                        View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                        View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                    }
+                    else if (View->Family->EngineShowFlags.OverrideDiffuseAndSpecular)
+                    {
+                        View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
+                        View->SpecularOverrideParameter = FVector4(.1f, .1f, .1f, 0.0f);
+                    }
+                    else if (View->Family->EngineShowFlags.LightingOnlyOverride)
+                    {
+                        View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
+                        View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                    }
+                    else if (View->Family->EngineShowFlags.ReflectionOverride)
+                    {
+                        View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                        View->SpecularOverrideParameter = FVector4(1, 1, 1, 0.0f);
+                        View->NormalOverrideParameter = FVector4(0, 0, 1, 0.0f);
+                        View->RoughnessOverrideParameter = FVector2D(0.0f, 0.0f);
+                    }
 
-                        /// !!!! disguise customizations
-                        const auto Policy = RenderStreamFactory->GetPolicyByViewport(DCView.Viewport->GetId());
-                        if (Policy)
+                    if (!View->Family->EngineShowFlags.Diffuse)
+                    {
+                        View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                    }
+
+                    if (!View->Family->EngineShowFlags.Specular)
+                    {
+                        View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                    }
+
+                    View->CurrentBufferVisualizationMode = GetCurrentBufferVisualizationMode();
+
+                    View->CameraConstrainedViewRect = View->UnscaledViewRect;
+
+
+                    {
+                        // Save the location of the view.
+                        LocalPlayer->LastViewLocation = ViewLocation;
+
+                        PlayerViewMap.Add(LocalPlayer, View);
+
+                        // Update the listener.
+                        if (RetrievedAudioDevice && PlayerController != NULL)
                         {
-                            APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Policy->GetPlayerControllerID());
-                            if (PolicyController)
-                                LocalPlayer = PolicyController->GetLocalPlayer();
-                        }
-                        /// !!!! disguise customizations
+                            bool bUpdateListenerPosition = true;
 
-                        // Calculate the player's view information.
-                        FVector		ViewLocation;
-                        FRotator	ViewRotation;
-                        FSceneView* View = LocalPlayer->CalcSceneView(&ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoscopicPass);
-
-                        if (View)
-                        {
-                            Views.Add(View);
-
-                            /// !!!! disguise customizations
-                            if (Policy)
-                                UpdateViewWithPolicy(&ViewFamily, View, Policy.Get());
-                            /// !!!! disguise customizations
-
-                            // Apply viewport context settings to view (crossGPU, visibility, etc)
-                            DCView.Viewport->SetupSceneView(DCView.ContextNum, World, ViewFamily, *View);
-
-                            // We don't allow instanced stereo currently
-                            View->bIsInstancedStereoEnabled = false;
-                            View->bShouldBindInstancedViewUB = false;
-
-                            if (View->Family->EngineShowFlags.Wireframe)
+                            // If the main audio device is used for multiple PIE viewport clients, we only
+                            // want to update the main audio device listener position if it is in focus
+                            if (GEngine)
                             {
-                                // Wireframe color is emissive-only, and mesh-modifying materials do not use material substitution, hence...
-                                View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                                View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                            }
-                            else if (View->Family->EngineShowFlags.OverrideDiffuseAndSpecular)
-                            {
-                                View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
-                                View->SpecularOverrideParameter = FVector4(.1f, .1f, .1f, 0.0f);
-                            }
-                            else if (View->Family->EngineShowFlags.LightingOnlyOverride)
-                            {
-                                View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
-                                View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                            }
-                            else if (View->Family->EngineShowFlags.ReflectionOverride)
-                            {
-                                View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                                View->SpecularOverrideParameter = FVector4(1, 1, 1, 0.0f);
-                                View->NormalOverrideParameter = FVector4(0, 0, 1, 0.0f);
-                                View->RoughnessOverrideParameter = FVector2D(0.0f, 0.0f);
-                            }
+                                FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
 
-                            if (!View->Family->EngineShowFlags.Diffuse)
-                            {
-                                View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                            }
-
-                            if (!View->Family->EngineShowFlags.Specular)
-                            {
-                                View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                            }
-
-                            View->CurrentBufferVisualizationMode = GetCurrentBufferVisualizationMode();
-
-                            View->CameraConstrainedViewRect = View->UnscaledViewRect;
-
-
-                            {
-                                // Save the location of the view.
-                                LocalPlayer->LastViewLocation = ViewLocation;
-
-                                PlayerViewMap.Add(LocalPlayer, View);
-
-                                // Update the listener.
-                                if (RetrievedAudioDevice && PlayerController != NULL)
+                                // If there is more than one world referencing the main audio device
+                                if (AudioDeviceManager->GetNumMainAudioDeviceWorlds() > 1)
                                 {
-                                    bool bUpdateListenerPosition = true;
-
-                                    // If the main audio device is used for multiple PIE viewport clients, we only
-                                    // want to update the main audio device listener position if it is in focus
-                                    if (GEngine)
+                                    uint32 MainAudioDeviceID = GEngine->GetMainAudioDeviceID();
+                                    if (AudioDevice->DeviceID == MainAudioDeviceID && !HasAudioFocus())
                                     {
-                                        FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
-
-                                        // If there is more than one world referencing the main audio device
-                                        if (AudioDeviceManager->GetNumMainAudioDeviceWorlds() > 1)
-                                        {
-                                            uint32 MainAudioDeviceID = GEngine->GetMainAudioDeviceID();
-                                            if (AudioDevice->DeviceID == MainAudioDeviceID && !HasAudioFocus())
-                                            {
-                                                bUpdateListenerPosition = false;
-                                            }
-                                        }
-                                    }
-
-                                    if (bUpdateListenerPosition)
-                                    {
-                                        FVector Location;
-                                        FVector ProjFront;
-                                        FVector ProjRight;
-                                        PlayerController->GetAudioListenerPosition(Location, ProjFront, ProjRight);
-
-                                        FTransform ListenerTransform(FRotationMatrix::MakeFromXY(ProjFront, ProjRight));
-
-                                        // Allow the HMD to adjust based on the head position of the player, as opposed to the view location
-                                        if (GEngine->XRSystem.IsValid() && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
-                                        {
-                                            const FVector Offset = GEngine->XRSystem->GetAudioListenerOffset();
-                                            Location += ListenerTransform.TransformPositionNoScale(Offset);
-                                        }
-
-                                        ListenerTransform.SetTranslation(Location);
-                                        ListenerTransform.NormalizeRotation();
-
-                                        uint32 ViewportIndex = PlayerViewMap.Num() - 1;
-                                        RetrievedAudioDevice->SetListener(MyWorld, ViewportIndex, ListenerTransform, (View->bCameraCut ? 0.f : MyWorld->GetDeltaSeconds()));
-
-                                        FVector OverrideAttenuation;
-                                        if (PlayerController->GetAudioListenerAttenuationOverridePosition(OverrideAttenuation))
-                                        {
-                                            RetrievedAudioDevice->SetListenerAttenuationOverride(ViewportIndex, OverrideAttenuation);
-                                        }
-                                        else
-                                        {
-                                            RetrievedAudioDevice->ClearListenerAttenuationOverride(ViewportIndex);
-                                        }
+                                        bUpdateListenerPosition = false;
                                     }
                                 }
-
-#if RHI_RAYTRACING
-                                View->SetupRayTracedRendering();
-#endif
-
                             }
 
-                            // Add view information for resource streaming. Allow up to 5X boost for small FOV.
-                            const float StreamingScale = 1.f / FMath::Clamp<float>(View->LODDistanceFactor, .2f, 1.f);
-                            IStreamingManager::Get().AddViewInformation(View->ViewMatrices.GetViewOrigin(), View->UnscaledViewRect.Width(), View->UnscaledViewRect.Width() * View->ViewMatrices.GetProjectionMatrix().M[0][0], StreamingScale);
-                            MyWorld->ViewLocationsRenderedLastFrame.Add(View->ViewMatrices.GetViewOrigin());
-                        }
-                    }
-                }
+                            if (bUpdateListenerPosition)
+                            {
+                                FVector Location;
+                                FVector ProjFront;
+                                FVector ProjRight;
+                                PlayerController->GetAudioListenerPosition(Location, ProjFront, ProjRight);
 
-#if CSV_PROFILER
-                UpdateCsvCameraStats(PlayerViewMap);
+                                FTransform ListenerTransform(FRotationMatrix::MakeFromXY(ProjFront, ProjRight));
+
+                                // Allow the HMD to adjust based on the head position of the player, as opposed to the view location
+                                if (GEngine->XRSystem.IsValid() && GEngine->StereoRenderingDevice.IsValid() && GEngine->StereoRenderingDevice->IsStereoEnabled())
+                                {
+                                    const FVector Offset = GEngine->XRSystem->GetAudioListenerOffset();
+                                    Location += ListenerTransform.TransformPositionNoScale(Offset);
+                                }
+
+                                ListenerTransform.SetTranslation(Location);
+                                ListenerTransform.NormalizeRotation();
+
+                                uint32 ViewportIndex = PlayerViewMap.Num() - 1;
+                                RetrievedAudioDevice->SetListener(MyWorld, ViewportIndex, ListenerTransform, (View->bCameraCut ? 0.f : MyWorld->GetDeltaSeconds()));
+
+                                FVector OverrideAttenuation;
+                                if (PlayerController->GetAudioListenerAttenuationOverridePosition(OverrideAttenuation))
+                                {
+                                    RetrievedAudioDevice->SetListenerAttenuationOverride(ViewportIndex, OverrideAttenuation);
+                                }
+                                else
+                                {
+                                    RetrievedAudioDevice->ClearListenerAttenuationOverride(ViewportIndex);
+                                }
+                            }
+                        }
+
+#if RHI_RAYTRACING
+                        View->SetupRayTracedRendering();
 #endif
 
+                    }
+
+                    // Add view information for resource streaming. Allow up to 5X boost for small FOV.
+                    const float StreamingScale = 1.f / FMath::Clamp<float>(View->LODDistanceFactor, .2f, 1.f);
+                    IStreamingManager::Get().AddViewInformation(View->ViewMatrices.GetViewOrigin(), View->UnscaledViewRect.Width(), View->UnscaledViewRect.Width() * View->ViewMatrices.GetProjectionMatrix().M[0][0], StreamingScale);
+                    MyWorld->ViewLocationsRenderedLastFrame.Add(View->ViewMatrices.GetViewOrigin());
+                }
+            }
+
+#if CSV_PROFILER
+            UpdateCsvCameraStats(PlayerViewMap);
+#endif
+            if (ViewFamily.Views.Num() > 0)
+            {
                 FinalizeViews(&ViewFamily, PlayerViewMap);
 
                 // Force screen percentage show flag to be turned off if not supported.
@@ -573,12 +585,12 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     if (GNumExplicitGPUsForRendering > 1)
                     {
                         const FRHIGPUMask SubmitGPUMask = ViewFamily.Views.Num() == 1 ? ViewFamily.Views[0]->GPUMask : FRHIGPUMask::All();
-                        ENQUEUE_RENDER_COMMAND(URenderStreamViewportClient_SubmitCommandList)(
+                        ENQUEUE_RENDER_COMMAND(UDisplayClusterViewportClient_SubmitCommandList)(
                             [SubmitGPUMask](FRHICommandListImmediate& RHICmdList)
-                        {
-                            SCOPED_GPU_MASK(RHICmdList, SubmitGPUMask);
-                            RHICmdList.SubmitCommandsHint();
-                        });
+                            {
+                                SCOPED_GPU_MASK(RHICmdList, SubmitGPUMask);
+                                RHICmdList.SubmitCommandsHint();
+                            });
                     }
                 }
                 else
@@ -586,11 +598,11 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     GetRendererModule().PerFrameCleanupIfSkipRenderer();
 
                     // Make sure RHI resources get flushed if we're not using a renderer
-                    ENQUEUE_RENDER_COMMAND(URenderStreamViewportClient_FlushRHIResources)(
+                    ENQUEUE_RENDER_COMMAND(UDisplayClusterViewportClient_FlushRHIResources)(
                         [](FRHICommandListImmediate& RHICmdList)
-                    {
-                        RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-                    });
+                        {
+                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                        });
                 }
             }
         }
@@ -669,73 +681,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
     OnEndDraw().Broadcast();
 }
-
-//#if WITH_EDITOR
-//
-//#include "DisplayClusterRootActor.h"
-//
-//bool URenderStreamViewportClient::Draw_PIE(FViewport* InViewport, FCanvas* SceneCanvas)
-//{
-//    // Get root actor from viewport
-//    ADisplayClusterRootActor* const RootActor = GDisplayCluster->GetGameMgr()->GetRootActor();
-//    if (RootActor == nullptr)
-//    {
-//        return false;
-//    }
-//
-//    //@todo Implement this logic inside function DisplayCluster.GetConfigMgr()->GetLocalNodeId()
-//    //@todo: change local node selection for customers
-//    FString LocalNodeId = RootActor->PreviewNodeId;
-//    if (LocalNodeId == DisplayClusterConfigurationStrings::gui::preview::PreviewNodeAll || LocalNodeId == DisplayClusterConfigurationStrings::gui::preview::PreviewNodeNone)
-//    {
-//        return false;
-//    }
-//
-//    //@todo add render mode select
-//    EDisplayClusterRenderFrameMode RenderFrameMode = EDisplayClusterRenderFrameMode::Mono;
-//    switch (RootActor->RenderMode)
-//    {
-//    case EDisplayClusterConfigurationRenderMode::SideBySide:
-//        RenderFrameMode = EDisplayClusterRenderFrameMode::SideBySide;
-//        break;
-//    case EDisplayClusterConfigurationRenderMode::TopBottom:
-//        RenderFrameMode = EDisplayClusterRenderFrameMode::TopBottom;
-//        break;
-//    default:
-//        break;
-//    }
-//
-//
-//
-//    //Get world for render
-//    UWorld* const MyWorld = GetWorld();
-//
-//    IDisplayClusterViewportManager* ViewportManager = RootActor->GetViewportManager();
-//    if (ViewportManager == nullptr)
-//    {
-//        return false;
-//    }
-//    // Update local node viewports (update\create\delete) and build new render frame
-//    if (ViewportManager->UpdateConfiguration(RenderFrameMode, LocalNodeId, RootActor) == false)
-//    {
-//        return false;
-//    }
-//
-//    FDisplayClusterRenderFrame RenderFrame;
-//    if (ViewportManager->BeginNewFrame(InViewport, MyWorld, RenderFrame) == false || RenderFrame.DesiredNumberOfViews < 1)
-//    {
-//        return false;
-//    }
-//
-//    if (ViewportManager->RenderInEditor(RenderFrame, InViewport) == false)
-//    {
-//        return false;
-//    }
-//
-//    return true;
-//}
-//#endif /*WITH_EDITOR*/
-
 
 /// DisplayClusterViewportClient.cpp copy-pasta
 

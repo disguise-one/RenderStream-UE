@@ -61,7 +61,7 @@ public class RenderStream : ModuleRules
         {
             using (var stream = File.OpenRead(Path.Combine(EngineDirectory, "Plugins/Runtime/nDisplay/Source/DisplayCluster/Private/Game/EngineClasses/Basics/DisplayClusterViewportClient.cpp")))
             {
-                byte[] ExpectedDisplayClusterViewPortClientHash = { 72, 211, 111, 141, 239, 30, 217, 37, 194, 82, 132, 249, 100, 201, 19, 104 };
+                byte[] ExpectedDisplayClusterViewPortClientHash = { 123, 235, 73, 150, 222, 170, 14, 143, 41, 26, 222, 165, 172, 127, 241, 113 };
                 byte[] ActualDisplayClusterViewPortClientHash = md5.ComputeHash(stream);
                 if (!ActualDisplayClusterViewPortClientHash.SequenceEqual(ExpectedDisplayClusterViewPortClientHash))
                     throw new BuildException("RenderStreamViewportClient.cpp is out of sync with DisplayClusterViewportClient.cpp.\n" 
