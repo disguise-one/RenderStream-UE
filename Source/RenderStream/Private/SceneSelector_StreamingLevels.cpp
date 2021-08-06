@@ -2,7 +2,7 @@
 #include "Containers/UnrealString.h"
 #include "Engine/World.h"
 #include "Engine/LevelStreaming.h"
-#pragma optimize("", off)
+
 static ULevelStreaming* findStreamingLevelByName(const UWorld& World, const FString& FindName)
 {
     for (ULevelStreaming* streamingLevel : World.GetStreamingLevels())
@@ -31,10 +31,11 @@ bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const Re
         SchemaSpec& spec = m_specs[i];
         spec.streamingLevel = streamingLevel;
         spec.persistentRoot = persistentRoot;
+        spec.loaded = false;
 
         if (!streamingLevel || streamingLevel->IsLevelLoaded())
         {
-            ValidateLevel(i);
+            spec.loaded = ValidateLevel(i);
         }
         else
         {
@@ -61,9 +62,9 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
         UGameplayStatics::LoadStreamLevel(&World, spec.streamingLevel->GetWorldAssetPackageFName(), true, true, LatentInfo);
         return;
     }
-    else
+    else if (!spec.loaded)
     {
-        ValidateLevel(sceneId);
+        spec.loaded = ValidateLevel(sceneId);
     }
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
     if (spec.streamingLevel == nullptr && spec.persistentRoot == persistentRoot) // base level
@@ -110,4 +111,3 @@ bool SceneSelector_StreamingLevels::ValidateLevel(uint32_t sceneId)
 
     return true;
 }
-#pragma optimize("", on)
