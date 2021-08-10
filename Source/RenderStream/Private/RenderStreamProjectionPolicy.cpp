@@ -319,31 +319,35 @@ void FRenderStreamProjectionPolicy::SendEnhancedContent_RenderThread(FRHICommand
         m_frameResponses.pop_front();
     }
 
-    if (SrcTexture)
+    if (DistortionTexture)
     {
-        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::RENDERED_FRAME;
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
-    }
-    if (DepthTexture)
-    {
-        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::SCENE_DEPTH;
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, DepthTexture, ViewportRect);
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::DISTORTION;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, DistortionTexture, ViewportRect);
     }
     if (NormalsTexture)
     {
         frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::WORLD_NORMALS;
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, NormalsTexture, ViewportRect);
     }
+
+    if (DepthTexture)
+    {
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::SCENE_DEPTH;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, DepthTexture, ViewportRect);
+    }
+
     if (AlbedoTexture)
     {
         frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::ALBEDO_AO;
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, AlbedoTexture, ViewportRect);
     }
-    if (DistortionTexture)
+
+    if (SrcTexture)
     {
-        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::DISTORTION;
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, DistortionTexture, ViewportRect);
+        frameResponse.enhancedCaptureType = RenderStreamLink::EnhancedCaptureFrameType::RENDERED_FRAME;
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
     }
+
 }
 
 void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect)
