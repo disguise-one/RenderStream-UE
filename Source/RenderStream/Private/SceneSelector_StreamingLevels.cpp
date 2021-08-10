@@ -31,12 +31,9 @@ bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const Re
         SchemaSpec& spec = m_specs[i];
         spec.streamingLevel = streamingLevel;
         spec.persistentRoot = persistentRoot;
-        spec.hash = parameters.hash;
-        spec.nParameters = parameters.nParameters;
 
         if (!streamingLevel || streamingLevel->IsLevelLoaded())
         {
-            spec.loaded = true;
             ValidateLevel(i);
         }
         else
@@ -57,24 +54,17 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
     }
 
     SchemaSpec& spec = m_specs[sceneId];
-    if (!spec.loaded)
+    if (spec.streamingLevel && !spec.streamingLevel->IsLevelLoaded())
     {
-        check(spec.streamingLevel != nullptr); // the persistent root scene 0 shouldn't be able to get here.
-
-        if (!spec.streamingLevel->IsLevelLoaded())
-        {
-            UE_LOG(LogRenderStream, Log, TEXT("Loading level %s"), *spec.streamingLevel->GetWorldAssetPackageFName().ToString());
-            FLatentActionInfo LatentInfo;
-            UGameplayStatics::LoadStreamLevel(&World, spec.streamingLevel->GetWorldAssetPackageFName(), true, true, LatentInfo);
-            return;
-        }
-        else
-        {
-            spec.loaded = true;
-            ValidateLevel(sceneId);
-        }
+        UE_LOG(LogRenderStream, Log, TEXT("Loading level %s"), *spec.streamingLevel->GetWorldAssetPackageFName().ToString());
+        FLatentActionInfo LatentInfo;
+        UGameplayStatics::LoadStreamLevel(&World, spec.streamingLevel->GetWorldAssetPackageFName(), true, true, LatentInfo);
+        return;
     }
-
+    else
+    {
+        ValidateLevel(sceneId);
+    }
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
     if (spec.streamingLevel == nullptr && spec.persistentRoot == persistentRoot) // base level
     {
@@ -91,10 +81,7 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
         {
             if (spec.streamingLevel == streamingLevel)
             {
-                if (!streamingLevel->IsLevelLoaded())
-                {
-                }
-                else
+                if (streamingLevel->IsLevelLoaded())
                 {
                     streamingLevel->SetShouldBeVisible(true);
 

@@ -1,6 +1,7 @@
 // Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
 
 #include "RenderStream.h"
+#include "RenderStreamLink.h"
 
 #include "RenderStreamSettings.h"
 #include "RenderStreamStatus.h"
@@ -49,10 +50,22 @@
 #include "ShaderCompiler.h"
 #include "Stats/StatsData.h"
 
+#include "Engine/Public/HardwareInfo.h"
+#include "RenderStreamEventHandler.h"
+
+#include "RSUCHelpers.inl"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
+
+namespace 
+{
+    ID3D11Device* GetDX11Device() {
+        auto dx11device = static_cast<ID3D11Device*>(GDynamicRHI->RHIGetNativeDevice());
+        return dx11device;
+    }
+}
 
 class FRenderStreamMonitor : public FRunnable
 {
@@ -121,8 +134,8 @@ void FRenderStreamModule::StartupModule()
 {
     m_World = nullptr;
 
-    FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("DisguiseUERenderStream"))->GetBaseDir(), TEXT("Shaders"));
-    AddShaderSourceDirectoryMapping("/DisguiseUERenderStream", ShaderDirectory);
+    FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME))->GetBaseDir(), TEXT("Shaders"));
+    AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
     // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
     RenderStreamStatus().InputOutput("Initialising stream", "Waiting for data from d3", RSSTATUS_ORANGE);
@@ -135,8 +148,9 @@ void FRenderStreamModule::StartupModule()
     else
     {
         m_logDevice = MakeShared<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe>();
-
-        int errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+        
+        int errCode = errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+        
         if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
@@ -152,6 +166,7 @@ void FRenderStreamModule::StartupModule()
             RenderStreamLink::instance().unloadExplicit();
             return;
         }
+        
 
         FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FRenderStreamModule::OnPostLoadMapWithWorld);
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
@@ -242,6 +257,25 @@ void FRenderStreamModule::ApplyScene(uint32_t sceneId)
     m_sceneSelector->ApplyScene(*m_World, sceneId);
 }
 
+EUnit FRenderStreamModule::distanceUnit()
+{
+    // Unreal defaults to centimeters so we might as well do the same
+    static EUnit ret = EUnit::Unspecified;
+    if (ret == EUnit::Unspecified)
+    {
+        ret = EUnit::Centimeters;
+
+        FString ValueReceived;
+        if (!GConfig->GetString(TEXT("/Script/UnrealEd.EditorProjectAppearanceSettings"), TEXT("DistanceUnits"), ValueReceived, GEditorIni))
+            return ret;
+
+        TOptional<EUnit> currentUnit = FUnitConversion::UnitFromString(*ValueReceived);
+        if (currentUnit.IsSet())
+            ret = currentUnit.GetValue();
+    }
+    return ret;
+}
+
 bool FRenderStreamModule::PopulateStreamPool()
 {
     if (!StreamPool)
@@ -273,17 +307,37 @@ bool FRenderStreamModule::PopulateStreamPool()
 
         const RenderStreamLink::StreamDescriptions* header = nBytes >= sizeof(RenderStreamLink::StreamDescriptions) ? reinterpret_cast<const RenderStreamLink::StreamDescriptions*>(descMem.data()) : nullptr;
         const size_t numStreams = header ? header->nStreams : 0;
+        TArray<FStreamInfo> streamInfoArray;
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
             const FString Name(description.name);
             const FIntPoint Resolution(description.width, description.height);
             const FString Channel(description.channel);
-            if (!StreamPool->GetStream(Name))
+            const RenderStreamLink::ProjectionClipping clipping = description.clipping;
+            const FBox2D Region(FVector2D(clipping.left, clipping.top), FVector2D(clipping.right, clipping.bottom));
+            streamInfoArray.Push({ Channel, Name, Region });
+
+            if (!StreamPool->GetStream(Name))  // Stream does not already exist in pool
             {
+                // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
             }
+
+            // Update corresponding projection policy
+            for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
+            {
+                if (policy->GetViewportId() == Name)
+                    policy->ConfigureCapture();
+            }
+        }
+
+        // Broadcast streams changed event
+        for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
+        {
+            if (eventHandler.IsValid())
+                eventHandler->onStreamsChanged(streamInfoArray);
         }
 
         return true;
@@ -296,7 +350,8 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
     for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
     {
         const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(policy->GetViewportId());
-        check(stream);
+        if (!stream)
+            continue;
 
         RenderStreamLink::CameraData cameraData;
         if (RenderStreamLink::instance().rs_getFrameCamera(stream->Handle(), &cameraData) == RenderStreamLink::RS_ERROR_SUCCESS)
@@ -306,6 +361,38 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 
 void FRenderStreamModule::OnPostEngineInit()
 {
+
+    int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
+
+    auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
+
+    if (toggle == "D3D11")
+    {
+        ID3D11Device* device = GetDX11Device();
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX11Device(device);
+    }
+    else if (toggle == "D3D12")
+    {
+        FRHICommandListImmediate& RHICmdList = GRHICommandList.GetImmediateCommandList();
+        void* queue = nullptr, * list = nullptr;
+        D3D12RHI::GetGfxCommandListAndQueue(RHICmdList, list, queue);
+        ID3D12CommandQueue* cmdQueue = reinterpret_cast<ID3D12CommandQueue*>(queue);
+        auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
+
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, cmdQueue);
+    }
+
+    if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
+        RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
+        RenderStreamLink::instance().unloadExplicit();
+        return;
+    }
+
+
+
+
     StreamPool = MakeUnique<FStreamPool>();
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
@@ -330,6 +417,8 @@ void FRenderStreamModule::OnPostEngineInit()
         UE_LOG(LogRenderStream, Error, TEXT("Unknown scene selector option %d - defaulting to none"), settings->SceneSelector);
         m_sceneSelector = std::make_unique<SceneSelector_None>();
     }
+
+
 }
 
 void FRenderStreamModule::OnBeginFrame()
@@ -377,6 +466,41 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
         check(ClusterMgr);
         // Manager is cleared on map load, so register here instead of on module load
         ClusterMgr->RegisterSyncObject(&m_syncFrame, EDisplayClusterSyncGroup::PreTick);
+    }
+
+    // Find all event handlers
+    if (InWorld)
+    {
+        m_eventHandlers.Empty();
+        TArray<AActor*> FoundActors;
+        UGameplayStatics::GetAllActorsOfClass(InWorld, ARenderStreamEventHandler::StaticClass(), FoundActors);
+
+        for (AActor* Actor : FoundActors)
+        {
+            if (ARenderStreamEventHandler* EventHandler = Cast<ARenderStreamEventHandler>(Actor))
+                m_eventHandlers.Add(EventHandler);
+        }
+    }
+
+    // Broadcast streams changed event with initial streams
+    if (StreamPool)
+    {
+        TArray<FStreamInfo> streamInfoArray;
+        for (const TSharedPtr<FFrameStream>& stream : StreamPool->GetAllStreams())
+        {
+            if (stream)
+            {
+                const RenderStreamLink::ProjectionClipping clipping = stream->Clipping();
+                const FBox2D Region(FVector2D(clipping.left, clipping.top), FVector2D(clipping.right, clipping.bottom));
+                streamInfoArray.Push({ FString(stream->Channel()), FString(stream->Name()), Region });
+            }
+        }
+
+        for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
+        {
+            if (eventHandler.IsValid())
+                eventHandler->onStreamsChanged(streamInfoArray);
+        }
     }
 
     EnableStats();

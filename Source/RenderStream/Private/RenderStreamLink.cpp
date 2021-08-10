@@ -65,7 +65,7 @@ bool RenderStreamLink::loadExplicit()
      */
     auto GetDevD3Path = [&DevEnv]() -> FString
     {
-        FString DevEnvJson = IPluginManager::Get().FindPlugin("DisguiseUERenderStream")->GetBaseDir() + "/devenv.json";
+        FString DevEnvJson = IPluginManager::Get().FindPlugin(RS_PLUGIN_NAME)->GetBaseDir() + "/devenv.json";
         if (FPaths::FileExists(DevEnvJson))
         {
             DevEnv = true;
@@ -155,6 +155,8 @@ bool RenderStreamLink::loadExplicit()
     }
 
     LOAD_FN(rs_initialise);
+    LOAD_FN(rs_initialiseGpGpuWithDX11Device);
+    LOAD_FN(rs_initialiseGpGpuWithDX12DeviceAndQueue);
     LOAD_FN(rs_shutdown);
 
     LOAD_FN(rs_registerLoggingFunc);
@@ -171,12 +173,17 @@ bool RenderStreamLink::loadExplicit()
 
     LOAD_FN(rs_getStreams);
 
-    LOAD_FN(rs_sendFrame);
+    LOAD_FN(rs_awaitFrameData);
     LOAD_FN(rs_setFollower);
     LOAD_FN(rs_beginFollowerFrame);
-    LOAD_FN(rs_awaitFrameData);
+
     LOAD_FN(rs_getFrameParameters);
+    LOAD_FN(rs_getFrameImageData);
+    LOAD_FN(rs_getFrameImage);
+    LOAD_FN(rs_getFrameText);
+
     LOAD_FN(rs_getFrameCamera);
+    LOAD_FN(rs_sendFrame);
 
     LOAD_FN(rs_logToD3);
     LOAD_FN(rs_sendProfilingData);

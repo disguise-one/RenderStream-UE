@@ -1,3 +1,8 @@
 Binaries/
 Intermediate/
+Packaged/
 Content/Cache/
+.vs/
+RenderStream-UE.uplugin
+disguiseuerenderstream.uplugin
+local_env.json

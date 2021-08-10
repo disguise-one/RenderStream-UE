@@ -7,8 +7,10 @@
 #include "Cluster/IDisplayClusterClusterManager.h"
 #include <set>
 #include <memory>
+#include <vector>
 
 #include "RenderStreamLogOutputDevice.h"
+#include "Math/UnitConversion.h"
 
 #include "RenderStreamLink.h"
 #include "StreamPool.h"
@@ -20,6 +22,7 @@ class UCameraComponent;
 class AActor;
 class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
+class ARenderStreamEventHandler;
 
 class FRenderStreamModule : public IModuleInterface
 {
@@ -31,14 +34,16 @@ public:
     virtual bool SupportsDynamicReloading () override;
 
 protected:
-
     void OnPostEngineInit();
     void OnBeginFrame();
     void OnEndFrame();
 
     void EnableStats() const;
 
+    TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
+
 public:
+    static EUnit distanceUnit();
     bool PopulateStreamPool();
 
     static FRenderStreamModule* Get();

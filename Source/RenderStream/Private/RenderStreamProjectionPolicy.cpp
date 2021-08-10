@@ -23,25 +23,6 @@
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
-static EUnit distanceUnit()
-{
-    // Unreal defaults to centimeters so we might as well do the same
-    static EUnit ret = EUnit::Unspecified;
-    if (ret == EUnit::Unspecified)
-    {
-        ret = EUnit::Centimeters;
-
-        FString ValueReceived;
-        if (!GConfig->GetString(TEXT("/Script/UnrealEd.EditorProjectAppearanceSettings"), TEXT("DistanceUnits"), ValueReceived, GEditorIni))
-            return ret;
-
-        TOptional<EUnit> currentUnit = FUnitConversion::UnitFromString(*ValueReceived);
-        if (currentUnit.IsSet())
-            ret = currentUnit.GetValue();
-    }
-    return ret;
-}
-
 FRenderStreamProjectionPolicy::FRenderStreamProjectionPolicy(const FString& _ViewportId, const TMap<FString, FString>& _Parameters)
     : ViewportId(_ViewportId)
     , Parameters(_Parameters)
@@ -63,11 +44,42 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
     check(IsInGameThread());
     check(World);
 
-
     Module = FRenderStreamModule::Get();
     check(Module);
 
     Module->LoadSchemas(*World);
+
+    // Get player controller
+    if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(World, PlayerControllerID))
+    {
+        Controller = ExistingController;
+    }
+    else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(World))
+    {
+        PlayerControllerID = UGameplayStatics::GetPlayerControllerID(NewController);
+        Controller = NewController;
+    }
+    else
+        UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing."));
+
+    Stream = Module->StreamPool->GetStream(GetViewportId());
+    if (!Stream)
+        Module->PopulateStreamPool();
+
+    m_isInitialised = true;
+    ConfigureCapture();
+
+}
+
+void FRenderStreamProjectionPolicy::ConfigureCapture()
+{
+    if (!m_isInitialised)
+        return;  // Don't do anything if this function is called before StartScene
+
+    check(IsInGameThread());
+
+    Module = FRenderStreamModule::Get();
+    check(Module);
 
     const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
     check(ConfigMgr);
@@ -83,22 +95,18 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
 
     // Allocate the stream.
     Stream = Module->StreamPool->GetStream(GetViewportId());
-    if (!Stream && Module->PopulateStreamPool())
-    {
-        Stream = Module->StreamPool->GetStream(GetViewportId());
-    }
     if (!Stream)
     {
-        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created for unknown stream"), *GetViewportId());
-        return;
+        UE_LOG(LogRenderStreamPolicy, Log, TEXT("Policy '%s' created for unknown stream. Not expected unless this instance is an understudy."), *GetViewportId());
     }
-    if (Stream->Resolution() != Resolution)
+    if (Stream && Stream->Resolution() != Resolution)
     {
+        UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetViewportId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         UE_LOG(LogRenderStreamPolicy, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *GetViewportId(), Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         return;
     }
 
-    const FString& Channel = Stream->Channel();
+    const FString Channel = Stream ? Stream->Channel() : "";
     const TWeakObjectPtr<ACameraActor> ChannelCamera = URenderStreamChannelDefinition::GetChannelCamera(Channel);
     if (Template != ChannelCamera)
     {
@@ -111,7 +119,7 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
             if (Definition)
             {
                 const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
-                const TSet<TWeakObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
+                const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
                     URenderStreamChannelDefinition::GetChannelCameraNum(Channel), Actors.Num(), *TypeString);
@@ -134,15 +142,10 @@ void FRenderStreamProjectionPolicy::StartScene(UWorld* World)
             if (Definition)
                 Definition->AddCameraInstance(Camera);
 
-            if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(World, PlayerControllerID))
-                ExistingController->SetViewTargetWithBlend(Camera.Get());
-            else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(World))
-            {
-                PlayerControllerID = UGameplayStatics::GetPlayerControllerID(NewController);
-                NewController->SetViewTargetWithBlend(Camera.Get());
-            }
+            if (Controller.IsValid())
+                Controller->SetViewTargetWithBlend(Camera.Get());
             else
-                UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturng."));
+                UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing, no valid controller."));
         }
         else
             UE_LOG(LogRenderStreamPolicy, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
@@ -164,11 +167,16 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
     USceneComponent* SceneComponent = Camera->K2_GetRootComponent();
     UCameraComponent* CameraComponent = Camera->GetCameraComponent();
 
-    if (UCineCameraComponent* CineCamera = dynamic_cast<UCineCameraComponent*>(CameraComponent))
+    if (CameraComponent && cameraData.orthoWidth > 0.f)  // Use an orthographic camera
+    {
+        CameraComponent->ProjectionMode = ECameraProjectionMode::Orthographic;
+        CameraComponent->OrthoWidth = FUnitConversion::Convert(float(cameraData.orthoWidth), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
+    }
+    else if (UCineCameraComponent* CineCamera = dynamic_cast<UCineCameraComponent*>(CameraComponent))
     {
         CineCamera->Filmback.SensorWidth = cameraData.sensorX;
         CineCamera->Filmback.SensorHeight = cameraData.sensorY;
-
         CineCamera->CurrentFocalLength = cameraData.focalLength;
     }
     else if (CameraComponent)
@@ -190,9 +198,9 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
         SceneComponent->SetRelativeRotation(rotationQuat);
 
         FVector pos;
-        pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, distanceUnit());
-        pos.Y = FUnitConversion::Convert(float(cameraData.x), EUnit::Meters, distanceUnit());
-        pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, distanceUnit());
+        pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        pos.Y = FUnitConversion::Convert(float(cameraData.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
         SceneComponent->SetRelativeLocation(pos);
     }
 }
@@ -241,33 +249,55 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(const uint32 ViewIdx, FM
 
     UCameraComponent* AssignedCamera = Camera.IsValid() ? Camera->GetCameraComponent() : nullptr;
 
-    if (!AssignedCamera || !Stream)
+    if (!AssignedCamera)
     {
         return false;
     }
 
-    const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
-    const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1/AssignedCamera->AspectRatio));
-    
-    const RenderStreamLink::ProjectionClipping& Clipping = Stream->Clipping();
-    const float l = (-0.5f + Clipping.left) * 2.f * FMath::Tan(0.5f * FieldOfViewH);
-    const float r = (-0.5f + Clipping.right) * 2.f * FMath::Tan(0.5f * FieldOfViewH);
-    const float t = (-0.5f + 1.f - Clipping.top) * 2.f * FMath::Tan(0.5f * FieldOfViewV);
-    const float b = (-0.5f + 1.f - Clipping.bottom) * 2.f * FMath::Tan(0.5f * FieldOfViewV);
+    FMatrix PrjMatrix;
+    if (AssignedCamera->ProjectionMode == ECameraProjectionMode::Orthographic)
+    {
+        const float OrthoWidth = 0.5f * AssignedCamera->OrthoWidth;
+        const float OrthoHeight = OrthoWidth / AssignedCamera->AspectRatio;
+        const float ZScale = 1.f / (AssignedCamera->OrthoFarClipPlane - AssignedCamera->OrthoNearClipPlane);
+        const float ZOffset = -AssignedCamera->OrthoNearClipPlane;
+        PrjMatrix = FReversedZOrthoMatrix(OrthoWidth, OrthoHeight, ZScale, ZOffset);
+    }
+    else
+    {
+        const float FieldOfViewH = FMath::DegreesToRadians(AssignedCamera->FieldOfView);
+        const float FieldOfViewV = 2 * FMath::Atan(FMath::Tan((FieldOfViewH / 2.0f)) * (1 / AssignedCamera->AspectRatio));
 
-    FTransform clippingTransform;
+        const float l = -FMath::Tan(0.5f * FieldOfViewH);
+        const float r = FMath::Tan(0.5f * FieldOfViewH);
+        const float t = FMath::Tan(0.5f * FieldOfViewV);
+        const float b = -FMath::Tan(0.5f * FieldOfViewV);
+
+        PrjMatrix = DisplayClusterHelpers::math::GetProjectionMatrixFromOffsets(NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP);
+    }
+
+    // Center shift
+    FVector centerShift = { 0.f, 0.f, 0.f };
     {
         std::lock_guard<std::mutex> guard(m_frameResponsesLock);
         if (!m_frameResponses.empty())
         {
             // first frame can have no frame response.
             const RenderStreamLink::CameraResponseData& thisFrameResponse = m_frameResponses.back();
-            clippingTransform.SetTranslation({ thisFrameResponse.camera.cx, thisFrameResponse.camera.cy, 0.f });
+            centerShift = { thisFrameResponse.camera.cx, thisFrameResponse.camera.cy, 0.f };
         }
     }
+
+    // Clipping
+    FTransform clippingTransform;
+    RenderStreamLink::ProjectionClipping Clipping = { 0.f, 1.f, 0.f, 1.f };  // Default clipping in case no streams
+    if (Stream)
+        Clipping = Stream->Clipping();
+    FVector clippingScale = { 1.f / (Clipping.right - Clipping.left), -1.f / (Clipping.top - Clipping.bottom), 1.f };
+    FVector clippingOffset = (FVector(1.f - (Clipping.right + Clipping.left), -1.f + (Clipping.top + Clipping.bottom), 0.f) + centerShift) * clippingScale;
+    clippingTransform.SetTranslationAndScale3D(clippingOffset, clippingScale);
     FMatrix clippingMatrix = clippingTransform.ToMatrixWithScale();
 
-    FMatrix PrjMatrix = DisplayClusterHelpers::math::GetProjectionMatrixFromOffsets(NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP);
     OutPrjMatrix = PrjMatrix * clippingMatrix;
     return true;
 }
@@ -318,20 +348,22 @@ void FRenderStreamProjectionPolicy::SendEnhancedContent_RenderThread(FRHICommand
 
 void FRenderStreamProjectionPolicy::ApplyWarpBlend_RenderThread(const uint32 ViewIdx, FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const FIntRect& ViewportRect)
 {
-    check(Stream);
-    RenderStreamLink::CameraResponseData frameResponse;
+    if (Stream)
     {
-        std::lock_guard<std::mutex> guard(m_frameResponsesLock);
-        if (m_frameResponses.empty())
+        RenderStreamLink::CameraResponseData frameResponse;
         {
-            // First frame can have no response data, so do not send a response to nothing.
-            return;
-        }
+            std::lock_guard<std::mutex> guard(m_frameResponsesLock);
+            if (m_frameResponses.empty())
+            {
+                // First frame can have no response data, so do not send a response to nothing.
+                return;
+            }
 
-        frameResponse = m_frameResponses.front();
-        m_frameResponses.pop_front();
+            frameResponse = m_frameResponses.front();
+            m_frameResponses.pop_front();
+        }
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
     }
-    Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, SrcTexture, ViewportRect);
 }
 
 const ACameraActor* FRenderStreamProjectionPolicy::GetTemplateCamera() const

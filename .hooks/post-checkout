@@ -1,0 +1,14 @@
+#!/bin/bash                                                                      
+
+set -e                                                                           
+
+
+prevHEAD=$1                                                                      
+newHEAD=$2                                                                       
+checkoutType=$3                                                                  
+if [ $checkoutType -eq 1 ] && test -f generate_uplugin.bat; then
+	printf '\nrunning generate_uplugin.bat...\n'                                                
+	./generate_uplugin.bat
+else
+	printf '\ngenerate_uplugin.bat not found, cannot generate unplugin.\n'                                                
+fi

@@ -89,6 +89,7 @@ namespace
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_EyeAdaptation);
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_Game);
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_ToneCurve);
+        ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_Tonemapper);
 
         // Create array of flag name strings for each group
         TArray< TArray<FString> > ShowFlagsByGroup;
@@ -223,7 +224,7 @@ namespace
             FUIAction(
                 FExecuteAction::CreateLambda([Property]()
                 {
-                    TSet<AActor*> ActorsInSelection;
+                    TSet<TSoftObjectPtr<AActor>> ActorsInSelection;
                     USelection* Selection = GEditor->GetSelectedActors();
                     for (int i = 0; i < Selection->Num(); ++i)
                     {
@@ -238,7 +239,7 @@ namespace
                     {
                         void* Data = RawData[ObjectIdx];
                         check(Data);
-                        TSet<AActor*>& Actors = *static_cast<TSet<AActor*>*>(Data);
+                        TSet<TSoftObjectPtr<AActor>>& Actors = *static_cast<TSet<TSoftObjectPtr<AActor>>*>(Data);
                         Actors = Actors.Union(ActorsInSelection);
                     }
                 })
@@ -255,12 +256,12 @@ namespace
 
         CustomizeVisibility(
             DetailBuilder,
-            DetailBuilder.GetProperty("EditorVisible", URenderStreamChannelDefinition::StaticClass())
+            DetailBuilder.GetProperty("Visible", URenderStreamChannelDefinition::StaticClass())
         );
 
         CustomizeVisibility(
             DetailBuilder,
-            DetailBuilder.GetProperty("EditorHidden", URenderStreamChannelDefinition::StaticClass())
+            DetailBuilder.GetProperty("Hidden", URenderStreamChannelDefinition::StaticClass())
         );
     }
 
@@ -297,7 +298,7 @@ namespace
             const void* Data = RawData[ObjectIdx];
             check(Data);
 
-            const TArray<FEngineShowFlagsSetting>& ShowFlagSettings = *reinterpret_cast<const TArray<FEngineShowFlagsSetting>*>(Data);
+            const TArray<FEngineShowFlagsSetting>& ShowFlagSettings = *static_cast<const TArray<FEngineShowFlagsSetting>*>(Data);
             const FEngineShowFlagsSetting* Setting = ShowFlagSettings.FindByPredicate([&ShowFlagName](const FEngineShowFlagsSetting& S) { return S.ShowFlagName == ShowFlagName; });
             ECheckBoxState ThisObjectState = ECheckBoxState::Unchecked;
             if (Setting)
