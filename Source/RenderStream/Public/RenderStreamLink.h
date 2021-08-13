@@ -24,7 +24,11 @@ public:
         RS_FMT_BGRX8,
 
         RS_FMT_RGBA32F,
+
         RS_FMT_RGBA16,
+
+        RS_FMT_RGBA8,
+        RS_FMT_RGBX8,
     };
 
     enum RS_ERROR
@@ -255,7 +259,7 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 27
+#define RENDER_STREAM_VERSION_MINOR 28
 
     enum SenderFrameType
     {
