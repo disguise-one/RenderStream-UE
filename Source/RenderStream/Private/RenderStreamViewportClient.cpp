@@ -58,6 +58,8 @@
 
 //#include "Config/DisplayClusterConfigManager.h"
 
+#include "CustomStaticScreenPercentage.h"
+
 URenderStreamViewportClient::URenderStreamViewportClient(FVTableHelper& Helper)
     : Super(Helper)
 {
@@ -529,6 +531,19 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 #endif
                 }
 #endif
+
+                if (GCustomStaticScreenPercentage && ViewFamily.ViewMode == EViewModeIndex::VMI_Lit)
+                {
+                    GCustomStaticScreenPercentage->SetupMainGameViewFamily(ViewFamily);
+
+                    if (ViewFamily.GetTemporalUpscalerInterface() != nullptr)
+                    {
+                        for (FSceneView* View : Views)
+                        {
+                            View->PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
+                        }
+                    }
+                }
 
                 // If a screen percentage interface was not set by dynamic resolution, then create one matching legacy behavior.
                 if (ViewFamily.GetScreenPercentageInterface() == nullptr)
