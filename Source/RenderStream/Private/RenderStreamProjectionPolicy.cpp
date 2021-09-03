@@ -24,6 +24,8 @@
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
+TMap<FString, int32_t> FRenderStreamProjectionPolicy::Players;
+
 static EUnit distanceUnit()
 {
     // Unreal defaults to centimeters so we might as well do the same
@@ -78,15 +80,13 @@ bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewpo
     check(Module);
 
     Module->LoadSchemas(*GWorld);
-
-    // Get player controller
-    if (APlayerController* ExistingController = UGameplayStatics::GetPlayerControllerFromID(GWorld, PlayerControllerID))
-    {
+    
+    int* playerId = Players.Find(GetViewportId());
+    if (APlayerController* ExistingController = playerId ? UGameplayStatics::GetPlayerControllerFromID(GWorld, *playerId) : nullptr)
         Controller = ExistingController;
-    }
     else if (APlayerController* NewController = UGameplayStatics::CreatePlayer(GWorld))
     {
-        PlayerControllerID = UGameplayStatics::GetPlayerControllerID(NewController);
+        Players.Add(GetViewportId(), UGameplayStatics::GetPlayerControllerID(NewController));
         Controller = NewController;
     }
     else

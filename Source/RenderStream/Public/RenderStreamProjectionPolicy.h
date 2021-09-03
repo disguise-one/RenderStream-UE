@@ -61,6 +61,7 @@ public:
     bool isInitialised = false;
 
 protected:
+    static TMap<FString, int32_t> Players;
     FString ProjectionPolicyId;
     FString ViewportId;
     TMap<FString, FString> Parameters;
@@ -72,7 +73,6 @@ protected:
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TSharedPtr<FFrameStream> Stream = nullptr;
-    int32_t PlayerControllerID = INDEX_NONE;
     TWeakObjectPtr<APlayerController> Controller = nullptr;
 
     std::mutex m_frameResponsesLock;
