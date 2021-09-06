@@ -54,7 +54,7 @@ public:
 
     void ConfigureCapture();
 
-    const int32_t GetPlayerControllerID() const { return PlayerControllerID; }
+    const int32_t GetPlayerControllerID() const { return Players[GetViewportId()]; }
 
     void UpdateStream(const FString& StreamName);
 
