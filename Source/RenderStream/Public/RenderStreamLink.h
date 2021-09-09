@@ -10,6 +10,7 @@ struct ID3D12CommandQueue;
 struct ID3D11Resource;
 struct ID3D12Resource;
 struct ID3D12Fence;
+typedef unsigned int GLuint;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
 
@@ -24,7 +25,11 @@ public:
         RS_FMT_BGRX8,
 
         RS_FMT_RGBA32F,
+
         RS_FMT_RGBA16,
+
+        RS_FMT_RGBA8,
+        RS_FMT_RGBX8,
     };
 
     enum RS_ERROR
@@ -59,6 +64,12 @@ public:
 
         RS_ERROR_INCOMPATIBLE_VERSION,
 
+        RS_ERROR_FAILED_TO_GET_DXDEVICE_FROM_RESOURCE,
+
+        RS_ERROR_FAILED_TO_INITIALISE_GPGPU,
+
+        RS_ERROR_QUIT,
+
         RS_ERROR_UNSPECIFIED
     };
 
@@ -69,6 +80,12 @@ public:
         FRAMEDATA_RESET = 1
     };
 
+    enum REMOTEPARAMETER_FLAGS
+    {
+        REMOTEPARAMETER_NO_FLAGS = 0,
+        REMOTEPARAMETER_NO_SEQUENCE = 1
+    };
+
     typedef uint64_t StreamHandle;
     typedef uint64_t CameraHandle;
     typedef void (*logger_t)(const char*);
@@ -77,7 +94,7 @@ public:
     typedef struct
     {
         float virtualZoomScale;
-        unsigned char virtualReprojectionRequired;
+        uint8_t virtualReprojectionRequired;
         float xRealCamera, yRealCamera, zRealCamera;
         float rxRealCamera, ryRealCamera, rzRealCamera;
     } D3TrackingData;  // Tracking data required by d3 but not used to render content
@@ -103,7 +120,7 @@ public:
         double localTimeDelta;
         unsigned int frameRateNumerator;
         unsigned int frameRateDenominator;
-        uint32_t flags;
+        uint32_t flags; // FRAMEDATA_FLAGS
         uint32_t scene;
     } FrameData;
 
@@ -112,6 +129,7 @@ public:
         double tTracked;
         CameraData camera;
     } CameraResponseData;
+
 
     typedef struct
     {
@@ -129,11 +147,17 @@ public:
         ID3D12Resource* resource;
     } Dx12Data;
 
+    typedef struct
+    {
+        GLuint texture;
+    } OpenGlData;
+
     typedef union
     {
         HostMemoryData cpu;
         Dx11Data dx11;
         Dx12Data dx12;
+        OpenGlData gl;
     } SenderFrameTypeData;
 
     typedef struct
@@ -158,6 +182,8 @@ public:
     {
         StreamHandle handle;
         const char* channel;
+        uint64_t mappingId;
+        int32_t iViewpoint;
         const char* name;
         uint32_t width;
         uint32_t height;
@@ -178,6 +204,13 @@ public:
         RS_PARAMETER_POSE,      // 4x4 TR matrix
         RS_PARAMETER_TRANSFORM, // 4x4 TRS matrix
         RS_PARAMETER_TEXT,
+    };
+
+    enum RemoteParameterDmxType
+    {
+        RS_DMX_DEFAULT,
+        RS_DMX_8,
+        RS_DMX_16_BE,
     };
 
     typedef struct
@@ -216,8 +249,9 @@ public:
         uint32_t nOptions;
         const char** options;
 
-        int32_t dmxOffset;
-        uint32_t dmxType;
+        int32_t dmxOffset; // DMX channel offset or auto (-1)
+        RemoteParameterDmxType dmxType;
+        uint32_t flags; // REMOTEPARAMETER_FLAGS
     } RemoteParameter;
 
     typedef struct
@@ -255,7 +289,7 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 27
+#define RENDER_STREAM_VERSION_MINOR 28
 
     enum SenderFrameType
     {

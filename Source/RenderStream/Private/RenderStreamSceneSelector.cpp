@@ -359,10 +359,12 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     } formatMap[] = {
         // NB. FTextureRenderTargetResource::IsSupportedFormat
         { RenderStreamLink::RS_FMT_INVALID, EPixelFormat::PF_Unknown },
-        { RenderStreamLink::RS_FMT_BGRA8, EPixelFormat::PF_B8G8R8A8 },
-        { RenderStreamLink::RS_FMT_BGRX8, EPixelFormat::PF_B8G8R8A8 },
+        { RenderStreamLink::RS_FMT_BGRA8, EPixelFormat::PF_R8G8B8A8 }, // dx11-CUDA interop only supports RGBA sRGB
+        { RenderStreamLink::RS_FMT_BGRX8, EPixelFormat::PF_R8G8B8A8 }, // dx11-CUDA interop only supports RGBA sRGB
         { RenderStreamLink::RS_FMT_RGBA32F, EPixelFormat::PF_FloatRGBA},
         { RenderStreamLink::RS_FMT_RGBA16, EPixelFormat::PF_A16B16G16R16 },
+        { RenderStreamLink::RS_FMT_RGBA8, EPixelFormat::PF_R8G8B8A8},
+        { RenderStreamLink::RS_FMT_RGBX8, EPixelFormat::PF_R8G8B8A8 },
     };
 
     size_t iParam = 0;
