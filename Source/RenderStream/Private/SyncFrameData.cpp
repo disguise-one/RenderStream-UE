@@ -88,6 +88,10 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         // We need to actually get frame data, go back.
         ControllerReceive();
     }
+    else if (Ret == RenderStreamLink::RS_ERROR_QUIT)
+    {
+        FPlatformMisc::RequestExit(false);
+    }
     else if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)
     {
         if (Ret == RenderStreamLink::RS_ERROR_TIMEOUT)

@@ -179,7 +179,7 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
             parameter.options[j] = _strdup(TCHAR_TO_UTF8(*entry.Options[j]));
         }
         parameter.dmxOffset = -1; // Auto
-        parameter.dmxType = 2; // Dmx16BigEndian
+        parameter.dmxType = RenderStreamLink::RS_DMX_16_BE;
     }
 }
 
