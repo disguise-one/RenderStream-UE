@@ -59,6 +59,7 @@
 //#include "Config/DisplayClusterConfigManager.h"
 
 #include "CustomStaticScreenPercentage.h"
+#include "RenderStream.h"
 
 URenderStreamViewportClient::URenderStreamViewportClient(FVTableHelper& Helper)
     : Super(Helper)
@@ -229,12 +230,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
     {
         return Super::Draw(InViewport, SceneCanvas);
     }
-
-    /// !!!! disguise customizations
-    IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
-    const FRenderStreamProjectionPolicyFactory* RenderStreamFactory = static_cast<FRenderStreamProjectionPolicyFactory*>(RenderMgr->GetProjectionPolicyFactory(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType).Get());
-    /// !!!! disguise customizations
-
+    
     //Experimental code from render team, now always disabled
     const bool bIsRenderedImmediatelyAfterAnotherViewFamily = false;
 
@@ -313,10 +309,10 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                 const FDisplayClusterViewport_Context ViewportContext = DCView.Viewport->GetContexts()[DCView.ContextNum];
 
                 /// !!!! disguise customizations
-                const auto Policy = RenderStreamFactory->GetPolicyByViewport(DCView.Viewport->GetId());
-                if (Policy)
+                auto& Info = FRenderStreamModule::Get()->GetViewportInfo(DCView.Viewport->GetId());
+                if (Info.PlayerId != -1)
                 {
-                    APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Policy->GetPlayerControllerID());
+                    APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Info.PlayerId);
                     if (PolicyController)
                         LocalPlayer = PolicyController->GetLocalPlayer();
                 }
@@ -340,8 +336,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     Views.Add(View);
 
                     /// !!!! disguise customizations
-                    if (Policy)
-                        UpdateViewWithPolicy(&ViewFamily, View, Policy.Get());
+                    UpdateView(&ViewFamily, View, Info);
                     /// !!!! disguise customizations
 
                     // Apply viewport context settings to view (crossGPU, visibility, etc)
@@ -699,10 +694,13 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
 /// DisplayClusterViewportClient.cpp copy-pasta
 
-void URenderStreamViewportClient::UpdateViewWithPolicy(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamProjectionPolicy* Policy)
+void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info)
 {
+    if (Info.Template.IsValid())
+        return;
+
     TSet<FPrimitiveComponentId> Collection;
-    const ACameraActor* Camera = Policy->GetTemplateCamera();
+    const ACameraActor* Camera = Info.Template.Get();
     const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
     if (Definition != nullptr)
     {

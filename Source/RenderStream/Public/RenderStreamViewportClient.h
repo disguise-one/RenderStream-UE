@@ -17,7 +17,7 @@ public:
     virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
 
 protected:
-    void UpdateViewWithPolicy(class FSceneViewFamily* ViewFamily, class FSceneView* View, const class FRenderStreamProjectionPolicy* Policy);
+    void UpdateView(class FSceneViewFamily* ViewFamily, class FSceneView* View, const struct FRenderStreamViewportInfo& Info);
 
 //#if WITH_EDITOR
 //    bool Draw_PIE(FViewport* InViewport, FCanvas* SceneCanvas);

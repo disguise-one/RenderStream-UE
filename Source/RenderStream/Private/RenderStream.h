@@ -5,8 +5,10 @@
 #include "Core.h"
 #include "Core/Public/Modules/ModuleInterface.h"
 #include "Cluster/IDisplayClusterClusterManager.h"
-#include <set>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <set>
 #include <vector>
 
 #include "RenderStreamLogOutputDevice.h"
@@ -22,7 +24,18 @@ class UCameraComponent;
 class AActor;
 class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
+class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
+
+struct FRenderStreamViewportInfo
+{
+    TWeakObjectPtr<ACameraActor> Template = nullptr;
+    TWeakObjectPtr<ACameraActor> Camera = nullptr;
+    int32_t PlayerId = -1;
+    
+    std::mutex m_frameResponsesLock;
+    std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
+};
 
 class FRenderStreamModule : public IModuleInterface
 {
@@ -45,6 +58,7 @@ protected:
 public:
     static EUnit distanceUnit();
     bool PopulateStreamPool();
+    void ConfigureStream(TSharedPtr<FFrameStream> Stream);
 
     static FRenderStreamModule* Get();
     
@@ -56,11 +70,17 @@ public:
     std::unique_ptr<RenderStreamSceneSelector> m_sceneSelector;
 
     void ApplyCameras(const RenderStreamLink::FrameData& frameData);
+    void ApplyCameraData(FRenderStreamViewportInfo& info, const RenderStreamLink::FrameData& frameData,
+        const RenderStreamLink::CameraData& cameraData);
 
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
 
+    FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
+
+    TMap<FString, TSharedPtr<FRenderStreamViewportInfo>> ViewportInfos;
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
+    TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     const UWorld* m_World; // temporary - needs to be held by Scene Selector.
     double m_LastTime = 0;

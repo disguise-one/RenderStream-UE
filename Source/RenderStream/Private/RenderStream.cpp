@@ -43,7 +43,14 @@
 #include <string>
 #include <stdexcept>
 #include <vector>
+#include <Camera/CameraActor.h>
 
+
+
+#include "CineCameraComponent.h"
+#include "DisplayClusterConfigurationTypes_Viewport.h"
+#include "RenderStreamCapturePostProcess.h"
+#include "RenderStreamChannelDefinition.h"
 #include "RenderStreamStats.h"
 #include "ShaderCompiler.h"
 #include "Stats/StatsData.h"
@@ -52,6 +59,9 @@
 #include "RenderStreamEventHandler.h"
 
 #include "RSUCHelpers.inl"
+#include "Camera/CameraComponent.h"
+#include "Config/IDisplayClusterConfigManager.h"
+#include "Render/Viewport/IDisplayClusterViewportManager.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -147,7 +157,7 @@ void FRenderStreamModule::StartupModule()
     {
         m_logDevice = MakeShared<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe>();
         
-        int errCode = errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+        int errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
         
         if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
         {
@@ -208,9 +218,14 @@ void FRenderStreamModule::ShutdownModule()
         IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
         if (RenderMgr)
         {
-            if (!RenderMgr->UnregisterProjectionPolicyFactory(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType))
+            if (!RenderMgr->UnregisterProjectionPolicyFactory(FRenderStreamProjectionPolicy::RenderStreamPolicyType))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> projection factory"), FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType);
+                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> projection factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+            }
+
+            if (!RenderMgr->UnregisterPostProcessFactory(FRenderStreamPostProcessFactory::RenderStreamPostProcessType))
+            {
+                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> post process factory"), FRenderStreamPostProcessFactory::RenderStreamPostProcessType);
             }
         }
     }
@@ -274,6 +289,82 @@ EUnit FRenderStreamModule::distanceUnit()
     return ret;
 }
 
+void FRenderStreamModule::ConfigureStream(TSharedPtr<FFrameStream> Stream)
+{
+    FString const& Name = Stream->Name();
+    IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
+    IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
+
+    const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
+    check(ConfigMgr);
+
+    const UDisplayClusterConfigurationViewport* Viewport = ConfigMgr->GetLocalViewport(Name);
+    if (!Viewport)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created without corresponding viewport"), *Name);
+        return;
+    }
+
+    const FIntPoint Offset(Viewport->Region.X, Viewport->Region.Y);
+    const FIntPoint Resolution(Viewport->Region.W, Viewport->Region.H);
+    if (!Stream)
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Policy '%s' created for unknown stream"), *Name);
+    }
+    if (Stream && Stream->Resolution() != Resolution)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *Name, Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
+        return;
+    }
+
+    FRenderStreamViewportInfo& Info = GetViewportInfo(Name);
+    const FString Channel = Stream ? Stream->Channel() : "";
+    const TWeakObjectPtr<ACameraActor> ChannelCamera = URenderStreamChannelDefinition::GetChannelCamera(Channel);
+    if (Info.Template != ChannelCamera)
+    {
+        Info.Template = ChannelCamera;
+        if (Info.Template.IsValid())
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("Channel '%s' currently mapped to camera '%s'"), *Channel, *ChannelCamera->GetName());
+
+            URenderStreamChannelDefinition* Definition = Info.Template->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (Definition)
+            {
+                const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
+                const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
+                const FString TypeString = DefaultVisible ? "visible" : "hidden";
+                UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
+                    URenderStreamChannelDefinition::GetChannelCameraNum(Channel), Actors.Num(), *TypeString);
+            }
+
+            // Spawn the instance of the template camera needed for this policy / view.
+            FActorSpawnParameters ActorSpawnParameters;
+            ActorSpawnParameters.Template = Info.Template.Get();
+            Info.Camera = Info.Template->GetWorld()->SpawnActor<class ACameraActor>(Info.Template->GetClass(), ActorSpawnParameters);
+            if (URenderStreamChannelDefinition* ClonedDefinition = Info.Camera->FindComponentByClass<URenderStreamChannelDefinition>())
+                ClonedDefinition->UnregisterCamera();
+
+            Info.Camera->SetOwner(Info.Template->GetOwner());
+            Info.Camera->AttachToActor(Info.Template->GetAttachParentActor(), FAttachmentTransformRules::KeepWorldTransform);
+
+            USceneComponent* RootComponent = Info.Template->GetRootComponent();
+            if (RootComponent)
+                Info.Camera->SetActorRelativeTransform(Info.Template->GetRootComponent()->GetRelativeTransform());
+
+            if (Definition)
+                Definition->AddCameraInstance(Info.Camera);
+
+            APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId);
+            if (Controller != nullptr)
+                Controller->SetViewTargetWithBlend(Info.Camera.Get());
+            else
+                UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing, no valid controller."));
+        }
+        else
+            UE_LOG(LogRenderStream, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
+    }
+}
+
 bool FRenderStreamModule::PopulateStreamPool()
 {
     if (!StreamPool)
@@ -316,19 +407,16 @@ bool FRenderStreamModule::PopulateStreamPool()
             const FBox2D Region(FVector2D(clipping.left, clipping.top), FVector2D(clipping.right, clipping.bottom));
             streamInfoArray.Push({ Channel, Name, Region });
 
-            if (!StreamPool->GetStream(Name))  // Stream does not already exist in pool
+            auto Stream = StreamPool->GetStream(Name);
+            if (!Stream)  // Stream does not already exist in pool
             {
                 // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
+                Stream = StreamPool->GetStream(Name);
             }
 
-            // Update corresponding projection policy
-            for (const auto& policy : ProjectionPolicyFactory->GetPolicies())
-            {
-                if (policy->GetViewportId() == Name)
-                    policy->ConfigureCapture();
-            }
+            ConfigureStream(Stream);
         }
 
         // Broadcast streams changed event
@@ -345,15 +433,66 @@ bool FRenderStreamModule::PopulateStreamPool()
 
 void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameData)
 {
-    for (const auto& policy : ProjectionPolicyFactory->GetPolicies())
+    for (auto& pair  : ViewportInfos)
     {
-        const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(policy->GetViewportId());
+        const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(pair.Key);
         if (!stream)
             continue;
 
         RenderStreamLink::CameraData cameraData;
         if (RenderStreamLink::instance().rs_getFrameCamera(stream->Handle(), &cameraData) == RenderStreamLink::RS_ERROR_SUCCESS)
-            policy->ApplyCameraData(frameData, cameraData);
+            ApplyCameraData(*pair.Value, frameData, cameraData);
+    }
+}
+
+void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
+{
+    // Each call must always have a frame response, because there will be a corresponding render call.
+    {
+        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+        info.m_frameResponses.push_back({ frameData.tTracked, cameraData });
+    }
+
+    if (!info.Camera.IsValid() || cameraData.cameraHandle == 0)
+        return;
+
+    // Attach the instanced Camera to the Capture object for this view.
+    USceneComponent* SceneComponent = info.Camera->K2_GetRootComponent();
+    UCameraComponent* CameraComponent = info.Camera->GetCameraComponent();
+
+    if (CameraComponent && cameraData.orthoWidth > 0.f)  // Use an orthographic camera
+    {
+        CameraComponent->ProjectionMode = ECameraProjectionMode::Orthographic;
+        CameraComponent->OrthoWidth = FUnitConversion::Convert(float(cameraData.orthoWidth), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
+    }
+    else if (UCineCameraComponent* CineCamera = dynamic_cast<UCineCameraComponent*>(CameraComponent))
+    {
+        CineCamera->Filmback.SensorWidth = cameraData.sensorX;
+        CineCamera->Filmback.SensorHeight = cameraData.sensorY;
+        CineCamera->CurrentFocalLength = cameraData.focalLength;
+    }
+    else if (CameraComponent)
+    {
+        float throwRatioH = cameraData.focalLength / cameraData.sensorX;
+        float fovH = 2.f * FMath::Atan(0.5f / throwRatioH);
+        CameraComponent->SetFieldOfView(fovH * 180.f / PI);
+        CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
+    }
+
+    if (SceneComponent)
+    {
+        float _pitch = cameraData.rx;
+        float _yaw = cameraData.ry;
+        float _roll = cameraData.rz;
+        FQuat rotationQuat = FQuat::MakeFromEuler(FVector(_roll, _pitch, _yaw));
+        SceneComponent->SetRelativeRotation(rotationQuat);
+
+        FVector pos;
+        pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        pos.Y = FUnitConversion::Convert(float(cameraData.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
+        SceneComponent->SetRelativeLocation(pos);
     }
 }
 
@@ -437,12 +576,23 @@ void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason
         {
             // Policies need to be available early for view setup
             ProjectionPolicyFactory = MakeShared<FRenderStreamProjectionPolicyFactory>();
-            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> projection policy factory..."), FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType);
+            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> projection policy factory..."), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
 
             TSharedPtr<IDisplayClusterProjectionPolicyFactory> basePtr = StaticCastSharedPtr<IDisplayClusterProjectionPolicyFactory>(ProjectionPolicyFactory);
-            if (!RenderMgr->RegisterProjectionPolicyFactory(FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType, basePtr))
+            if (!RenderMgr->RegisterProjectionPolicyFactory(FRenderStreamProjectionPolicy::RenderStreamPolicyType, basePtr))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> projection policy factory"), FRenderStreamProjectionPolicyFactory::RenderStreamPolicyType);
+                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> projection policy factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+            }
+        }
+        {
+            // Policies need to be available early for view setup
+            PostProcessFactory = MakeShared<FRenderStreamPostProcessFactory>();
+            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> post process factory..."), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+
+            TSharedPtr<IDisplayClusterPostProcessFactory> basePtr = StaticCastSharedPtr<IDisplayClusterPostProcessFactory>(PostProcessFactory);
+            if (!RenderMgr->RegisterPostProcessFactory(FRenderStreamPostProcessFactory::RenderStreamPostProcessType, basePtr))
+            {
+                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> post process factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
             }
         }
     }
@@ -624,6 +774,15 @@ void FRenderStreamModule::OnEndFrame()
         Entries.Push({ "Receive Time", (float)m_syncFrame.ReceiveTime });
 
     RenderStreamLink::instance().rs_sendProfilingData(Entries.GetData(), Entries.Num());
+}
+
+FRenderStreamViewportInfo& FRenderStreamModule::GetViewportInfo(FString const& ViewportId)
+{
+    const auto Info = ViewportInfos.Find(ViewportId);
+    if (Info)
+        return *(*Info);
+    
+    return *ViewportInfos.Add(ViewportId, MakeShareable<FRenderStreamViewportInfo>(new FRenderStreamViewportInfo()));
 }
 
 /*static*/ FRenderStreamModule* FRenderStreamModule::Get()
