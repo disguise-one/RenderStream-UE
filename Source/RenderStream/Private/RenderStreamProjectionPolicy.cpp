@@ -36,10 +36,13 @@ FRenderStreamProjectionPolicy::~FRenderStreamProjectionPolicy() {}
 
 bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewport* Viewport)
 {
+    if (GIsEditor)
+        return false;
+
     const FString ViewportId = Viewport->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
-
+    
     auto& Info = Module->GetViewportInfo(ViewportId);
     if (!UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId))
     {
