@@ -56,3 +56,6 @@ if ($LASTEXITCODE -eq 0) {
     
     Compress-Archive @compress
 }
+else {
+    exit $LASTEXITCODE
+}

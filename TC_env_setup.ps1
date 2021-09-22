@@ -82,3 +82,6 @@ $build_tool_path = "C:\link_to_unreal\$engine_version"
 # here  
 Invoke-Expression ".\package_plugin.ps1 -unreal_engine_path $build_tool_path"
 
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
