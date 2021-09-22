@@ -13,7 +13,7 @@ if ($plugin_folder -eq ""){
 $plugin_name = "RenderStream-UE"
 $build_tool = "$($unreal_engine_path)\Engine\Build\BatchFiles\RunUAT.bat"
 $plugin_path = "$($plugin_folder)\$($plugin_name).uplugin"
-$out_path = "$($plugin_folder)\Packaged"
+$out_path = "$($plugin_folder)\Packaged\RenderStream-UE"
 $local_intermediate = "$($plugin_folder)\Intermediate"
 
 # Ensure spaces in the build_tool path are hard spaces or Invoke-Expression will fail. Important since default location of Unreal is, eg,
