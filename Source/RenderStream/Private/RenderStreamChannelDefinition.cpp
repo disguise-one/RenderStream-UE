@@ -113,7 +113,11 @@ URenderStreamChannelDefinition::URenderStreamChannelDefinition()
     : DefaultVisibility(EVisibilty::Visible)
     , ShowFlags(EShowFlagInitMode::ESFIM_Game)
     , Registered(false)
-{}
+{
+    MeshReconstruction = CreateDefaultSubobject<UProceduralMeshComponent>("MeshReconstruction");
+    MeshReconstruction->bUseAsyncCooking = true;
+    Hidden.Add(MeshReconstruction);
+}
 
 void URenderStreamChannelDefinition::ResetDefaultVisibility(AActor* Actor)
 {
@@ -230,6 +234,46 @@ void URenderStreamChannelDefinition::BeginPlay()
     {
         UE_LOG(LogRenderStreamChannelDefinition, Error, TEXT("Unable to add, Channel definition component not on camera actor."));
     }
+
+    ////debug whatever bullshit
+    //MeshVertices.Add(FVector(0, -100, 0)); //lower left - 0
+    //MeshVertices.Add(FVector(0, -100, 100)); //upper left - 1
+    //MeshVertices.Add(FVector(0, 100, 0)); //lower right - 2 
+    //MeshVertices.Add(FVector(0, 100, 100)); //upper right - 3
+
+    //MeshVertices.Add(FVector(100, -100, 0)); //lower front left - 4
+    //MeshVertices.Add(FVector(100, -100, 100)); //upper front left - 5
+
+    //MeshVertices.Add(FVector(100, 100, 100)); //upper front right - 6
+    //MeshVertices.Add(FVector(100, 100, 0)); //lower front right - 7
+
+    ////Back face of cube
+    //AddTriangleByIndex(0, 2, 3);
+    //AddTriangleByIndex(3, 1, 0);
+
+    ////Left face of cube
+    //AddTriangleByIndex(0, 1, 4);
+    //AddTriangleByIndex(4, 1, 5);
+
+    ////Front face of cube
+    //AddTriangleByIndex(4, 5, 7);
+    //AddTriangleByIndex(7, 5, 6);
+
+    ////Right face of cube
+    //AddTriangleByIndex(7, 6, 3);
+    //AddTriangleByIndex(3, 2, 7);
+
+    ////Top face
+    //AddTriangleByIndex(1, 3, 5);
+    //AddTriangleByIndex(6, 5, 3);
+
+    ////bottom face
+    //AddTriangleByIndex(2, 0, 4);
+    //AddTriangleByIndex(4, 7, 2);
+
+    //TArray<FLinearColor> VertexColors;
+
+    //MeshReconstruction->CreateMeshSection_LinearColor(0, MeshVertices, MeshTriangles, TArray<FVector>(), TArray<FVector2D>(), VertexColors, TArray<FProcMeshTangent>(), true);
 }
 
 void URenderStreamChannelDefinition::EndPlay(const EEndPlayReason::Type Reason)

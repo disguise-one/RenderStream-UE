@@ -4,6 +4,8 @@
 #include "Components/ActorComponent.h"
 #include "Components/SceneCaptureComponent.h"
 #include "Camera/CameraActor.h"
+#include "ProceduralMeshComponent.h"
+#include "Engine/StaticMeshActor.h"
 #include "RenderStreamChannelDefinition.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelDefinition, Log, All);
@@ -24,6 +26,40 @@ public:
     // Sets default values for this component's properties
     URenderStreamChannelDefinition();
     
+    //mesh reconstruction shit
+    UPROPERTY(VisibleAnywhere, BlueprintReadWrite)
+        UProceduralMeshComponent* MeshReconstruction;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite)
+        UStaticMesh* DebugShape;
+
+    TArray<AStaticMeshActor*> DebugMeshes;
+
+    UFUNCTION()
+        void SpawnDebugMesh(FVector location)
+    {
+        AStaticMeshActor* meshActor = GetWorld()->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass());
+        meshActor->SetMobility(EComponentMobility::Stationary);
+        meshActor->SetActorLocation(location);
+        UStaticMeshComponent* MeshComponent = meshActor->GetStaticMeshComponent();
+        if (MeshComponent)
+        {
+            MeshComponent->SetStaticMesh(DebugShape);
+        }
+        DebugMeshes.Add(meshActor);
+    }
+
+    TArray<FVector> MeshVertices;
+    TArray<int32> MeshTriangles;
+
+    //quick shorthand to add triangles by a bunch of indices referring to verts in the above array
+    void AddTriangleByIndex(int32 v1, int32 v2, int32 v3)
+    {
+        MeshTriangles.Add(v1);
+        MeshTriangles.Add(v2);
+        MeshTriangles.Add(v3);
+    }
+
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Visible")
     TSet<TSoftObjectPtr<AActor>> Visible;
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")

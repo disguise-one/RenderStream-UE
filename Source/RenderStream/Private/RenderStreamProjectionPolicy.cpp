@@ -19,6 +19,8 @@
 
 #include "RenderStreamChannelDefinition.h"
 
+#include "DrawDebugHelpers.h"
+
 #include "Renderer/Private/PostProcess/SceneRenderTargets.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
@@ -202,6 +204,47 @@ void FRenderStreamProjectionPolicy::ApplyCameraData(const RenderStreamLink::Fram
         pos.Y = FUnitConversion::Convert(float(cameraData.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
         pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
         SceneComponent->SetRelativeLocation(pos);
+    }
+
+    if (frameData.meshReconstruction.vertices.size())
+    {
+        if (URenderStreamChannelDefinition* channelDef = Camera->FindComponentByClass<URenderStreamChannelDefinition>())
+        {
+            //update the shape and windings
+            //channelDef->MeshReconstruction->UpdateMeshSection(0, channelDef->MeshVertices, TArray<FVector>(), TArray<FVector2D>(), TArray<FColor>(), TArray<FProcMeshTangent>());
+
+            //more likely, reconstruct the whole mesh
+            channelDef->DebugMeshes.Empty();
+            channelDef->MeshVertices.Empty();
+            channelDef->MeshTriangles.Empty();
+
+            FVector vert;
+            for (auto& meshVertex : frameData.meshReconstruction.vertices)
+            {
+                vert = FVector(meshVertex.x, meshVertex.y, meshVertex.z);
+
+                channelDef->MeshVertices.Add(vert);
+
+                //debug shape on each vertex
+                //DrawDebugSphere(GEngine->GetWorld(), vert, 2.0f, 32, FColor::Blue);
+                //try spawning a cube on it for now
+                //channelDef->SpawnDebugMesh(vert);
+            }
+
+            if (frameData.meshReconstruction.triangles.size())
+            {
+
+                for (auto& meshTriangle : frameData.meshReconstruction.triangles)
+                {
+                    channelDef->MeshTriangles.Add(meshTriangle);
+                }
+
+                channelDef->MeshReconstruction->CreateMeshSection_LinearColor(0, channelDef->MeshVertices, channelDef->MeshTriangles, TArray<FVector>(), TArray<FVector2D>(), TArray<FLinearColor>(), TArray<FProcMeshTangent>(), true);
+                
+                //channelDef->MeshReconstruction->SetRelativeLocationAndRotation(-channelDef->MeshVertices[0], FRotator());
+
+            }
+        }
     }
 }
 

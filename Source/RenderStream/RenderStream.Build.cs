@@ -21,7 +21,8 @@ public class RenderStream : ModuleRules
                 "MediaIOCore", 
                 "MediaUtils", 
                 "InputCore", 
-                "UMG"
+                "UMG",
+                "ProceduralMeshComponent"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 

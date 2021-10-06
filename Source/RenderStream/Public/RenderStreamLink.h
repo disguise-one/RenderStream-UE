@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
+#include <vector>
 
 struct ID3D11Device;
 struct ID3D12Device;
@@ -119,6 +120,19 @@ public:
 
     typedef struct
     {
+        float x;
+        float y;
+        float z;
+    } MeshVertex;
+
+    typedef struct
+    {
+        std::vector<MeshVertex> vertices;
+        std::vector<uint64_t> triangles;
+    } MeshReconstruction;
+
+    typedef struct
+    {
         double tTracked;
         double localTime;
         double localTimeDelta;
@@ -126,6 +140,7 @@ public:
         unsigned int frameRateDenominator;
         uint32_t flags;
         uint32_t scene;
+        MeshReconstruction meshReconstruction;
     } FrameData;
 
     typedef struct
@@ -133,7 +148,7 @@ public:
         double tTracked;
         CameraData camera;
         EnhancedCaptureFrameType enhancedCaptureType;
-        PredictedFrameType predictedFrameType;
+        //PredictedFrameType predictedFrameType;
     } CameraResponseData;
 
     typedef struct

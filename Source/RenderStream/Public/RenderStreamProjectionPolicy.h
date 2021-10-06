@@ -74,6 +74,7 @@ protected:
     std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
     
     bool m_isInitialised = false;
+
 };
 
 
