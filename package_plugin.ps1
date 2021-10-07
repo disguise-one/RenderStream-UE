@@ -13,7 +13,8 @@ if ($plugin_folder -eq ""){
 $plugin_name = "RenderStream-UE"
 $build_tool = "$($unreal_engine_path)\Engine\Build\BatchFiles\RunUAT.bat"
 $plugin_path = "$($plugin_folder)\$($plugin_name).uplugin"
-$out_path = "$($plugin_folder)\Packaged"
+$zip_path = "$($plugin_folder)\Packaged"
+$out_path = "$($plugin_folder)\Packaged\RenderStream-UE"
 $local_intermediate = "$($plugin_folder)\Intermediate"
 
 # Ensure spaces in the build_tool path are hard spaces or Invoke-Expression will fail. Important since default location of Unreal is, eg,
@@ -29,8 +30,8 @@ if (Test-Path $local_intermediate) {
 }
 
 # Remove the path the build tool creates to package in - this can interfere with a clean build of the plugin, too.
-if (Test-Path $out_path) {
-    Remove-Item -Path $out_path -Recurse -Force
+if (Test-Path $zip_path) {
+    Remove-Item -Path $zip_path -Recurse -Force
 }
 
 $Uplugin = Get-Content $plugin_path | ConvertFrom-Json
@@ -47,7 +48,7 @@ if ($LASTEXITCODE -eq 0) {
 	Remove-Item -Path (Join-Path -Path "$out_path" -ChildPath "Intermediate") -Recurse
 
     $out_file = "$($plugin_name)_{0}.zip" -f "$($Uplugin.VersionName)"
-    $destination = Join-Path -Path "$out_path" -ChildPath "$out_file"
+    $destination = Join-Path -Path "$zip_path" -ChildPath "$out_file"
     $compress = @{
         Path = "$out_path"
         CompressionLevel = 'Optimal'
@@ -55,4 +56,7 @@ if ($LASTEXITCODE -eq 0) {
     }
     
     Compress-Archive @compress
+}
+else {
+    exit $LASTEXITCODE
 }
