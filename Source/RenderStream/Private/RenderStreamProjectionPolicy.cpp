@@ -137,13 +137,13 @@ void FRenderStreamProjectionPolicy::ConfigureCapture()
             if (RootComponent)
                 Camera->SetActorRelativeTransform(Template->GetRootComponent()->GetRelativeTransform());
 
-            if (Definition)
-                Definition->AddCameraInstance(Camera);
-
             if (Controller.IsValid())
                 Controller->SetViewTargetWithBlend(Camera.Get());
             else
                 UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing, no valid controller."));
+
+            if (Definition)
+                Definition->AddCameraInstance(Camera);
         }
         else
             UE_LOG(LogRenderStreamPolicy, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
