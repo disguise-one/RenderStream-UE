@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/ObjectMacros.h"
 #include "Components/ActorComponent.h"
 #include "Components/SceneCaptureComponent.h"
 #include "Camera/CameraActor.h"
@@ -14,6 +15,10 @@ enum class EVisibilty
     Visible,
     Hidden
 };
+
+class RENDERSTREAM_API URenderStreamChannelDefinition;
+
+DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FOnInstancedSignature, URenderStreamChannelDefinition, OnCameraInstanced, ACameraActor*, Instance);
 
 UCLASS(ClassGroup = (RenderStream), meta = (BlueprintSpawnableComponent))
 class RENDERSTREAM_API URenderStreamChannelDefinition : public UActorComponent
@@ -42,8 +47,13 @@ public:
     void SetVisibility(AActor* Actor, bool IsVisible);
     UFUNCTION(BlueprintPure)
     bool GetVisibility(AActor* Actor) const;
+    UFUNCTION(BlueprintPure)
+    bool IsInstanced() const { return IsInstance; }
+    
+    UPROPERTY(BlueprintAssignable, Category = "Components|Activation")
+    FOnInstancedSignature OnCameraInstanced;
 
-    void AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera) { InstancedCameras.Add(Camera); }
+    void AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera);
     void UnregisterCamera();
 
     static uint32 GetChannelCameraNum(const FString& Channel);
@@ -65,4 +75,5 @@ private:
 
     TArray<TWeakObjectPtr<ACameraActor>> InstancedCameras;
     bool Registered;
+    bool IsInstance = false;
 };

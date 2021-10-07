@@ -237,3 +237,11 @@ void URenderStreamChannelDefinition::EndPlay(const EEndPlayReason::Type Reason)
     Super::EndPlay(Reason);
     UnregisterCamera();
 }
+
+void URenderStreamChannelDefinition::AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera)
+{
+    URenderStreamChannelDefinition* Definition = Camera->FindComponentByClass<URenderStreamChannelDefinition>();
+    Definition->IsInstance = true;
+    InstancedCameras.Add(Camera);
+    OnCameraInstanced.Broadcast(Camera.Get());
+}
