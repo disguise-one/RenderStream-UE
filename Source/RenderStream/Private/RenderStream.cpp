@@ -351,14 +351,14 @@ void FRenderStreamModule::ConfigureStream(TSharedPtr<FFrameStream> Stream)
             if (RootComponent)
                 Info.Camera->SetActorRelativeTransform(Info.Template->GetRootComponent()->GetRelativeTransform());
 
-            if (Definition)
-                Definition->AddCameraInstance(Info.Camera);
-
             APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId);
             if (Controller != nullptr)
                 Controller->SetViewTargetWithBlend(Info.Camera.Get());
             else
                 UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing, no valid controller."));
+
+            if (Definition)
+                Definition->AddCameraInstance(Info.Camera);
         }
         else
             UE_LOG(LogRenderStream, Log, TEXT("Channel '%s' currently not mapped to a camera"), *Channel);
