@@ -179,6 +179,7 @@ void FRenderStreamModule::StartupModule()
 
         FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FRenderStreamModule::OnPostLoadMapWithWorld);
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
+        FCoreDelegates::OnEndFrame.AddRaw(this, &FRenderStreamModule::OnEndFrame);
         FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
         Monitor.Open();
     }
@@ -736,7 +737,7 @@ void FRenderStreamModule::EnableStats() const
 #endif
 }
 
-void FRenderStreamModule::SendStats()
+void FRenderStreamModule::OnEndFrame()
 {
     TArray<RenderStreamLink::ProfilingEntry> Entries;
 #if STATS

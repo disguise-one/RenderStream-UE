@@ -50,6 +50,7 @@ protected:
     void OnPostEngineInit();
     void OnBeginFrame();
     void OnSystemError();
+    void OnEndFrame();
 
     void EnableStats() const;
 
@@ -77,7 +78,6 @@ public:
     void OnPostLoadMapWithWorld(UWorld* InWorld);
 
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
-    void SendStats();
 
     TMap<FString, TSharedPtr<FRenderStreamViewportInfo>> ViewportInfos;
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
