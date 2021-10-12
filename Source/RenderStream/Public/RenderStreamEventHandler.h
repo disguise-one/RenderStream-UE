@@ -8,13 +8,13 @@ struct FStreamInfo
 {
     GENERATED_USTRUCT_BODY()
 
-    UPROPERTY(BlueprintReadOnly)
+    UPROPERTY(BlueprintReadOnly, Category = "Stream")
     FString Channel;
 
-    UPROPERTY(BlueprintReadOnly)
+    UPROPERTY(BlueprintReadOnly, Category = "Stream")
     FString Name;
 
-    UPROPERTY(BlueprintReadOnly)
+    UPROPERTY(BlueprintReadOnly, Category = "Stream")
     FBox2D Region;
 };
 

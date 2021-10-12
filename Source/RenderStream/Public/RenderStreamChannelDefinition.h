@@ -41,13 +41,13 @@ public:
     UFUNCTION(BlueprintCallable, Category = SceneCapture)
     TArray<ACameraActor*> GetInstancedCameras();
     
-    UFUNCTION(BlueprintCallable)
+    UFUNCTION(BlueprintCallable, Category = Visibility)
     void ResetDefaultVisibility(AActor* Actor);
-    UFUNCTION(BlueprintCallable)
+    UFUNCTION(BlueprintCallable, Category = Visibility)
     void SetVisibility(AActor* Actor, bool IsVisible);
-    UFUNCTION(BlueprintPure)
+    UFUNCTION(BlueprintPure, Category = Visibility)
     bool GetVisibility(AActor* Actor) const;
-    UFUNCTION(BlueprintPure)
+    UFUNCTION(BlueprintPure, Category = Visibility)
     bool IsInstanced() const { return IsInstance; }
     
     UPROPERTY(BlueprintAssignable, Category = "Components|Activation")
