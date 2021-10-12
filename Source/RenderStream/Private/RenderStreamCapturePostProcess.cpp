@@ -60,6 +60,12 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     // We can't create a stream on the render thread, so our only option is to not do anything if the stream doesn't exist here.
     if (Stream)
     {
+        static uint64_t lastProfileFrame = UINT64_MAX;
+        if (lastProfileFrame != GFrameCounterRenderThread)
+        {
+            lastProfileFrame = GFrameCounterRenderThread;
+            Module->SendStats();
+        }
         auto& Info = Module->GetViewportInfo(ViewportId);
         RenderStreamLink::CameraResponseData frameResponse;
         {
