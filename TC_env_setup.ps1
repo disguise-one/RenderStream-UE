@@ -94,8 +94,10 @@ if ($LASTEXITCODE -eq 0)
 
     write-host "Tag detected: ", $tag, ". Will create draft Github Release"
 
+    write-host "PAT from team city begins:",$env:personal_access_token.Substring(0,7)
+
     $headers = @{}
-    $headers.Add('Authorization','token $env:personal_access_token')
+    $headers.Add('Authorization',"token $env:personal_access_token")
     $headers.Add('Accept', 'application/vnd.github.v3+json')
 
     # Create new release for based on tag discovered
