@@ -180,6 +180,7 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         }
         parameter.dmxOffset = -1; // Auto
         parameter.dmxType = RenderStreamLink::RS_DMX_16_BE;
+        parameter.flags = RenderStreamLink::REMOTEPARAMETER_NO_FLAGS;
     }
 }
 
