@@ -95,7 +95,7 @@ if ($LASTEXITCODE -eq 0)
     write-host "Tag detected: ", $tag, ". Will create draft Github Release"
 
     $headers = @{}
-    $headers.Add('Authorization','token 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')
+    $headers.Add('Authorization','token $env:personal_access_token')
     $headers.Add('Accept', 'application/vnd.github.v3+json')
 
     # Create new release for based on tag discovered
@@ -114,10 +114,10 @@ if ($LASTEXITCODE -eq 0)
     $headers.Add('Content-Type','application/zip')
 
     # Upload ZIP asset to new Release on Github
-    $filename = (dir Packaged\*.zip).name
+    $filename = "Packaged/"+(dir Packaged\*.zip).name
 
     write-host "Adding ZIP asset to Release"
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "https://uploads.github.com/repos/disguise-one/RenderStream-UE/$id/assets?name=$filename" -Method Post -Headers $headers -Infile $filename
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "https://uploads.github.com/repos/disguise-one/RenderStream-UE/releases/$id/assets?name=$filename" -Method Post -Headers $headers -Infile $filename
     write-host "Response code = ", $response.StatusCode
 }
 else
