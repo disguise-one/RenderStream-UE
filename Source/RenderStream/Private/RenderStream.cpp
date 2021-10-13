@@ -175,6 +175,7 @@ void FRenderStreamModule::StartupModule()
             return;
         }
         
+        FCoreDelegates::OnHandleSystemError.AddRaw(this, &FRenderStreamModule::OnSystemError);
 
         FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FRenderStreamModule::OnPostLoadMapWithWorld);
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
@@ -555,6 +556,15 @@ void FRenderStreamModule::OnPostEngineInit()
     }
 
 
+}
+
+void FRenderStreamModule::OnSystemError()
+{
+    RenderStreamLink& link = RenderStreamLink::instance();
+    if (link.isAvailable())
+    {
+        link.rs_logToD3("Unexpected system error - process will terminate");
+    }
 }
 
 void FRenderStreamModule::OnBeginFrame()

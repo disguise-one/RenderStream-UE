@@ -49,6 +49,7 @@ public:
 protected:
     void OnPostEngineInit();
     void OnBeginFrame();
+    void OnSystemError();
 
     void EnableStats() const;
 
