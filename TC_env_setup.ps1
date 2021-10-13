@@ -85,3 +85,42 @@ Invoke-Expression ".\package_plugin.ps1 -unreal_engine_path $build_tool_path"
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
+
+# If the current revision is tagged, create a new Release on Github and upload the ZIP file as an asset
+Invoke-Expression "git describe --tags --exact-match" | Tee-Object -Variable tag
+
+if ($LASTEXITCODE -eq 0)
+{
+
+    write-host "Tag detected: ", $tag, ". Will create draft Github Release"
+
+    $headers = @{}
+    $headers.Add('Authorization','token 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')
+    $headers.Add('Accept', 'application/vnd.github.v3+json')
+
+    # Create new release for based on tag discovered
+    # eg https://api.github.com/repos/octocat/hello-world/releases
+
+    $body='{"tag_name":"'+$tag+'", "draft":true}'
+
+    write-host "Creating Release"
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "https://api.github.com/repos/disguise-one/RenderStream-UE/releases" -Method Post -Headers $headers -Body $body
+    write-host "Response code = ", $response.StatusCode
+
+    $content = $response.Content | ConvertFrom-Json
+    $id = $content.id
+    write-host 'Created release. Release id:', $id
+
+    $headers.Add('Content-Type','application/zip')
+
+    # Upload ZIP asset to new Release on Github
+    $filename = (dir Packaged\*.zip).name
+
+    write-host "Adding ZIP asset to Release"
+    $response = Invoke-WebRequest -UseBasicParsing -Uri "https://uploads.github.com/repos/disguise-one/RenderStream-UE/$id/assets?name=$filename" -Method Post -Headers $headers -Infile $filename
+    write-host "Response code = ", $response.StatusCode
+}
+else
+{
+    write-host "No tag detected. Will not create Github Release"
+}
