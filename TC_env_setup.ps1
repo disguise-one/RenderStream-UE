@@ -94,7 +94,7 @@ if ($LASTEXITCODE -eq 0)
 
     write-host "Tag detected: ", $tag, ". Will create draft Github Release"
 
-    write-host "PAT from team city begins:",$env:personal_access_token.Substring(0,7)
+    write-host "PAT from Team City begins:",$env:personal_access_token.Substring(0,7)
 
     $headers = @{}
     $headers.Add('Authorization',"token $env:personal_access_token")
@@ -106,8 +106,18 @@ if ($LASTEXITCODE -eq 0)
     $body='{"tag_name":"'+$tag+'", "draft":true}'
 
     write-host "Creating Release"
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "https://api.github.com/repos/disguise-one/RenderStream-UE/releases" -Method Post -Headers $headers -Body $body
-    write-host "Response code = ", $response.StatusCode
+    
+    try
+    {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri "https://api.github.com/repos/disguise-one/RenderStream-UE/releases" -Method Post -Headers $headers -Body $body
+    }
+    catch
+    {
+        write-host "Failed to create Release"
+        exit 1
+    }
+    
+    write-host "Success! Response code = ", $response.StatusCode
 
     $content = $response.Content | ConvertFrom-Json
     $id = $content.id
@@ -119,8 +129,18 @@ if ($LASTEXITCODE -eq 0)
     $filename = "Packaged/"+(dir Packaged\*.zip).name
 
     write-host "Adding ZIP asset to Release"
-    $response = Invoke-WebRequest -UseBasicParsing -Uri "https://uploads.github.com/repos/disguise-one/RenderStream-UE/releases/$id/assets?name=$filename" -Method Post -Headers $headers -Infile $filename
-    write-host "Response code = ", $response.StatusCode
+    
+    try
+    {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri "https://uploads.github.com/repos/disguise-one/RenderStream-UE/releases/$id/assets?name=$filename" -Method Post -Headers $headers -Infile $filename
+    }
+    catch
+    {
+        write-host "Failed to upload ZIP asset to Release"
+        exit 1
+    }
+
+    write-host "Success! Response code = ", $response.StatusCode
 }
 else
 {
