@@ -138,7 +138,7 @@ void URenderStreamChannelDefinition::SetVisibility(AActor* Actor, bool IsVisible
 bool URenderStreamChannelDefinition::GetVisibility(AActor* Actor) const
 {
     return DefaultVisibility == EVisibilty::Visible
-        ? Hidden.Contains(Actor)
+        ? !Hidden.Contains(Actor)
         : Visible.Contains(Actor);
 }
 
