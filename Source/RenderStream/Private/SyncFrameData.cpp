@@ -90,6 +90,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
     }
     else if (Ret == RenderStreamLink::RS_ERROR_QUIT)
     {
+        UE_LOG(LogRenderStream, Warning, TEXT("Exiting due to remote quit request"));
         FPlatformMisc::RequestExit(false);
     }
     else if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)
