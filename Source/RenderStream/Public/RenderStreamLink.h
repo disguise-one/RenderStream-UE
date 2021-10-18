@@ -173,13 +173,16 @@ public:
 
     enum RemoteParameterType
     {
-        RS_PARAMETER_NUMBER,
+        RS_PARAMETER_NUMBER=0,
         RS_PARAMETER_IMAGE,
         RS_PARAMETER_POSE,      // 4x4 TR matrix
         RS_PARAMETER_TRANSFORM, // 4x4 TRS matrix
         RS_PARAMETER_TEXT,
+        RS_PARAMETER_LAST=RS_PARAMETER_TEXT
     };
-
+    
+    static const char* ParamTypeToName(RemoteParameterType type);
+    
     typedef struct
     {
         float min;

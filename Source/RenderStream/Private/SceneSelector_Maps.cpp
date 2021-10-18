@@ -26,7 +26,7 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
         case MapData::Unchecked:
         {
             RenderStreamLink::RemoteParameters& parameters = Schema().scenes.scenes[sceneId];
-            UE_LOG(LogRenderStream, Log, TEXT("Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
+            UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorMaps: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
             if (ValidateParameters(parameters, { persistentRoot }))
             {
                 map.ValidationState = MapData::Valid;

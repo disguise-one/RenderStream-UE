@@ -101,7 +101,7 @@ bool SceneSelector_StreamingLevels::ValidateLevel(uint32_t sceneId)
 {
     RenderStreamLink::RemoteParameters& parameters = Schema().scenes.scenes[sceneId];
     const SchemaSpec& spec = m_specs[sceneId];
-    UE_LOG(LogRenderStream, Log, TEXT("Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
+    UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorStreamingLevels: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
     AActor* levelRoot = spec.streamingLevel ? spec.streamingLevel->GetLevelScriptActor() : nullptr;
     if (!ValidateParameters(parameters, { spec.persistentRoot, levelRoot }))
     {
