@@ -26,6 +26,21 @@ namespace {
     }
 }
 
+const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
+{
+    static const char* ParamTypeName[] = {
+        "Number",
+        "Image",
+        "Pose",
+        "Transform",
+        "Text",
+    };
+
+    static_assert(RS_PARAMETER_LAST + 1 == UE_ARRAY_COUNT(ParamTypeName), "Added a new parameter type without adding it's name!");
+    return ParamTypeName[type];
+}
+
+
 /*static*/ RenderStreamLink& RenderStreamLink::instance()
 {
     static RenderStreamLink r;

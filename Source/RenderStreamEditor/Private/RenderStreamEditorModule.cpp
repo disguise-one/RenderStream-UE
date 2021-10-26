@@ -647,4 +647,3 @@ void FRenderStreamEditorModule::UnregisterSettings()
 #undef LOCTEXT_NAMESPACE
 
 IMPLEMENT_MODULE(FRenderStreamEditorModule, RenderStreamEditor);
-#pragma optimize("", on)

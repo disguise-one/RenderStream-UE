@@ -24,7 +24,7 @@ protected:
 
 private:
     size_t ValidateParameters(const AActor* Root, RenderStreamLink::RemoteParameter* const parameters, size_t numParameters) const;
-    void ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const float** ppFloatValues, const RenderStreamLink::ImageFrameData** ppImageValues) const;
+    void ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const;
 
     std::vector<uint8_t> m_schemaMem;
     RenderStreamLink::ScopedSchema m_defaultSchema;

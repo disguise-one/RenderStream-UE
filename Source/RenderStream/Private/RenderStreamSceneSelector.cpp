@@ -47,7 +47,7 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
     {
         if (!OnLoadedSchema(World, Schema()))
         {
-            UE_LOG(LogRenderStream, Error, TEXT("Incomptible schema"));
+            UE_LOG(LogRenderStream, Error, TEXT("Incompatible schema"));
             loaded = false;
         }
     }
@@ -78,16 +78,12 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamLink::RemoteParameterType expectedType, const RenderStreamLink::RemoteParameter& parameter)
 {
     FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
-
-    if (key != parameter.key)
+    
+    if (key != parameter.key || expectedType != parameter.type)
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Parameter mismatch - expected key %s, got %s"), UTF8_TO_TCHAR(parameter.key), *key);
-        return false;
-    }
-
-    if (expectedType != parameter.type)
-    {
-        UE_LOG(LogRenderStream, Error, TEXT("Parameter mismatch - expected type %d, got %d"), parameter.type, expectedType);
+        UE_LOG(LogRenderStream, Error, 
+            TEXT("Parameter mismatch - Expected parameter with key %s and type %s, got parameter with key %s and type %s."), 
+            UTF8_TO_TCHAR(parameter.key), UTF8_TO_TCHAR(RenderStreamLink::ParamTypeToName(parameter.type)), *key, UTF8_TO_TCHAR(RenderStreamLink::ParamTypeToName(expectedType)));
         return false;
     }
     return true;
@@ -345,11 +341,11 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, std::initializ
     {
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
-        ApplyParameters(actor, params.hash, &paramsPtr, &floatValuesPtr, &imageValuesPtr);
+        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size());
     }
 }
 
-void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const float** ppFloatValues, const RenderStreamLink::ImageFrameData** ppImageValues) const
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
     struct
@@ -368,65 +364,83 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     };
 
     size_t iParam = 0;
-    const RenderStreamLink::RemoteParameter* params = *ppParams;
     size_t iFloat = 0;
-    const float* floatValues = *ppFloatValues;
     size_t iImage = 0;
-    const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
     size_t iText = 0;
-    for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
+
+    const float* floatValues = *ppFloatValues;
+    const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
+
+    for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt && iParam < nParams; ++PropIt)
     {
         FProperty* Property = *PropIt;
         if (!Property->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || Property->HasAllPropertyFlags(CPF_DisableEditOnInstance))
-        {
             continue;
-        }
-        else if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
+
+        if (Property->HasAnyCastFlags(FBoolProperty::StaticClassCastFlagsPrivate() | FByteProperty::StaticClassCastFlagsPrivate() 
+                                      | FIntProperty::StaticClassCastFlagsPrivate() | FFloatProperty::StaticClassCastFlagsPrivate()))
         {
-            const bool v = bool(floatValues[iFloat]);
-            BoolProperty->SetPropertyValue_InContainer(Root, v);
-            ++iFloat;
-        }
-        else if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
-        {
-            const uint8 v = uint8(floatValues[iFloat]);
-            ByteProperty->SetPropertyValue_InContainer(Root, v);
-            ++iFloat;
-        }
-        else if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
-        {
-            const int32 v = int(floatValues[iFloat]);
-            IntProperty->SetPropertyValue_InContainer(Root, v);
-            ++iFloat;
-        }
-        else if (FFloatProperty* FloatProperty = CastField<FFloatProperty>(Property))
-        {
-            const float v = floatValues[iFloat];
-            FloatProperty->SetPropertyValue_InContainer(Root, v);
+            if (iFloat >= nFloatVals)
+            {
+                UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read float value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                continue;
+            }
+
+            if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
+            {
+                const bool v = bool(floatValues[iFloat]);
+                BoolProperty->SetPropertyValue_InContainer(Root, v);
+            }
+            else if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+            {
+                const uint8 v = uint8(floatValues[iFloat]);
+                ByteProperty->SetPropertyValue_InContainer(Root, v);
+            }
+            else if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
+            {
+                const int32 v = int(floatValues[iFloat]);
+                IntProperty->SetPropertyValue_InContainer(Root, v);
+            }
+            else if (FFloatProperty* FloatProperty = CastField<FFloatProperty>(Property))
+            {
+                const float v = floatValues[iFloat];
+                FloatProperty->SetPropertyValue_InContainer(Root, v);
+            }
             ++iFloat;
         }
         else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
         {
             void* StructAddress = StructProperty->ContainerPtrToValuePtr<void>(Root);
-            if (StructProperty->Struct == TBaseStructure<FVector>::Get())
+            const UScriptStruct* vec = TBaseStructure<FVector>::Get();
+            const UScriptStruct* col = TBaseStructure<FColor>::Get();
+            const UScriptStruct* linCol = TBaseStructure<FLinearColor>::Get();
+            const UScriptStruct* trans = TBaseStructure<FTransform>::Get();
+            const size_t inc = StructProperty->Struct == vec ? 3
+                                : StructProperty->Struct == col || StructProperty->Struct == linCol ? 4
+                                : StructProperty->Struct == trans ? 16
+                                : 0;
+            if (iFloat + (inc - 1) >= nFloatVals)
+            {
+                UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a vector/color/transform value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                continue;
+            }
+
+            if (StructProperty->Struct == vec)
             {
                 FVector v(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                iFloat += 3;
             }
-            else if (StructProperty->Struct == TBaseStructure<FColor>::Get())
+            else if (StructProperty->Struct == col)
             {
                 FColor v(floatValues[iFloat] * 255, floatValues[iFloat + 1] * 255, floatValues[iFloat + 2] * 255, floatValues[iFloat + 3] * 255);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                iFloat += 4;
             }
-            else if (StructProperty->Struct == TBaseStructure<FLinearColor>::Get())
+            else if (StructProperty->Struct == linCol)
             {
                 FLinearColor v(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                iFloat += 4;
             }
-            else if (StructProperty->Struct == TBaseStructure<FTransform>::Get())
+            else if (StructProperty->Struct == trans)
             {
                 static const FMatrix YUpMatrix(FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f));
                 static const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
@@ -440,11 +454,17 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 FTransform v(YUpMatrix * m * YUpMatrixInv);
                 v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
                 StructProperty->CopyCompleteValue(StructAddress, &v);
-                iFloat += 16;
             }
+            iFloat += inc;
         }
         else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
         {
+            if (iImage >= nImageVals)
+            {
+                UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                continue;
+            }
+
             const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
             UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
             if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
@@ -491,16 +511,13 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         {
 
                         }
-                        
                     }
                     else
                     {
                         UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
                         return;
                     }
-
                 });
-
                 ++iImage;
             }
         }
@@ -513,7 +530,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             }
             ++iText;
         }
-
+        
         ++iParam;
     }
     
