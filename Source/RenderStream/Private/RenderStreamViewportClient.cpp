@@ -696,7 +696,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
 void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info)
 {
-    if (Info.Template.IsValid())
+    if (!Info.Template.IsValid())
         return;
 
     TSet<FPrimitiveComponentId> Collection;
