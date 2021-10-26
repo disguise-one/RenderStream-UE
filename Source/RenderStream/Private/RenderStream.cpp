@@ -471,7 +471,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
     {
         CineCamera->Filmback.SensorWidth = cameraData.sensorX;
         CineCamera->Filmback.SensorHeight = cameraData.sensorY;
-        CineCamera->CurrentFocalLength = cameraData.focalLength;
+        CineCamera->SetCurrentFocalLength(cameraData.focalLength); // RecalcDerivedData
     }
     else if (CameraComponent)
     {
