@@ -214,7 +214,11 @@ namespace RSUCHelpers
         };
         const auto format = formatMap[rsFormat];
 
-        BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, ETextureCreateFlags::TexCreate_RenderTargetable | ETextureCreateFlags::TexCreate_Shared, info);
+        ETextureCreateFlags flags = ETextureCreateFlags::TexCreate_RenderTargetable;
+        RenderStreamLink::UseDX12SharedHeapFlag rs_flag = RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG;
+        RenderStreamLink::instance().rs_useDX12SharedHeapFlag(&rs_flag);
+        flags = static_cast<ETextureCreateFlags>(flags | ((rs_flag == RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG) ? ETextureCreateFlags::TexCreate_Shared : 0));
+        BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, flags, info);
         return true;
     }
 }
