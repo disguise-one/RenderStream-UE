@@ -62,6 +62,7 @@
 #include "Camera/CameraComponent.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
+#include "IRemoteControlProtocolModule.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -181,6 +182,13 @@ void FRenderStreamModule::StartupModule()
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
         FCoreDelegates::OnEndFrame.AddRaw(this, &FRenderStreamModule::OnEndFrame);
         FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
+
+        const IRemoteControlProtocolModule& RemoteControlProtocolModule = IRemoteControlProtocolModule::Get();
+        if (!RemoteControlProtocolModule.IsRCProtocolsDisable())
+        {
+            IRemoteControlProtocolModule::Get().AddProtocol(FRemoteControlRenderStreamProtocol::ProtocolName, MakeShared<FRemoteControlRenderStreamProtocol>());
+        }
+
         Monitor.Open();
     }
 

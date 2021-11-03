@@ -38,7 +38,9 @@ public class RenderStream : ModuleRules
                 "Json", 
                 "JsonUtilities", 
                 "DisplayCluster",
-                "HeadMountedDisplay"
+                "HeadMountedDisplay",
+                "RemoteControl",
+                "RemoteControlProtocol"
             });
 
         PrivateIncludePaths.AddRange(
