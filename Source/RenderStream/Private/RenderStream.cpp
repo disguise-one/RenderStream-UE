@@ -353,6 +353,19 @@ void FRenderStreamModule::ConfigureStream(TSharedPtr<FFrameStream> Stream)
                 Info.Camera->SetActorRelativeTransform(Info.Template->GetRootComponent()->GetRelativeTransform());
 
             APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId);
+            if (!Controller)
+            {
+                Controller = UGameplayStatics::CreatePlayer(GWorld);
+                if (Controller)
+                    Info.PlayerId = UGameplayStatics::GetPlayerControllerID(Controller);
+                else
+                {
+                    UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Could not set new view target for capturing."));
+                    Info.PlayerId = -1;
+                    Info.Camera = nullptr;
+                }
+            }
+
             if (Controller != nullptr)
                 Controller->SetViewTargetWithBlend(Info.Camera.Get());
             else
