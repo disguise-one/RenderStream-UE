@@ -9,3 +9,5 @@ For the plugin setup process - please visit the [RenderStream and Unreal Engine]
 A **Demo Unreal Project** can be found on the [disguise Resources page](https://download.disguise.one/#resources)
 
 _Please note that from version 1.26 onwards, the plugin has been renamed from "disguiseuerenderstream" to "RenderStream-UE". Existing Unreal projects will need to be updated to reflect this._
+
+Pre-Release for testing
