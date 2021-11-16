@@ -290,7 +290,7 @@ EUnit FRenderStreamModule::distanceUnit()
     return ret;
 }
 
-void FRenderStreamModule::ConfigureStream(TSharedPtr<FFrameStream> Stream)
+void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
 {
     FString const& Name = Stream->Name();
     IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
@@ -449,7 +449,7 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 {
     for (auto& pair  : ViewportInfos)
     {
-        const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(pair.Key);
+        const FFrameStreamPtr stream = StreamPool->GetStream(pair.Key);
         if (!stream)
             continue;
 
@@ -649,7 +649,7 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
     if (StreamPool)
     {
         TArray<FStreamInfo> streamInfoArray;
-        for (const TSharedPtr<FFrameStream>& stream : StreamPool->GetAllStreams())
+        for (const FFrameStreamPtr& stream : StreamPool->GetAllStreams())
         {
             if (stream)
             {

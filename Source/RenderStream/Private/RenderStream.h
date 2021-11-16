@@ -59,7 +59,7 @@ protected:
 public:
     static EUnit distanceUnit();
     bool PopulateStreamPool();
-    void ConfigureStream(TSharedPtr<FFrameStream> Stream);
+    void ConfigureStream(FFrameStreamPtr Stream);
 
     static FRenderStreamModule* Get();
     
