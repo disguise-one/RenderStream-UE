@@ -47,7 +47,12 @@ if ($LASTEXITCODE -eq 0) {
 	# Remove the intermediate results from the packaging process - not useful for distribution
 	Remove-Item -Path (Join-Path -Path "$out_path" -ChildPath "Intermediate") -Recurse
 
-    $out_file = "$($plugin_name)_{0}.zip" -f "$($Uplugin.VersionName)"
+    # The version name sometimes contains a slash eg heads/r1.28_UE4.26_r1.28_UE4.26
+    # depending on version of git (see generate_uplugin.ps1 which creates the .uplugin file)
+    $versionName = $Uplugin.VersionName
+    $versionName = $versionName -replace '/', '_'
+
+    $out_file = "$($plugin_name)_{0}.zip" -f $versionName
     $destination = Join-Path -Path "$zip_path" -ChildPath "$out_file"
     $compress = @{
         Path = "$out_path"
