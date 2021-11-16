@@ -61,7 +61,7 @@ protected:
     // Capture settings
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     TWeakObjectPtr<ACameraActor> Template = nullptr;
-    TSharedPtr<FFrameStream> Stream = nullptr;
+    FFrameStreamPtr Stream = nullptr;
     int32_t PlayerControllerID = INDEX_NONE;
     TWeakObjectPtr<APlayerController> Controller = nullptr;
 

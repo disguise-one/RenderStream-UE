@@ -347,7 +347,7 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 {
     for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
     {
-        const TSharedPtr<FFrameStream> stream = StreamPool->GetStream(policy->GetViewportId());
+        const FFrameStreamPtr stream = StreamPool->GetStream(policy->GetViewportId());
         if (!stream)
             continue;
 
@@ -476,7 +476,7 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
     if (StreamPool)
     {
         TArray<FStreamInfo> streamInfoArray;
-        for (const TSharedPtr<FFrameStream>& stream : StreamPool->GetAllStreams())
+        for (const FFrameStreamPtr& stream : StreamPool->GetAllStreams())
         {
             if (stream)
             {

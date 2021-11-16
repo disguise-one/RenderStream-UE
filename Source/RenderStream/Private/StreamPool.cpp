@@ -3,7 +3,7 @@
 
 bool FStreamPool::AddNewStreamToPool(const FString& StreamName, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt)
 {
-    TSharedPtr<FFrameStream> stream = MakeShared<FFrameStream>();
+    FFrameStreamPtr stream = MakeShared<FFrameStream, ESPMode::ThreadSafe>();
     if (!stream->Setup(StreamName, Resolution, Channel, Clipping, Handle, Fmt))
         return false;
 
@@ -11,20 +11,20 @@ bool FStreamPool::AddNewStreamToPool(const FString& StreamName, const FIntPoint&
     return true;
 }
 
-TSharedPtr<FFrameStream> FStreamPool::GetStream(const FString& desiredStreamName)
+FFrameStreamPtr FStreamPool::GetStream(const FString& desiredStreamName)
 {
-    auto It = m_pool.FindByPredicate([&desiredStreamName](const TSharedPtr<FFrameStream>& stream) {
+    auto It = m_pool.FindByPredicate([&desiredStreamName](const FFrameStreamPtr& stream) {
         return stream->Name().Compare(desiredStreamName, ESearchCase::IgnoreCase) == 0;
     });
     return It ? *It : nullptr;
 }
 
-TSharedPtr<FFrameStream> FStreamPool::AllocateStreamFor(const FString& desiredStreamName, uint32 id)
+FFrameStreamPtr FStreamPool::AllocateStreamFor(const FString& desiredStreamName, uint32 id)
 {
     bool exists = m_allocated.Find(id) != nullptr;
     if (!exists && m_pool.Num() > 0)
     {
-        if (TSharedPtr<FFrameStream> stream = GetStream(desiredStreamName))
+        if (FFrameStreamPtr stream = GetStream(desiredStreamName))
         {
             m_allocated.Add(id, stream);
             m_pool.Remove(stream);
@@ -44,7 +44,7 @@ void FStreamPool::ReturnStreamFor(uint32 uid)
     }
 }
 
-const TMap<uint32, TSharedPtr<FFrameStream>>& FStreamPool::GetActiveStreams() const
+const TMap<uint32, FFrameStreamPtr>& FStreamPool::GetActiveStreams() const
 {
     return m_allocated;
 }
