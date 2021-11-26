@@ -467,14 +467,20 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         info.m_frameResponses.push_back({ frameData.tTracked, cameraData });
     }
 
-    if (!info.Camera.IsValid() || cameraData.cameraHandle == 0)
+    if (!info.Camera.IsValid())
         return;
 
     // Attach the instanced Camera to the Capture object for this view.
     USceneComponent* SceneComponent = info.Camera->K2_GetRootComponent();
     UCameraComponent* CameraComponent = info.Camera->GetCameraComponent();
 
-    if (CameraComponent && cameraData.orthoWidth > 0.f)  // Use an orthographic camera
+    if (cameraData.cameraHandle == 0)  // 2D mapping, just set aspect ratio
+    {
+        if (CameraComponent && cameraData.orthoWidth > 0.f)  // TODO: Remove ortho width check on next version bump
+            CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
+        return;
+    }
+    else if (CameraComponent && cameraData.orthoWidth > 0.f)  // Use an orthographic camera
     {
         CameraComponent->ProjectionMode = ECameraProjectionMode::Orthographic;
         CameraComponent->OrthoWidth = FUnitConversion::Convert(float(cameraData.orthoWidth), EUnit::Meters, FRenderStreamModule::distanceUnit());
