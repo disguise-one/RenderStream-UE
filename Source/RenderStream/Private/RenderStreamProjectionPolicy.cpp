@@ -126,10 +126,6 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
         const float ZScale = 1.f / (AssignedCamera->OrthoFarClipPlane - AssignedCamera->OrthoNearClipPlane);
         const float ZOffset = -AssignedCamera->OrthoNearClipPlane;
         PrjMatrix = FReversedZOrthoMatrix(OrthoWidth, OrthoHeight, ZScale, ZOffset);
-
-        // FIX: Currently nDisplay doesn't allow us to set a projection matrix on the viewport.
-        UE_LOG(LogRenderStream, Error, TEXT("Unable to set ortho matrices into ndisplay, currently"));
-        return false;
     }
     else
     {
@@ -142,6 +138,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
         const float b = -FMath::Tan(0.5f * FieldOfViewV);
 
         InViewport->CalculateProjectionMatrix(InContextNum, NCP * l, NCP * r, NCP * t, NCP * b, NCP, FCP, false);
+        PrjMatrix = InViewport->GetContexts()[InContextNum].ProjectionMatrix;
     }
 
     // Center shift
@@ -167,7 +164,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
     clippingTransform.SetTranslationAndScale3D(clippingOffset, clippingScale);
     FMatrix clippingMatrix = clippingTransform.ToMatrixWithScale();
 
-    OutPrjMatrix = InViewport->GetContexts()[InContextNum].ProjectionMatrix * clippingMatrix;
+    OutPrjMatrix = PrjMatrix * clippingMatrix;
 
     return true;
 }
