@@ -6,7 +6,7 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
 {
     if (sceneId >= m_maps.size())
     {
-        UE_LOG(LogRenderStream, Error, TEXT("bla"));
+        UE_LOG(LogRenderStream, Error, TEXT("SceneID out of range for ApplyScene"));
         return;
     }
 
