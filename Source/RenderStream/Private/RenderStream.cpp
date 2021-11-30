@@ -63,6 +63,12 @@
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 
+
+
+#include "Game/IDisplayClusterGameManager.h" 
+#include "DisplayClusterRootActor.h" 
+#include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -547,9 +553,6 @@ void FRenderStreamModule::OnPostEngineInit()
         return;
     }
 
-
-
-
     StreamPool = MakeUnique<FStreamPool>();
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
@@ -575,7 +578,6 @@ void FRenderStreamModule::OnPostEngineInit()
         m_sceneSelector = std::make_unique<SceneSelector_None>();
     }
 
-
 }
 
 void FRenderStreamModule::OnSystemError()
@@ -594,6 +596,15 @@ void FRenderStreamModule::OnBeginFrame()
     const bool IsController = !ClusterMgr || !ClusterMgr->IsSlave();
     if (IsController)
         m_syncFrame.ControllerReceive();
+
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+
+    ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
+    if (RootActor && settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
+    {
+        RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.bIsEnabled = true;
+        RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.OCIOConfiguration = settings->OCIOConfig;
+    }
 }
 
 void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange)
@@ -624,6 +635,7 @@ void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason
                 UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> post process factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
             }
         }
+
     }
 }
 
