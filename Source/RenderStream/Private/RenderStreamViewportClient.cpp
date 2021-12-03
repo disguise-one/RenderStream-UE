@@ -138,6 +138,32 @@ void URenderStreamViewportClient::Init(struct FWorldContext& WorldContext, UGame
 	Super::Init(WorldContext, OwningGameInstance, bCreateNewAudioDevice);
 }
 
+ULocalPlayer* URenderStreamViewportClient::SetupInitialLocalPlayer(FString& OutError)
+{
+    const size_t nHorizontal = 4;
+    const size_t nVertical = 4;
+    MaxSplitscreenPlayers = nHorizontal * nVertical;
+
+    FSplitscreenData ScreenLayout;
+
+    float W = 1.0f / nHorizontal;
+    float H = 1.0f / nVertical;
+
+    for (size_t y = 0; y < nVertical; ++y)
+    {
+        for (size_t x = 0; x < nHorizontal; ++x)
+        {
+            auto Screen = FPerPlayerSplitscreenData(W, H, x * W, y * H);
+            ScreenLayout.PlayerData.Add(Screen);
+        }
+    }
+
+    SetDisableSplitscreenOverride(true);
+    SplitscreenInfo[ESplitScreenType::None] = ScreenLayout;
+
+    return Super::SetupInitialLocalPlayer(OutError);
+}
+
 void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 {
     ////////////////////////////////

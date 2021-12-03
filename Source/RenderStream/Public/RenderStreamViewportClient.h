@@ -14,6 +14,7 @@ public:
     virtual ~URenderStreamViewportClient();
 
     virtual void Init(struct FWorldContext& WorldContext, UGameInstance* OwningGameInstance, bool bCreateNewAudioDevice = true) override;
+    virtual ULocalPlayer* SetupInitialLocalPlayer(FString& OutError) override;
     virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
 
 protected:
