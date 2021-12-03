@@ -35,16 +35,6 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     check(Module);
 
     Module->LoadSchemas(*GWorld);
-    auto viewports = InViewportManager->GetViewports();
-    for (auto viewport : viewports)
-    {
-        auto Stream = Module->StreamPool->GetStream(viewport->GetId());
-        if (!Stream)
-        {
-            Module->PopulateStreamPool();
-            break;
-        }
-    }
 
     return true;
 }

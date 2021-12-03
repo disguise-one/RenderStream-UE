@@ -48,7 +48,7 @@ bool FRenderStreamSyncFrameData::Map(FArchive& Ar)
 
     int rsMajorVersion = RENDER_STREAM_VERSION_MAJOR;
     int rsMinorVersion = RENDER_STREAM_VERSION_MINOR;
-    static const int DATA_VERSION = 2;
+    static const int DATA_VERSION = 3;
     int v = DATA_VERSION;
     Ar << rsMajorVersion;
     Ar << rsMinorVersion;
@@ -69,6 +69,12 @@ bool FRenderStreamSyncFrameData::Map(FArchive& Ar)
     Ar << m_isQuitting;
     Ar << m_frameDataValid;
     Ar.Serialize(&m_frameData, sizeof(RenderStreamLink::FrameData));
+    Ar << m_streamsChanged;
+    if (bIsSaving)
+    {
+        // Reset flag after send
+        m_streamsChanged = false;
+    }
 
     return true;
 }
@@ -92,6 +98,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         FRenderStreamModule* Module = FRenderStreamModule::Get();
         check(Module);
         Module->PopulateStreamPool();
+        m_streamsChanged = true;
 
         // We need to actually get frame data, go back.
         ControllerReceive();
@@ -155,6 +162,15 @@ void FRenderStreamSyncFrameData::FollowerReceive() const
     SCOPE_CYCLE_COUNTER(STAT_ReceiveFrame);
     const double StartTime = FPlatformTime::Seconds();
     RenderStreamLink::instance().rs_setFollower(1);
+
+    if (m_streamsChanged)
+    {
+        // Update the streams
+        FRenderStreamModule* Module = FRenderStreamModule::Get();
+        check(Module);
+        Module->PopulateStreamPool();
+    }
+
     if (m_isQuitting)
     {
         // get the quit status direct from RenderStream, so it can notify everyone that we heard.

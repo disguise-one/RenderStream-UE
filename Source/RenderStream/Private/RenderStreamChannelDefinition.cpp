@@ -240,6 +240,7 @@ void URenderStreamChannelDefinition::EndPlay(const EEndPlayReason::Type Reason)
 
 void URenderStreamChannelDefinition::AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera)
 {
+    check(Camera.IsValid());
     URenderStreamChannelDefinition* Definition = Camera->FindComponentByClass<URenderStreamChannelDefinition>();
     Definition->IsInstance = true;
     InstancedCameras.Add(Camera);

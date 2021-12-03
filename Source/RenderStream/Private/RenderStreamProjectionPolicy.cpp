@@ -39,38 +39,6 @@ bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewpo
     if (GIsEditor)
         return false;
 
-    const FString ViewportId = Viewport->GetId();
-    FRenderStreamModule* Module = FRenderStreamModule::Get();
-    check(Module);
-    
-    auto& Info = Module->GetViewportInfo(ViewportId);
-    if (!UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId))
-    {
-        APlayerController* Controller = UGameplayStatics::CreatePlayer(GWorld);
-        if (Controller)
-            Info.PlayerId = UGameplayStatics::GetPlayerControllerID(Controller);
-        else
-        {
-            UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Could not set new view target for capturing."));
-            Info.PlayerId = -1;
-            Info.Camera = nullptr;
-            return false;
-        }
-    }
-
-    auto Stream = Module->StreamPool->GetStream(ViewportId);
-    if (!Stream)
-    {
-        Module->PopulateStreamPool();
-        Stream = Module->StreamPool->GetStream(ViewportId);
-        if (!Stream)
-        {
-            UE_LOG(LogRenderStreamPolicy, Warning, TEXT("Could not create stream."));
-            return false;
-        }
-    }
-
-    Module->ConfigureStream(Stream);
     return true;
 }
 

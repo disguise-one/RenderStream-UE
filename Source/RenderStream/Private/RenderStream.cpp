@@ -371,7 +371,7 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             else
                 UE_LOG(LogRenderStream, Warning, TEXT("Could not set new view target for capturing, no valid controller."));
 
-            if (Definition)
+            if (Definition && Info.Camera.IsValid())
                 Definition->AddCameraInstance(Info.Camera);
         }
         else

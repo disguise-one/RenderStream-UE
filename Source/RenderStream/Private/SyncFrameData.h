@@ -27,6 +27,7 @@ public:
     bool m_isQuitting = false;
     bool m_frameDataValid = false;
     RenderStreamLink::FrameData m_frameData;
+    bool m_streamsChanged = false;
     double LastTrackedTime = std::numeric_limits<double>::quiet_NaN();
     double AwaitTime = 0;
     mutable double ReceiveTime = 0;
