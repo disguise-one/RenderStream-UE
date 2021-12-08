@@ -97,12 +97,14 @@ TWeakObjectPtr<ACameraActor> URenderStreamChannelDefinition::GetChannelCamera(co
 {
     if (Channel.IsEmpty())
     {
+        UE_LOG(LogRenderStreamChannelDefinition, Warning, TEXT("Channel is empty, returning first camera found in scene."));
         return FindCameraInScene();
     }
 
     const TSharedPtr<TArray<TWeakObjectPtr<ACameraActor>>>* ActorsPtrPtr = ChannelActorMap.Find(Channel);
     if (ActorsPtrPtr == nullptr || !(*ActorsPtrPtr) || (*ActorsPtrPtr)->Num() == 0)
     {
+        UE_LOG(LogRenderStreamChannelDefinition, Warning, TEXT("Channel not found in ChannelActorMap, returning first camera found in scene."));
         return FindCameraInScene();
     }
 
