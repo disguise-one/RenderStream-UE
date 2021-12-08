@@ -39,6 +39,17 @@ bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewpo
     if (GIsEditor)
         return false;
 
+    const FString ViewportId = Viewport->GetId();
+    FRenderStreamModule* Module = FRenderStreamModule::Get();
+    check(Module);
+
+    auto Stream = Module->StreamPool->GetStream(ViewportId);
+    if (Stream)
+    {
+        // Reconfigure stream when scene changes
+        Module->ConfigureStream(Stream);
+    }
+
     return true;
 }
 
