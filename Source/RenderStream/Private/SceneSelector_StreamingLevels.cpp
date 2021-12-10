@@ -18,6 +18,13 @@ static ULevelStreaming* findStreamingLevelByName(const UWorld& World, const FStr
 
 bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema)
 {
+
+    if (!World.PersistentLevel)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("PersistentLevel was null in OnLoadedSchema"));
+        return false;
+    }
+
     // If there's a persistent level with blueprints, include that in all scenes as common properties.
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
 
@@ -66,6 +73,13 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
     {
         spec.loaded = ValidateLevel(sceneId);
     }
+
+    if (!World.PersistentLevel)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("PersistentLevel was null in ApplyScene"));
+        return;
+    }
+
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
     if (spec.streamingLevel == nullptr && spec.persistentRoot == persistentRoot) // base level
     {

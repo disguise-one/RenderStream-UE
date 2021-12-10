@@ -19,6 +19,12 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
     }
     else
     {
+        if (!world.PersistentLevel)
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("PersistentLevel was null in ApplyScene"));
+            return;
+        }
+
         AActor* persistentRoot = world.PersistentLevel->GetLevelScriptActor();
 
         switch (map.ValidationState)
