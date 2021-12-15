@@ -140,8 +140,6 @@ static const FName DisplayClusterModuleName(TEXT("DisplayCluster"));
 
 void FRenderStreamModule::StartupModule()
 {
-    m_World = nullptr;
-
     FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME))->GetBaseDir(), TEXT("Shaders"));
     AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
@@ -261,14 +259,12 @@ void FRenderStreamModule::LoadSchemas(const UWorld& World)
         FCoreDelegates::OnPostEngineInit.RemoveAll(this);
     }
     m_sceneSelector->LoadSchemas(World);
-    m_World = &World;
 }
 
 void FRenderStreamModule::ApplyScene(uint32_t sceneId)
 {
     check(m_sceneSelector != nullptr);
-    check(m_World != nullptr);
-    m_sceneSelector->ApplyScene(*m_World, sceneId);
+    m_sceneSelector->ApplyScene(*GWorld, sceneId);
 }
 
 EUnit FRenderStreamModule::distanceUnit()

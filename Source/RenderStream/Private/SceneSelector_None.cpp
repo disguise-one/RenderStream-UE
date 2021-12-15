@@ -19,6 +19,12 @@ bool SceneSelector_None::OnLoadedSchema(const UWorld& World, const RenderStreamL
     check(Schema.scenes.nScenes == 1);
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
 
+    if (!persistentRoot)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in OnLoadedSchema"));
+        return false;
+    }
+
     const RenderStreamLink::RemoteParameters& scene = Schema.scenes.scenes[0];
     UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorNone: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(scene.name), scene.nParameters);
     return ValidateParameters(Schema.scenes.scenes[0], { persistentRoot }); // TODO: DSOF-16266 to include all sub-levels
@@ -39,6 +45,12 @@ void SceneSelector_None::ApplyScene(const UWorld& World, uint32_t SceneId)
     }
 
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
+
+    if (!persistentRoot)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in ApplyScene"));
+        return;
+    }
 
     ApplyParameters(SceneId, { persistentRoot });
 }
