@@ -289,7 +289,7 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 28
+#define RENDER_STREAM_VERSION_MINOR 29
 
     enum SenderFrameType
     {
