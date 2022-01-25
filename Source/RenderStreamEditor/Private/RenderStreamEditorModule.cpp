@@ -520,6 +520,8 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
 
     UWorld* World = GEditor->GetEditorWorldContext().World();
 
+    static const FString defaultMapErrMsg = "!!!ERROR: Unable to set default map. Ensure that Game Default Map is valid and \nhas been opened at least once in the Unreal Editor, or use the Maps scene selector. This is not a bug.";
+
     switch (settings->SceneSelector)
     {
     case ERenderStreamSceneSelector::None:
@@ -532,8 +534,11 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             GenerateScene(*Schema.schema.scenes.scenes, MainMap, nullptr);
         }
         else
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("No default map defined, either use Maps scene selector or define a default map."));
-
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("%s"), *defaultMapErrMsg);
+            GEngine->AddOnScreenDebugMessage(-1, 20.f, FColor::Red, defaultMapErrMsg);
+        }
+            
         break;
     }
 
@@ -555,7 +560,10 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             }
         }
         else
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("No default map defined, either use Maps scene selector or define a default map."));
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("%s"), *defaultMapErrMsg);
+            GEngine->AddOnScreenDebugMessage(-1, 20.f, FColor::Red, defaultMapErrMsg);
+        }
 
         break;
     }

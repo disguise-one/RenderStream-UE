@@ -287,7 +287,10 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
 
 void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) const
 {
-    check(sceneId < Schema().scenes.nScenes);
+    if (sceneId >= Schema().scenes.nScenes)
+    {
+        UE_LOG(LogRenderStream, Fatal, TEXT("Error attempting to select scene %d out of %d scenes. Ensure that all relevant scenes have been loaded in the Unreal Editor at least once."), sceneId, Schema().scenes.nScenes);
+    }
     const RenderStreamLink::RemoteParameters& params = Schema().scenes.scenes[sceneId];
 
     size_t nFloatParams = 0;

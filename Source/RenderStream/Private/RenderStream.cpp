@@ -79,6 +79,11 @@ namespace
         auto dx11device = static_cast<ID3D11Device*>(GDynamicRHI->RHIGetNativeDevice());
         return dx11device;
     }
+
+    bool IsInCluster()
+    {
+        return IDisplayCluster::IsAvailable() && IDisplayCluster::Get().GetOperationMode() == EDisplayClusterOperationMode::Cluster;
+    }
 }
 
 class FRenderStreamMonitor : public FRunnable
@@ -215,11 +220,15 @@ void FRenderStreamModule::ShutdownModule()
 
     if (IDisplayCluster::IsAvailable())
     {
-        IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
-        if (ClusterMgr)
+        if (IsInCluster())
         {
-            ClusterMgr->UnregisterSyncObject(&m_syncFrame);
+            IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
+            if (ClusterMgr)
+            {
+                ClusterMgr->UnregisterSyncObject(&m_syncFrame);
+            }
         }
+
         IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
         if (RenderMgr)
         {
@@ -587,6 +596,9 @@ void FRenderStreamModule::OnSystemError()
 
 void FRenderStreamModule::OnBeginFrame()
 {
+    if (!IsInCluster())
+        return;
+
     // UpdateSyncObject
     IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::IsAvailable() ? IDisplayCluster::Get().GetClusterMgr() : nullptr;
     const bool IsController = !ClusterMgr || !ClusterMgr->IsSlave();
@@ -637,7 +649,7 @@ void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason
 
 void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
 {
-    if (IDisplayCluster::IsAvailable())
+    if (IsInCluster())
     {
         IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
         check(ClusterMgr);
@@ -766,6 +778,9 @@ void FRenderStreamModule::EnableStats() const
 
 void FRenderStreamModule::OnEndFrame()
 {
+    if (!IsInCluster())
+        return;
+
     TArray<RenderStreamLink::ProfilingEntry> Entries;
 #if STATS
     FetchStats(Entries);
