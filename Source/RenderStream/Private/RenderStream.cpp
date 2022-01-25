@@ -487,7 +487,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
 
     if (cameraData.cameraHandle == 0)  // 2D mapping, just set aspect ratio
     {
-        if (CameraComponent && cameraData.orthoWidth > 0.f)  // TODO: Remove ortho width check on next version bump
+        if (CameraComponent)
             CameraComponent->SetAspectRatio(cameraData.sensorX / cameraData.sensorY);
         return;
     }
