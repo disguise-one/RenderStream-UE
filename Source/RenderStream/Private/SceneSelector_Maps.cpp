@@ -14,12 +14,23 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
 
     if (world.GetName() != map.Name)
     {
-
         UGameplayStatics::OpenLevel(&world, FName(map.Name));
     }
     else
     {
+        if (!world.PersistentLevel)
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("PersistentLevel was null in ApplyScene"));
+            return;
+        }
+
         AActor* persistentRoot = world.PersistentLevel->GetLevelScriptActor();
+
+        if (!persistentRoot)
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in ApplyScene"));
+            return;
+        }
 
         switch (map.ValidationState)
         {

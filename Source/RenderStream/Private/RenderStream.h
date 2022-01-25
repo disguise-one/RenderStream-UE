@@ -83,6 +83,5 @@ public:
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
-    const UWorld* m_World; // temporary - needs to be held by Scene Selector.
     double m_LastTime = 0;
 };
