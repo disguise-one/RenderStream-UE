@@ -200,7 +200,6 @@ namespace
         // Sigh, why can't I just modify the row instead of recreating it...
         FDetailWidgetRow& NewRow = IRow->CustomWidget(true);
         NewRow.CopyMenuAction = Row.CopyMenuAction;
-        NewRow.DiffersFromDefaultAttr = Row.DiffersFromDefaultAttr;
         NewRow.FilterTextString = Row.FilterTextString;
         NewRow.IsEnabledAttr = Row.IsEnabledAttr;
         NewRow.PasteMenuAction = Row.PasteMenuAction;

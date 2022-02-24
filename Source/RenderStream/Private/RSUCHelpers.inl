@@ -57,7 +57,7 @@ namespace {
      *****************************************************************************/
 
     BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, )
-    SHADER_PARAMETER(FVector2D, UVScale)
+    SHADER_PARAMETER(FVector2f, UVScale)
     SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
     SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
@@ -71,7 +71,7 @@ namespace {
         {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
             UB.Texture = RGBTexture;
-            UB.UVScale = FVector2D((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
+            UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
         }
 
         TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
@@ -102,8 +102,8 @@ namespace RSUCHelpers
         RenderStreamLink::CameraResponseData FrameData,
         FRHITexture2D* InSourceTexture,
         FIntPoint Point,
-        FVector2D CropU,
-        FVector2D CropV)
+        FVector2f CropU,
+        FVector2f CropV)
     {
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
         // convert the source with a draw call
@@ -133,7 +133,7 @@ namespace RSUCHelpers
 
             TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
             GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-            SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+            SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
             auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
             ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
 
@@ -142,7 +142,7 @@ namespace RSUCHelpers
             float URight = CropU.Y;
             float VTop = CropV.X;
             float VBottom = CropV.Y;
-            FVertexBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer(ULeft, URight, VTop, VBottom);
+            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer(ULeft, URight, VTop, VBottom);
             RHICmdList.SetStreamSource(0, VertexBuffer, 0);
 
             // set viewport to RT size
@@ -197,7 +197,7 @@ namespace RSUCHelpers
         const FIntPoint& Resolution,
         RenderStreamLink::RSPixelFormat rsFormat)
     {
-        FRHIResourceCreateInfo info{ FClearValueBinding::Green };
+        FRHIResourceCreateInfo info(TEXT("RenderStream:Stream"), FClearValueBinding::Green);
 
         struct
         {
@@ -214,10 +214,10 @@ namespace RSUCHelpers
         };
         const auto format = formatMap[rsFormat];
 
-        ETextureCreateFlags flags = ETextureCreateFlags::TexCreate_RenderTargetable;
+        ETextureCreateFlags flags = ETextureCreateFlags::RenderTargetable;
         RenderStreamLink::UseDX12SharedHeapFlag rs_flag = RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG;
         RenderStreamLink::instance().rs_useDX12SharedHeapFlag(&rs_flag);
-        flags = static_cast<ETextureCreateFlags>(flags | ((rs_flag == RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG) ? ETextureCreateFlags::TexCreate_Shared : 0));
+        flags = static_cast<ETextureCreateFlags>(flags | ((rs_flag == RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG) ? ETextureCreateFlags::Shared : ETextureCreateFlags::None));
         BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, flags, info);
         return true;
     }

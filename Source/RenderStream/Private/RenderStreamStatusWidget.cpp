@@ -46,7 +46,7 @@ bool URenderStreamStatusWidget::Initialize()
 				if (logo && m_logoTex)
 				{
 					logo->SetBrushFromTexture(m_logoTex);
-					logo->SetBrushSize({ float(logoSize), float(logoSize) });
+					logo->SetDesiredSizeOverride({ float(logoSize), float(logoSize) });
 					horizBox->AddChild(logo);
 				}
 
@@ -67,7 +67,7 @@ bool URenderStreamStatusWidget::Initialize()
 					if (titleText)
 					{
 						titleText->SetText(FText::FromString("RenderStream Status"));
-						titleText->SetColorAndOpacity(FSlateColor({ 1.0, 1.0, 1.0 }));
+						titleText->SetColorAndOpacity(FSlateColor(FColor(1.0, 1.0, 1.0)));
 						titleText->Font.Size = fontSize;
 						vertBox->AddChild(titleText);
 					}

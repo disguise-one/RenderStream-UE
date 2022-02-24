@@ -3,9 +3,9 @@
 #include "Containers/UnrealString.h"
 #include "Styling/SlateColor.h"
 
-#define RSSTATUS_RED FSlateColor({ 1.0, 0.0, 0.0 })
-#define RSSTATUS_GREEN FSlateColor({ 0.0, 1.0, 0.0 })
-#define RSSTATUS_ORANGE FSlateColor({ 1.0, 0.5, 0.0 })
+#define RSSTATUS_RED FSlateColor(FColor( 1.0, 0.0, 0.0 ))
+#define RSSTATUS_GREEN FSlateColor(FColor( 0.0, 1.0, 0.0 ))
+#define RSSTATUS_ORANGE FSlateColor(FColor( 1.0, 0.5, 0.0 ))
 
 class FRenderStreamStatus
 {

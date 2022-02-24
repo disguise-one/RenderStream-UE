@@ -599,7 +599,7 @@ void FRenderStreamModule::OnBeginFrame()
 
     // UpdateSyncObject
     IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::IsAvailable() ? IDisplayCluster::Get().GetClusterMgr() : nullptr;
-    const bool IsController = !ClusterMgr || !ClusterMgr->IsSlave();
+    const bool IsController = !ClusterMgr || ClusterMgr->IsPrimary();
     if (IsController)
         m_syncFrame.ControllerReceive();
 }
@@ -807,7 +807,7 @@ void FRenderStreamModule::OnEndFrame()
 
     // Because their stats api is weird for now we are manually timing this.
     IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::IsAvailable() ? IDisplayCluster::Get().GetClusterMgr() : nullptr;
-    const bool IsController = !ClusterMgr || !ClusterMgr->IsSlave();
+    const bool IsController = !ClusterMgr || ClusterMgr->IsPrimary();
     if (IsController)
         Entries.Push({ "Await Time", (float)m_syncFrame.AwaitTime });
     else

@@ -158,7 +158,7 @@ ULocalPlayer* URenderStreamViewportClient::SetupInitialLocalPlayer(FString& OutE
         }
     }
 
-    SetDisableSplitscreenOverride(true);
+    SetForceDisableSplitscreen(true);
     SplitscreenInfo[ESplitScreenType::None] = ScreenLayout;
 
     return Super::SetupInitialLocalPlayer(OutError);
@@ -347,7 +347,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                 // Calculate the player's view information.
                 FVector		ViewLocation;
                 FRotator	ViewRotation;
-                FSceneView* View = LocalPlayer->CalcSceneView(&ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoscopicPass);
+                FSceneView* View = LocalPlayer->CalcSceneView(&ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoViewIndex);
 
                 if (View && DCView.bDisableRender)
                 {
@@ -375,35 +375,35 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     if (View->Family->EngineShowFlags.Wireframe)
                     {
                         // Wireframe color is emissive-only, and mesh-modifying materials do not use material substitution, hence...
-                        View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                        View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                        View->DiffuseOverrideParameter = FVector4f(0.f, 0.f, 0.f, 0.f);
+                        View->SpecularOverrideParameter = FVector4f(0.f, 0.f, 0.f, 0.f);
                     }
                     else if (View->Family->EngineShowFlags.OverrideDiffuseAndSpecular)
                     {
-                        View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
-                        View->SpecularOverrideParameter = FVector4(.1f, .1f, .1f, 0.0f);
+                        View->DiffuseOverrideParameter = FVector4f(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
+                        View->SpecularOverrideParameter = FVector4f(.1f, .1f, .1f, 0.0f);
                     }
                     else if (View->Family->EngineShowFlags.LightingOnlyOverride)
                     {
-                        View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
-                        View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                        View->DiffuseOverrideParameter = FVector4f(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
+                        View->SpecularOverrideParameter = FVector4f(0.f, 0.f, 0.f, 0.f);
                     }
                     else if (View->Family->EngineShowFlags.ReflectionOverride)
                     {
-                        View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-                        View->SpecularOverrideParameter = FVector4(1, 1, 1, 0.0f);
-                        View->NormalOverrideParameter = FVector4(0, 0, 1, 0.0f);
+                        View->DiffuseOverrideParameter = FVector4f(0.f, 0.f, 0.f, 0.f);
+                        View->SpecularOverrideParameter = FVector4f(1, 1, 1, 0.0f);
+                        View->NormalOverrideParameter = FVector4f(0, 0, 1, 0.0f);
                         View->RoughnessOverrideParameter = FVector2D(0.0f, 0.0f);
                     }
 
                     if (!View->Family->EngineShowFlags.Diffuse)
                     {
-                        View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                        View->DiffuseOverrideParameter = FVector4f(0.f, 0.f, 0.f, 0.f);
                     }
 
                     if (!View->Family->EngineShowFlags.Specular)
                     {
-                        View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
+                        View->SpecularOverrideParameter = FVector4f(0.f, 0.f, 0.f, 0.f);
                     }
 
                     View->CurrentBufferVisualizationMode = GetCurrentBufferVisualizationMode();
@@ -472,11 +472,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                                 }
                             }
                         }
-
-#if RHI_RAYTRACING
-                        View->SetupRayTracedRendering();
-#endif
-
                     }
 
                     // Add view information for resource streaming. Allow up to 5X boost for small FOV.
@@ -540,7 +535,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                         ViewFamily.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(
                             ViewFamily,
                             DynamicResolutionStateInfos.ResolutionFractionApproximation,
-                            false,
                             DynamicResolutionStateInfos.ResolutionFractionUpperBound));
                     }
 
