@@ -30,6 +30,8 @@ public:
 
         RS_FMT_RGBA8,
         RS_FMT_RGBX8,
+
+        RS_FMT_R32F
     };
 
     enum RS_ERROR
@@ -160,6 +162,25 @@ public:
         OpenGlData gl;
     } SenderFrameTypeData;
 
+    typedef struct
+    {
+        SenderFrameTypeData colour;
+        SenderFrameTypeData depth;
+    } SenderFrameTypeDataStruct;
+    
+    typedef struct
+    {
+        FRHITexture2D* Colour;
+        FRHITexture2D* Depth;
+    } Textures;
+
+    typedef struct
+    {
+        FTextureRHIRef Colour;
+        FTextureRHIRef Depth;
+    } TexturesRHIRef;
+
+    
     typedef struct
     {
         uint32_t xOffset;
@@ -348,7 +369,7 @@ private:
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
-    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const CameraResponseData* sendData); // publish a frame buffer which was generated from the associated tracking and timing information.
+    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeDataStruct data, const CameraResponseData* sendData); // publish a frame buffer which was generated from the associated tracking and timing information.
 
     typedef RS_ERROR rs_logToD3Fn(const char * str);
     typedef RS_ERROR rs_sendProfilingDataFn(ProfilingEntry* entries, int count);

@@ -52,6 +52,18 @@ namespace {
         void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions);
     };
 
+    class RSResizeCopyDepth
+        : public RSResizeCopy
+    {
+        DECLARE_EXPORTED_SHADER_TYPE(RSResizeCopyDepth, Global, /* RenderStream */);
+    public:
+        RSResizeCopyDepth() { }
+
+        RSResizeCopyDepth(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+            : RSResizeCopy(Initializer)
+        { }
+    };
+
 
     /* FRGBConvertPS shader
      *****************************************************************************/
@@ -64,6 +76,7 @@ namespace {
 
     IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
+    IMPLEMENT_SHADER_TYPE(, RSResizeCopyDepth, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSDepthCopyPS"), SF_Pixel);
 
     void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions)
     {
@@ -96,26 +109,26 @@ namespace RSUCHelpers
         return dx12device;
     }
 
-    static void SendFrame(const RenderStreamLink::StreamHandle Handle,
-        FTextureRHIRef& BufTexture,
-        FRHICommandListImmediate& RHICmdList,
-        RenderStreamLink::CameraResponseData FrameData,
-        FRHITexture2D* InSourceTexture,
+    template <typename SHADER_TYPE>
+    static void Blit(FRHICommandListImmediate& RHICmdList,
+        FTextureRHIRef OutTexture, 
+        FRHITexture2D* SourceTexture, 
         FIntPoint Point,
         FVector2D CropU,
-        FVector2D CropV)
+        FVector2D CropV,
+        const TCHAR* DrawEventName)
     {
-        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
+       
         // convert the source with a draw call
         FGraphicsPipelineStateInitializer GraphicsPSOInit;
-        FRHITexture* RenderTarget = BufTexture.GetReference();
+        FRHITexture* RenderTarget = OutTexture.GetReference();
         FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::DontLoad_Store);
 
         {
-            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Blit"));
+            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, DrawEventName);
             RHICmdList.BeginRenderPass(RPInfo, TEXT("MediaCapture"));
 
-            RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc, ERHIAccess::RTV));
+            RHICmdList.Transition(FRHITransitionInfo(OutTexture, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc, ERHIAccess::RTV));
 
             RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
@@ -131,11 +144,11 @@ namespace RSUCHelpers
             GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
             GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 
-            TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
+            TShaderMapRef<SHADER_TYPE> ConvertShader(ShaderMap);
             GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
             SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
-            ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+            auto streamTexSize = OutTexture->GetTexture2D()->GetSizeXY();
+            ConvertShader->SetParameters(RHICmdList, SourceTexture, Point);
 
             // draw full size quad into render target
             float ULeft = CropU.X;
@@ -148,15 +161,31 @@ namespace RSUCHelpers
             // set viewport to RT size
             RHICmdList.SetViewport(0, 0, 0.0f, streamTexSize.X, streamTexSize.Y, 1.0f);
             RHICmdList.DrawPrimitive(0, 2, 1);
-            RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::RTV, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc));
+            RHICmdList.Transition(FRHITransitionInfo(OutTexture, ERHIAccess::RTV, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc));
 
             RHICmdList.EndRenderPass();
         }
+    }
+
+    static void SendFrame(const RenderStreamLink::StreamHandle Handle,
+        RenderStreamLink::TexturesRHIRef& BufTexture,
+        FRHICommandListImmediate& RHICmdList,
+        RenderStreamLink::CameraResponseData FrameData,
+        RenderStreamLink::Textures InTextures,
+        FIntPoint Point,
+        FVector2D CropU,
+        FVector2D CropV)
+    {
+        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
+
+        Blit<RSResizeCopy>(RHICmdList, BufTexture.Colour, InTextures.Colour, Point, CropU, CropV, TEXT("RS Blit Colour"));
+        //if(InTextures.Depth)
+        //    Blit<RSResizeCopyDepth>(RHICmdList, BufTexture.Depth, InTextures.Depth, Point, CropU, CropV, TEXT("RS Blit Depth"));
 
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
-        FRHITexture2D* tex2d2 = BufTexture->GetTexture2D();
-        auto point2 = tex2d2->GetSizeXY();
-        void* resource = BufTexture->GetTexture2D()->GetNativeResource();
+
+        void* colour = BufTexture.Colour->GetNativeResource();
+        void* depth = BufTexture.Depth->GetNativeResource();
 
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D11")
@@ -166,8 +195,9 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
-            data.dx11.resource = static_cast<ID3D11Resource*>(resource);
+            RenderStreamLink::SenderFrameTypeDataStruct data = {};
+            data.colour.dx11.resource = static_cast<ID3D11Resource*>(colour);
+            data.depth.dx11.resource = static_cast<ID3D11Resource*>(depth);
             RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data, &FrameData);
         }
         else if (toggle == "D3D12")
@@ -177,9 +207,9 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
-            data.dx12.resource = static_cast<ID3D12Resource*>(resource);
-
+            RenderStreamLink::SenderFrameTypeDataStruct data = {};
+            data.colour.dx12.resource = static_cast<ID3D12Resource*>(colour);
+            data.depth.dx12.resource = static_cast<ID3D12Resource*>(depth);
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
                 if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &FrameData) != RenderStreamLink::RS_ERROR_SUCCESS)
@@ -211,6 +241,7 @@ namespace RSUCHelpers
             { DXGI_FORMAT_R32G32B32A32_FLOAT, EPixelFormat::PF_A32B32G32R32F}, // RS_FMT_RGBA16 
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBA8
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBX8
+            { DXGI_FORMAT_R32_FLOAT, EPixelFormat::PF_R32_FLOAT}
         };
         const auto format = formatMap[rsFormat];
 

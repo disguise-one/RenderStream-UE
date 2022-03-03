@@ -10,6 +10,8 @@
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
 
+#include "RenderStreamSceneViewExtension.h"
+
 class UCameraComponent;
 class UWorld;
 class FRenderStreamModule;
@@ -69,7 +71,10 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::OutputFrameTargetableResource, Resources, Rects);
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+
+        FRHITexture2D* depth = Module->ViewExtension->getExtractedDepth();
+        RenderStreamLink::Textures textures{Resources[0], depth};
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, textures, Rects[0]);
     }
 
     // Uncomment this to restore client display

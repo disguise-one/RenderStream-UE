@@ -34,6 +34,7 @@ public class RenderStream : ModuleRules
                 "D3D11RHI", 
                 "D3D12RHI", 
                 "RenderCore", 
+                "Renderer",
                 "Projects", 
                 "Json", 
                 "JsonUtilities", 
@@ -46,7 +47,9 @@ public class RenderStream : ModuleRules
             {
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private"),
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private/Windows"),
-                Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include")
+                Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include"),
+                Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Private"),
+                Path.Combine(EngineDirectory, "Source/Runtime/Renderer/Private/PostProcess")
             });
 
         DynamicallyLoadedModuleNames.AddRange(new string[] { });
