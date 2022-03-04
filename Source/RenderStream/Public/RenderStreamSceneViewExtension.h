@@ -25,12 +25,14 @@ public:
     virtual void PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) {}
     
     // meat and potatoes
-    virtual void PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily);
+    virtual void PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) override;
     virtual void PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) override;
 	
     static void copyToIntermediateBuffer_RenderThread(FRHICommandListImmediate& RHICmdList, FTexture2DRHIRef& Src, FTexture2DRHIRef& Dst);
     
     FTexture2DRHIRef getExtractedDepth();
+
+    bool IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const override;
 
 public:
     FTexture2DRHIRef m_intermediateDepth;

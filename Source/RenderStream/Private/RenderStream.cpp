@@ -63,8 +63,6 @@
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 
-#include "RenderStreamSceneViewExtension.h"
-
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -199,8 +197,6 @@ void FRenderStreamModule::StartupModule()
     {
         FModuleManager::Get().OnModulesChanged().AddRaw(this, &FRenderStreamModule::OnModulesChanged);
     }
-
-    ViewExtension = FRenderStreamSceneViewExtension::Create();
 
 }
 

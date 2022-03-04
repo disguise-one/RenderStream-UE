@@ -30,8 +30,6 @@ public:
 
         RS_FMT_RGBA8,
         RS_FMT_RGBX8,
-
-        RS_FMT_R32F
     };
 
     enum RS_ERROR

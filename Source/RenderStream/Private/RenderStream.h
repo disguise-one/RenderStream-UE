@@ -27,8 +27,6 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 
-class FRenderStreamSceneViewExtension;
-
 struct FRenderStreamViewportInfo
 {
     TWeakObjectPtr<ACameraActor> Template = nullptr;
@@ -85,6 +83,6 @@ public:
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
-    TSharedPtr<FRenderStreamSceneViewExtension, ESPMode::ThreadSafe> ViewExtension = nullptr;
+
     double m_LastTime = 0;
 };

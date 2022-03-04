@@ -18,5 +18,6 @@ void RSDepthCopyPS(
 	out float4 OutColor : SV_Target0)
 {
 	float2 ScaledUV = InUV; // * RSResizeCopyUB.UVScale;
-	OutColor = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV).r;
+	float z = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV).r;
+    OutColor = 1.f / z; // convert from device to scene z here.
 }

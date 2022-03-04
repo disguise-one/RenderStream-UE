@@ -179,9 +179,9 @@ namespace RSUCHelpers
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
 
         Blit<RSResizeCopy>(RHICmdList, BufTexture.Colour, InTextures.Colour, Point, CropU, CropV, TEXT("RS Blit Colour"));
-        //if(InTextures.Depth)
-        //    Blit<RSResizeCopyDepth>(RHICmdList, BufTexture.Depth, InTextures.Depth, Point, CropU, CropV, TEXT("RS Blit Depth"));
-
+        
+        Blit<RSResizeCopyDepth>(RHICmdList, BufTexture.Depth, InTextures.Depth, Point, CropU, CropV, TEXT("RS Blit Depth"));
+        
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
 
         void* colour = BufTexture.Colour->GetNativeResource();
@@ -241,7 +241,7 @@ namespace RSUCHelpers
             { DXGI_FORMAT_R32G32B32A32_FLOAT, EPixelFormat::PF_A32B32G32R32F}, // RS_FMT_RGBA16 
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBA8
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBX8
-            { DXGI_FORMAT_R32_FLOAT, EPixelFormat::PF_R32_FLOAT}
+            {DXGI_FORMAT_R32_FLOAT, EPixelFormat::PF_R32_FLOAT}
         };
         const auto format = formatMap[rsFormat];
 

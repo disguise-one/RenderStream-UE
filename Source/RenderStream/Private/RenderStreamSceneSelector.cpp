@@ -364,7 +364,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         { RenderStreamLink::RS_FMT_RGBA16, EPixelFormat::PF_A16B16G16R16 },
         { RenderStreamLink::RS_FMT_RGBA8, EPixelFormat::PF_R8G8B8A8},
         { RenderStreamLink::RS_FMT_RGBX8, EPixelFormat::PF_R8G8B8A8 },
-        { RenderStreamLink::RS_FMT_R32F, EPixelFormat::PF_R32_FLOAT}
     };
 
     size_t iParam = 0;

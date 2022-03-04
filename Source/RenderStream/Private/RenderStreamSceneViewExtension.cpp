@@ -22,7 +22,8 @@ FRenderStreamSceneViewExtension::~FRenderStreamSceneViewExtension()
 
 TSharedPtr<FRenderStreamSceneViewExtension, ESPMode::ThreadSafe> FRenderStreamSceneViewExtension::Create()
 {
-    return FSceneViewExtensions::NewExtension<FRenderStreamSceneViewExtension>();
+    auto ext =  FSceneViewExtensions::NewExtension<FRenderStreamSceneViewExtension>();
+    return ext;
 }
 
 void FRenderStreamSceneViewExtension::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
@@ -83,4 +84,9 @@ void FRenderStreamSceneViewExtension::PostRenderBasePass_RenderThread(FRHIComman
 FTexture2DRHIRef FRenderStreamSceneViewExtension::getExtractedDepth()
 {
     return m_intermediateDepth.IsValid() ? m_intermediateDepth : nullptr;
+}
+
+bool FRenderStreamSceneViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
+{
+    return true;
 }
