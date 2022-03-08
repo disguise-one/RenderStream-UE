@@ -29,17 +29,17 @@ TSharedPtr<FRenderStreamSceneViewExtension, ESPMode::ThreadSafe> FRenderStreamSc
 void FRenderStreamSceneViewExtension::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily)
 {
     
-    FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-    FTexture2DRHIRef depthTex = SceneContext.GetSceneDepthTexture();
-    copyToIntermediateBuffer_RenderThread(RHICmdList, depthTex, m_intermediateDepth);
-
-    UE_LOG(LogRenderStreamViewExtension, Verbose, TEXT("Copied SceneDepth texture on PostRenderViewFamily_RenderThread"));
     
 }
 
 void FRenderStreamSceneViewExtension::PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
 {
     // Here is where GBuffer info should be extracted
+    FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+    FTexture2DRHIRef depthTex = SceneContext.GetSceneDepthTexture();
+    copyToIntermediateBuffer_RenderThread(RHICmdList, depthTex, m_intermediateDepth);
+
+    UE_LOG(LogRenderStreamViewExtension, Verbose, TEXT("Copied SceneDepth texture on PostRenderViewFamily_RenderThread"));
 
 }
 

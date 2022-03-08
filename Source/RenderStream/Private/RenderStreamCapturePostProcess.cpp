@@ -74,8 +74,9 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
 
+
         FRHITexture2D* depth = ViewExtension->getExtractedDepth();
-        RenderStreamLink::Textures textures{Resources[0], depth};
+        RenderStreamLink::Textures textures{Resources[0], depth };
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, textures, Rects[0]);
     }
 

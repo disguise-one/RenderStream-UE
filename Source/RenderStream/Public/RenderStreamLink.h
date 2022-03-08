@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <memory>
+#include <vector>
 
 struct ID3D11Device;
 struct ID3D12Device;
@@ -128,6 +129,7 @@ public:
     {
         double tTracked;
         CameraData camera;
+        std::vector<uint8_t> depth;
     } CameraResponseData;
 
 
