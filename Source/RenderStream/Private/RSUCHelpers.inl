@@ -180,12 +180,13 @@ namespace RSUCHelpers
 
         Blit<RSResizeCopy>(RHICmdList, BufTexture.Colour, InTextures.Colour, Point, CropU, CropV, TEXT("RS Blit Colour"));
         
-        Blit<RSResizeCopyDepth>(RHICmdList, BufTexture.Depth, InTextures.Depth, Point, CropU, CropV, TEXT("RS Blit Depth"));
+        if(InTextures.Depth)
+            Blit<RSResizeCopyDepth>(RHICmdList, BufTexture.Depth, InTextures.Depth, Point, CropU, CropV, TEXT("RS Blit Depth"));
         
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
 
         void* colour = BufTexture.Colour->GetNativeResource();
-        void* depth = BufTexture.Depth->GetNativeResource();
+        void* depth = (InTextures.Depth) ? BufTexture.Depth->GetNativeResource() : nullptr;
 
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D11")

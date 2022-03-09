@@ -36,5 +36,6 @@ public:
 
 public:
     FTexture2DRHIRef m_intermediateDepth;
+    bool m_depthEnabled;
 
 };

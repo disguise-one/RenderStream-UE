@@ -3,17 +3,25 @@
 #include "RenderStreamSceneViewExtension.h"
 #include "Renderer/Private/PostProcess/SceneRenderTargets.h"
 
+#include "CoreGlobals.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStreamViewExtension);
 
 FRenderStreamSceneViewExtension::FRenderStreamSceneViewExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {
+    m_depthEnabled = false;
+    check(GConfig->GetBool(TEXT("/Script/RenderStream.Experimental"), TEXT("enableDepth"), m_depthEnabled, GEngineIni));
+
     IsActiveThisFrameFunctions.Empty();
     FSceneViewExtensionIsActiveFunctor IsActiveFunctor;
-    IsActiveFunctor.IsActiveFunction = [](const ISceneViewExtension* SceneViewExtension, const FSceneViewExtensionContext& Context)
+    IsActiveFunctor.IsActiveFunction = [=](const ISceneViewExtension* SceneViewExtension, const FSceneViewExtensionContext& Context)
     {
-        return TOptional<bool>(true);
+        return TOptional<bool>(m_depthEnabled);
     };
     IsActiveThisFrameFunctions.Add(IsActiveFunctor);
+
+
+   
 }
 
 FRenderStreamSceneViewExtension::~FRenderStreamSceneViewExtension()
@@ -88,5 +96,5 @@ FTexture2DRHIRef FRenderStreamSceneViewExtension::getExtractedDepth()
 
 bool FRenderStreamSceneViewExtension::IsActiveThisFrame_Internal(const FSceneViewExtensionContext& Context) const
 {
-    return true;
+    return m_depthEnabled;
 }
