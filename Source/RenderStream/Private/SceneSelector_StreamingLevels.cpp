@@ -28,12 +28,6 @@ bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const Re
     // If there's a persistent level with blueprints, include that in all scenes as common properties.
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
 
-    if (!persistentRoot)
-    {
-        UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in OnLoadedSchema"));
-        return false;
-    }
-
     m_specs.resize(Schema.scenes.nScenes);
     for (uint32_t i = 0; i < Schema.scenes.nScenes; ++i)
     {
@@ -87,12 +81,6 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
     }
 
     AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
-
-    if (!persistentRoot)
-    {
-        UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in ApplyScene"));
-        return;
-    }
 
     if (spec.streamingLevel == nullptr && spec.persistentRoot == persistentRoot) // base level
     {
