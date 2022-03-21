@@ -434,6 +434,8 @@ bool FRenderStreamModule::PopulateStreamPool()
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
                 Stream = StreamPool->GetStream(Name);
             }
+            else
+                Stream->updateHandle(description.handle);
 
             ConfigureStream(Stream);
         }
