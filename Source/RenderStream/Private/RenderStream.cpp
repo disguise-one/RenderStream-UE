@@ -322,6 +322,8 @@ bool FRenderStreamModule::PopulateStreamPool()
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
             }
+            else
+                Stream->updateHandle(description.handle);
 
             // Update corresponding projection policy
             for (const TSharedPtr<FRenderStreamProjectionPolicy>& policy : ProjectionPolicyFactory->GetPolicies())
