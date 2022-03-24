@@ -43,3 +43,10 @@ bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const
     
     return true;
 }
+
+void FFrameStream::Update(const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt)
+{
+    // Todo: Do we need to destroy the handle?
+    m_handle = 0;
+    Setup(m_streamName, Resolution, Channel, Clipping, Handle, Fmt);
+}
