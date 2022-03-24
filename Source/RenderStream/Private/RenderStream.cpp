@@ -10,6 +10,7 @@
 #include "SceneSelector_StreamingLevels.h"
 #include "SceneSelector_Maps.h"
 
+#include "GenericPlatform/GenericPlatformMath.h"
 #include "Core/Public/Modules/ModuleManager.h"
 #include "CoreUObject/Public/Misc/PackageName.h"
 #include "Misc/CoreDelegates.h"
@@ -23,6 +24,7 @@
 
 #include "Interfaces/IPluginManager.h"
 #include "IDisplayCluster.h"
+#include "DisplayClusterConfigurationTypes.h"
 #include "Cluster/DisplayClusterClusterEvent.h"
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/IDisplayClusterRenderManager.h"
@@ -295,32 +297,63 @@ EUnit FRenderStreamModule::distanceUnit()
     return ret;
 }
 
-void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
+bool UpdateViewport(FFrameStreamPtr Stream)
 {
     FString const& Name = Stream->Name();
     IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
     IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
 
-    const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
+    IDisplayClusterConfigManager* ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
     check(ConfigMgr);
 
-    const UDisplayClusterConfigurationViewport* Viewport = ConfigMgr->GetLocalViewport(Name);
-    if (!Viewport)
+    UDisplayClusterConfigurationData* Config = ConfigMgr->GetConfig();
+    check(Config);
+
+    UDisplayClusterConfigurationClusterNode** Node = Config->Cluster->Nodes.Find(ConfigMgr->GetLocalNodeId());
+    if (!Node)
+        return false;
+
+    bool Found = false;
+    int Width = 0;
+    int Height = 0;
+    for (auto Pair : (*Node)->Viewports)
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created without corresponding viewport"), *Name);
-        return;
+        if (Pair.Key == Name)
+        {
+            auto Resolution = Stream->Resolution();
+
+            // We don't care about the offset as we intercept before it is combined.
+            //Viewport->Region.X = 0;
+            //Viewport->Region.Y = 0;
+            Pair.Value->Region.W = Resolution.X;
+            Pair.Value->Region.H = Resolution.Y;
+            Found = true;
+            UE_LOG(LogRenderStream, Log, TEXT("Viewport '%s' resized to (%d, %d)"), *Name, Resolution.X, Resolution.Y);
+        }
+
+        Width = FGenericPlatformMath::Max(Width, Pair.Value->Region.X + Pair.Value->Region.W);
+        Height = FGenericPlatformMath::Max(Height, Pair.Value->Region.Y + Pair.Value->Region.H);
     }
 
-    const FIntPoint Offset(Viewport->Region.X, Viewport->Region.Y);
-    const FIntPoint Resolution(Viewport->Region.W, Viewport->Region.H);
+    Width = FGenericPlatformMath::Max(Width, 1);
+    Height = FGenericPlatformMath::Max(Height, 1);
+    (*Node)->WindowRect.W = Width;
+    (*Node)->WindowRect.H = Height;
+    return Found;
+}
+
+void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
+{
+    FString const& Name = Stream->Name();
     if (!Stream)
     {
         UE_LOG(LogRenderStream, Warning, TEXT("Policy '%s' created for unknown stream"), *Name);
-    }
-    if (Stream && Stream->Resolution() != Resolution)
-    {
-        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *Name, Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         return;
+    }
+
+    if (!UpdateViewport(Stream))
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created without corresponding viewport"), *Name);
     }
 
     FRenderStreamViewportInfo& Info = GetViewportInfo(Name);
@@ -435,7 +468,10 @@ bool FRenderStreamModule::PopulateStreamPool()
                 Stream = StreamPool->GetStream(Name);
             }
             else
-                Stream->updateHandle(description.handle);
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Updating stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
+                Stream->Update(Resolution, Channel, description.clipping, description.handle, description.format);
+            }
 
             ConfigureStream(Stream);
         }

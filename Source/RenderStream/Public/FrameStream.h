@@ -19,13 +19,13 @@ public:
                                    const FIntRect& ViewportRect);
 
     bool Setup(const FString& Name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);
+    void Update(const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);
 
     const FString& Name() const { return m_streamName;}
     const FString& Channel() const { return m_channel; }
     const RenderStreamLink::ProjectionClipping& Clipping() const { return m_clipping; }
     FIntPoint Resolution() const { return m_resolution; }
     RenderStreamLink::StreamHandle Handle() const { return m_handle; }
-    void updateHandle(RenderStreamLink::StreamHandle newHandle) { m_handle = newHandle; }
 
 private:
     FString m_streamName;
