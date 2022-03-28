@@ -400,7 +400,10 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
 
     Cache->SubLevels.Empty();
     for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
-        Cache->SubLevels.Add(SubLevel->GetWorldAsset()->GetPackage()->GetPathName());
+    {
+        if (UWorld* worldAsset = SubLevel->GetWorldAsset().Get())
+            Cache->SubLevels.Add(worldAsset->GetPackage()->GetPathName());
+    }
 
     // Save the Cache.
     UPackage* Package = Cache->GetPackage();
