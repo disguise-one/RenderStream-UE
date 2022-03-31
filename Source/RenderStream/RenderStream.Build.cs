@@ -32,7 +32,8 @@ public class RenderStream : ModuleRules
                 "CinematicCamera", 
                 "RHI", 
                 "D3D11RHI", 
-                "D3D12RHI", 
+                "D3D12RHI",
+                "VulkanRHI",
                 "RenderCore", 
                 "Projects", 
                 "Json", 
@@ -46,13 +47,16 @@ public class RenderStream : ModuleRules
             {
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private"),
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private/Windows"),
-                Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include")
+                Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include"),
+                Path.Combine(EngineDirectory, "Source/Runtime/VulkanRHI/Private"),
+                Path.Combine(EngineDirectory, "Source/Runtime/VulkanRHI/Private/Windows")
             });
 
         DynamicallyLoadedModuleNames.AddRange(new string[] { });
 
         AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11");
         AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "Vulkan");
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "AMD_AGS");
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");

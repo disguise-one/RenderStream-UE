@@ -7,6 +7,10 @@
 #include "D3D12RHIPrivate.h"
 #include "D3D12RHIBridge.h"
 
+#include "VulkanRHIPrivate.h"
+#include "VulkanRHIBridge.h"
+#include "VulkanResources.h"
+
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <d3d11.h>
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -154,8 +158,6 @@ namespace RSUCHelpers
         }
 
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
-        FRHITexture2D* tex2d2 = BufTexture->GetTexture2D();
-        auto point2 = tex2d2->GetSizeXY();
         void* resource = BufTexture->GetTexture2D()->GetNativeResource();
 
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -183,6 +185,50 @@ namespace RSUCHelpers
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
                 if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &FrameData) != RenderStreamLink::RS_ERROR_SUCCESS)
+                {
+                }
+            }
+        }
+        else if (toggle == "Vulkan")
+        {
+            {
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
+                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+            }
+
+            RenderStreamLink::RSPixelFormat fmt = RenderStreamLink::RS_FMT_INVALID;
+            switch (BufTexture->GetFormat())
+            {
+                case EPixelFormat::PF_B8G8R8A8:
+                    fmt = RenderStreamLink::RS_FMT_BGRA8;
+                    break;
+                case EPixelFormat::PF_FloatRGBA:
+                    fmt = RenderStreamLink::RS_FMT_RGBA32F;
+                    break;
+                case EPixelFormat::PF_A16B16G16R16:
+                    fmt = RenderStreamLink::RS_FMT_RGBA16;
+                    break;
+                case EPixelFormat::PF_R8G8B8A8:
+                    fmt = RenderStreamLink::RS_FMT_RGBA8;
+                    break;
+                default:
+                    UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported format."));
+                    return;
+            }
+
+            FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(BufTexture->GetTexture2D());
+            auto point2 = VulkanTexture->GetSizeXY();
+
+            RenderStreamLink::SenderFrameTypeData data = {};
+            data.vk.memory = VulkanTexture->Surface.GetAllocationHandle();
+            data.vk.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+            data.vk.format = fmt;
+            data.vk.width = uint32_t(point2.X);
+            data.vk.height = uint32_t(point2.Y);
+
+            {
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
+                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data, &FrameData) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
             }
@@ -218,6 +264,7 @@ namespace RSUCHelpers
         RenderStreamLink::UseDX12SharedHeapFlag rs_flag = RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG;
         RenderStreamLink::instance().rs_useDX12SharedHeapFlag(&rs_flag);
         flags = static_cast<ETextureCreateFlags>(flags | ((rs_flag == RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG) ? ETextureCreateFlags::TexCreate_Shared : 0));
+        flags = flags | ETextureCreateFlags::TexCreate_External;
         BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, flags, info);
         return true;
     }

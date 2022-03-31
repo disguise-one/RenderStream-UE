@@ -7,10 +7,20 @@
 struct ID3D11Device;
 struct ID3D12Device;
 struct ID3D12CommandQueue;
+typedef struct VkDevice_T* VkDevice;
+typedef struct VkQueue_T* VkQueue;
+// Forward declare Windows compatible handles.
+#define D3_DECLARE_HANDLE(name) \
+  struct name##__;                  \
+  typedef struct name##__* name
+D3_DECLARE_HANDLE(HGLRC);
+D3_DECLARE_HANDLE(HDC);
 struct ID3D11Resource;
 struct ID3D12Resource;
 struct ID3D12Fence;
 typedef unsigned int GLuint;
+typedef struct VkDeviceMemory_T* VkDeviceMemory;
+typedef uint64_t VkDeviceSize;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
 
@@ -152,12 +162,22 @@ public:
         GLuint texture;
     } OpenGlData;
 
+    typedef struct
+    {
+        VkDeviceMemory memory;
+        VkDeviceSize size;
+        RSPixelFormat format;
+        uint32_t width;
+        uint32_t height;
+    } VulkanData;
+
     typedef union
     {
         HostMemoryData cpu;
         Dx11Data dx11;
         Dx12Data dx12;
         OpenGlData gl;
+        VulkanData vk;
     } SenderFrameTypeData;
 
     typedef struct
@@ -292,13 +312,15 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 29
+#define RENDER_STREAM_VERSION_MINOR 30
 
     enum SenderFrameType
     {
         RS_FRAMETYPE_HOST_MEMORY,
         RS_FRAMETYPE_DX11_TEXTURE,
         RS_FRAMETYPE_DX12_TEXTURE,
+        RS_FRAMETYPE_OPENGL_TEXTURE,
+        RS_FRAMETYPE_VULKAN_TEXTURE,
         RS_FRAMETYPE_UNKNOWN
     };
 
@@ -328,6 +350,8 @@ private:
     typedef RS_ERROR rs_initialiseFn(int expectedVersionMajor, int expectedVersionMinor);
     typedef RS_ERROR rs_initialiseGpGpuWithDX11DeviceFn(ID3D11Device* device);
     typedef RS_ERROR rs_initialiseGpGpuWithDX12DeviceAndQueueFn(ID3D12Device* device, ID3D12CommandQueue* queue);
+    typedef RS_ERROR rs_initialiseGpGpuWithOpenGlContextsFn(HGLRC glContext, HDC deviceContext);
+    typedef RS_ERROR rs_initialiseGpGpuWithVulkanDeviceAndQueueFn(VkDevice device, VkQueue queue);
 
     typedef RS_ERROR rs_shutdownFn();
     // non-isolated functions, these require init prior to use
@@ -437,6 +461,8 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_initialiseFn* rs_initialise = nullptr;
     rs_initialiseGpGpuWithDX11DeviceFn* rs_initialiseGpGpuWithDX11Device = nullptr;
     rs_initialiseGpGpuWithDX12DeviceAndQueueFn* rs_initialiseGpGpuWithDX12DeviceAndQueue = nullptr;
+    rs_initialiseGpGpuWithOpenGlContextsFn* rs_initialiseGpGpuWithOpenGlContexts = nullptr;
+    rs_initialiseGpGpuWithVulkanDeviceAndQueueFn* rs_initialiseGpGpuWithVulkanDeviceAndQueue = nullptr;
     rs_useDX12SharedHeapFlagFn* rs_useDX12SharedHeapFlag = nullptr;
     rs_setSchemaFn* rs_setSchema = nullptr;
     rs_saveSchemaFn* rs_saveSchema = nullptr;

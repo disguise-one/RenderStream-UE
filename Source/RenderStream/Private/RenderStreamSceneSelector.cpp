@@ -515,6 +515,28 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
                         }
                     }
+                    else if (toggle == "Vulkan")
+                    {
+                        {
+                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                        }
+
+                        FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
+                        auto point2 = VulkanTexture->GetSizeXY();
+
+                        data.vk.memory = VulkanTexture->Surface.GetAllocationHandle();
+                        data.vk.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+                        data.vk.format = frameData.format;
+                        data.vk.width = uint32_t(point2.X);
+                        data.vk.height = uint32_t(point2.Y);
+
+                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
+                        if (RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data) != RenderStreamLink::RS_ERROR_SUCCESS)
+                        {
+
+                        }
+                    }
                     else
                     {
                         UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
