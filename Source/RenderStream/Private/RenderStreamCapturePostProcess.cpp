@@ -51,17 +51,17 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     if (Stream)
     {
         auto& Info = Module->GetViewportInfo(ViewportId);
+        FString RHIName = GDynamicRHI->GetName();
+        uint64 frameNumber = (RHIName == TEXT("D3D11")) ? GFrameNumber : GFrameCounter;
         RenderStreamLink::CameraResponseData frameResponse;
         {
             std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-            if (Info.m_frameResponses.empty())
+            if (Info.m_frameResponsesMap.count(frameNumber))
             {
-                // First frame can have no response data, so do not send a response to nothing.
-                return;
+                frameResponse = Info.m_frameResponsesMap[GFrameNumber];
+                Info.clipBufferWindow(GFrameNumber);
+                Info.m_frameResponses.pop_front();
             }
-
-            frameResponse = Info.m_frameResponses.front();
-            Info.m_frameResponses.pop_front();
         }
 
         TArray<FRHITexture2D*> Resources;

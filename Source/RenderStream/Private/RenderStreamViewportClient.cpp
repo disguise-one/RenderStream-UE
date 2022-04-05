@@ -622,6 +622,16 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                                 RHICmdList.SubmitCommandsHint();
                             });
                     }
+
+                    /// !!!! disguise customizations
+                    // Map frame number to camera data
+                    for (FDisplayClusterRenderFrame::FFrameView& DCView : DCViewFamily.Views)
+                    {
+                        auto& Info = FRenderStreamModule::Get()->GetViewportInfo(DCView.Viewport->GetId());
+                        if (Info.m_frameResponses.empty()) continue;  // First frame can have no response data
+                        std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
+                        Info.m_frameResponsesMap[ViewFamily.FrameNumber] = Info.m_frameResponses.front();
+                    } 
                 }
                 else
                 {

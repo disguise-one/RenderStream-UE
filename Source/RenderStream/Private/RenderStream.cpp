@@ -141,6 +141,15 @@ private:
     bool bIsClear = false;
 };
 
+void FRenderStreamViewportInfo::clipBufferWindow(uint32 currentFrameNumber)
+{
+    for (auto const& [frameNumber, frameResponse] : m_frameResponsesMap)
+    {
+        if ((currentFrameNumber - frameNumber) > FRenderStreamViewportInfo::WINDOW_SIZE)
+            m_frameResponsesMap.erase(frameNumber);
+    }
+}
+
 FRenderStreamMonitor Monitor;
 
 static const FName DisplayClusterModuleName(TEXT("DisplayCluster"));
