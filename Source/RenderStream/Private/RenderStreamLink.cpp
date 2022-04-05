@@ -173,7 +173,7 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_initialiseGpGpuWithDX11Device);
     LOAD_FN(rs_initialiseGpGpuWithDX12DeviceAndQueue);
     LOAD_FN(rs_initialiseGpGpuWithOpenGlContexts);
-    LOAD_FN(rs_initialiseGpGpuWithVulkanDeviceAndQueue);
+    LOAD_FN(rs_initialiseGpGpuWithVulkanDevice);
     LOAD_FN(rs_shutdown);
 
     LOAD_FN(rs_registerLoggingFunc);

@@ -225,6 +225,7 @@ namespace RSUCHelpers
             data.vk.format = fmt;
             data.vk.width = uint32_t(point2.X);
             data.vk.height = uint32_t(point2.Y);
+            // TODO: semaphores
 
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));

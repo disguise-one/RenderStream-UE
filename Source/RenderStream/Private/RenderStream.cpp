@@ -596,10 +596,8 @@ void FRenderStreamModule::OnPostEngineInit()
     }
     else if (toggle == "Vulkan")
     {
-        VkQueue cmdQueue = GVulkanRHI->GetDevice()->GetGraphicsQueue()->GetHandle();
         auto vulkanDevice = static_cast<VkDevice>(GDynamicRHI->RHIGetNativeDevice());
-
-        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithVulkanDeviceAndQueue(vulkanDevice, cmdQueue);
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithVulkanDevice(vulkanDevice);
     }
 
     if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)

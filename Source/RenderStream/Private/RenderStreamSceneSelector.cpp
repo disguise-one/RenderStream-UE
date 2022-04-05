@@ -530,6 +530,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         data.vk.format = frameData.format;
                         data.vk.width = uint32_t(point2.X);
                         data.vk.height = uint32_t(point2.Y);
+                        // TODO: semaphores
 
                         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
                         if (RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data) != RenderStreamLink::RS_ERROR_SUCCESS)

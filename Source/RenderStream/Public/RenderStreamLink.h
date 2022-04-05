@@ -8,7 +8,6 @@ struct ID3D11Device;
 struct ID3D12Device;
 struct ID3D12CommandQueue;
 typedef struct VkDevice_T* VkDevice;
-typedef struct VkQueue_T* VkQueue;
 // Forward declare Windows compatible handles.
 #define D3_DECLARE_HANDLE(name) \
   struct name##__;                  \
@@ -21,6 +20,7 @@ struct ID3D12Fence;
 typedef unsigned int GLuint;
 typedef struct VkDeviceMemory_T* VkDeviceMemory;
 typedef uint64_t VkDeviceSize;
+typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
 
@@ -169,6 +169,10 @@ public:
         RSPixelFormat format;
         uint32_t width;
         uint32_t height;
+        VkSemaphore waitSemaphore;
+        uint64_t waitSemaphoreValue;
+        VkSemaphore signalSemaphore;
+        uint64_t signalSemaphoreValue;
     } VulkanData;
 
     typedef union
@@ -351,7 +355,7 @@ private:
     typedef RS_ERROR rs_initialiseGpGpuWithDX11DeviceFn(ID3D11Device* device);
     typedef RS_ERROR rs_initialiseGpGpuWithDX12DeviceAndQueueFn(ID3D12Device* device, ID3D12CommandQueue* queue);
     typedef RS_ERROR rs_initialiseGpGpuWithOpenGlContextsFn(HGLRC glContext, HDC deviceContext);
-    typedef RS_ERROR rs_initialiseGpGpuWithVulkanDeviceAndQueueFn(VkDevice device, VkQueue queue);
+    typedef RS_ERROR rs_initialiseGpGpuWithVulkanDeviceFn(VkDevice device);
 
     typedef RS_ERROR rs_shutdownFn();
     // non-isolated functions, these require init prior to use
@@ -462,7 +466,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_initialiseGpGpuWithDX11DeviceFn* rs_initialiseGpGpuWithDX11Device = nullptr;
     rs_initialiseGpGpuWithDX12DeviceAndQueueFn* rs_initialiseGpGpuWithDX12DeviceAndQueue = nullptr;
     rs_initialiseGpGpuWithOpenGlContextsFn* rs_initialiseGpGpuWithOpenGlContexts = nullptr;
-    rs_initialiseGpGpuWithVulkanDeviceAndQueueFn* rs_initialiseGpGpuWithVulkanDeviceAndQueue = nullptr;
+    rs_initialiseGpGpuWithVulkanDeviceFn* rs_initialiseGpGpuWithVulkanDevice = nullptr;
     rs_useDX12SharedHeapFlagFn* rs_useDX12SharedHeapFlag = nullptr;
     rs_setSchemaFn* rs_setSchema = nullptr;
     rs_saveSchemaFn* rs_saveSchema = nullptr;
