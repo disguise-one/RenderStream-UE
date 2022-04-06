@@ -10,6 +10,8 @@
 #include "PropertyEditorDelegates.h"
 #include "PropertyEditorModule.h"
 #include "UObject/UObjectBase.h"
+#include "UObject/ObjectSaveContext.h"
+#include "UObject/SavePackage.h"
 #include "Engine/AssetManager.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
@@ -56,7 +58,7 @@ void FRenderStreamEditorModule::StartupModule()
     }
 
     void PreAssetDelete(const TArray<UObject*> InObjectToDelete);
-    FEditorDelegates::PostSaveWorld.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
+    FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
@@ -389,9 +391,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
         {
             const URenderStreamChannelDefinition* Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
             if (Definition)
-            {
-                Cache->Channels.Emplace(TCHAR_TO_UTF8(*Actor->GetName()));
-            }
+                Cache->Channels.Emplace(TCHAR_TO_UTF8(*(Definition->GetChannelName())));
         }
     }
 
@@ -407,16 +407,14 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(Cache);
     const FString PackageFileName = FPackageName::LongPackageNameToFilename(CacheFolder + LevelPath, FPackageName::GetAssetPackageExtension());
+    FSavePackageArgs args;
+    args.SaveFlags = EObjectFlags::RF_Public | EObjectFlags::RF_Standalone;
+    args.bForceByteSwapping = true;
     bool bSaved = UPackage::SavePackage(
         Package,
         Cache,
-        EObjectFlags::RF_Public | EObjectFlags::RF_Standalone,
         *PackageFileName,
-        GError,
-        nullptr,
-        true,
-        true,
-        SAVE_NoError
+        args
     );
 
     return Cache;
@@ -604,9 +602,9 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     DeleteCaches(CachesForDelete);
 }
 
-void FRenderStreamEditorModule::OnPostSaveWorld(uint32, UWorld* World, bool bSuccess)
+void FRenderStreamEditorModule::OnPostSaveWorld(UWorld* World, FObjectPostSaveContext context)
 {
-    if (bSuccess)
+    if (context.SaveSucceeded())
         DirtyAssetMetadata = true;
 }
 

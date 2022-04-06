@@ -24,7 +24,7 @@ private:
 
     // Delegates
     void OnBeginFrame();
-    void OnPostSaveWorld(uint32 SaveFlags, UWorld* World, bool bSuccess);
+    void OnPostSaveWorld(UWorld* World, FObjectPostSaveContext context);
     void OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses);
 
     void OnPostEngineInit();

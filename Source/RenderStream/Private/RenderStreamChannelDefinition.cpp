@@ -162,6 +162,13 @@ TArray<ACameraActor*> URenderStreamChannelDefinition::GetInstancedCameras()
     return ValidCameras;
 }
 
+FString URenderStreamChannelDefinition::GetChannelName() const
+{
+    FString Name = GetOwner()->GetName();
+    Name.LeftChopInline(Name.Find("_UAID_", ESearchCase::CaseSensitive, ESearchDir::FromEnd), true);
+    return Name;
+}
+
 void URenderStreamChannelDefinition::UnregisterCamera()
 {
     if (Registered)
@@ -169,7 +176,7 @@ void URenderStreamChannelDefinition::UnregisterCamera()
         ACameraActor* Owner = Cast<ACameraActor>(GetOwner());
         if (Owner)
         {
-            auto& Array = FindOrAdd(ChannelActorMap, Owner->GetName());
+            auto& Array = FindOrAdd(ChannelActorMap, GetChannelName());
             Array.Remove(Owner);
         }
         else
@@ -224,7 +231,7 @@ void URenderStreamChannelDefinition::BeginPlay()
         if (Component)
             Component->SetConstraintAspectRatio(false);
 
-        auto& Array = FindOrAdd(ChannelActorMap, Owner->GetName());
+        auto& Array = FindOrAdd(ChannelActorMap, GetChannelName());
         Array.Add(Owner);
         Registered = true;
     }

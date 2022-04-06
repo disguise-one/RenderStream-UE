@@ -55,6 +55,8 @@ public:
     UPROPERTY(BlueprintAssignable, Category = "Components|Activation")
     FOnInstancedSignature OnCameraInstanced;
 
+    FString GetChannelName() const;
+
     void AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera);
     void UnregisterCamera();
 
