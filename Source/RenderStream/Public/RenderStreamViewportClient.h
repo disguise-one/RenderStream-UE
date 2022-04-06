@@ -1,7 +1,5 @@
 #pragma once
 
-#include <mutex>
-
 #include "CoreMinimal.h"
 #include "DisplayClusterViewportClient.h"
 #include "RenderStreamViewportClient.generated.h"

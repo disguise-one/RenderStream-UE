@@ -11,8 +11,6 @@
 #include <mutex>
 #include <set>
 #include <vector>
-#include <map>
-#include <algorithm>
 
 #include "RenderStreamLogOutputDevice.h"
 #include "Math/UnitConversion.h"
@@ -35,12 +33,9 @@ struct FRenderStreamViewportInfo
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
-    const uint32 WINDOW_SIZE = 100;
-
+    
     std::mutex m_frameResponsesLock;
     std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
-    std::map<uint32, RenderStreamLink::CameraResponseData> m_frameResponsesMap;
-    void clipBufferWindow(uint32 currentFrameNumber);
 };
 
 class FRenderStreamModule : public IModuleInterface
