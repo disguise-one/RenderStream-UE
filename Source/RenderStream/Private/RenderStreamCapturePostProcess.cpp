@@ -54,14 +54,11 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         RenderStreamLink::CameraResponseData frameResponse;
         {
             std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-            if (Info.m_frameResponses.empty())
+            if (Info.m_frameResponsesMap.count(GFrameCounterRenderThread)) // Check current frame data exists
             {
-                // First frame can have no response data, so do not send a response to nothing.
-                return;
+                frameResponse = Info.m_frameResponsesMap[GFrameCounterRenderThread];
+                Info.m_frameResponsesMap.erase(GFrameCounterRenderThread);
             }
-
-            frameResponse = Info.m_frameResponses.front();
-            Info.m_frameResponses.pop_front();
         }
 
         TArray<FRHITexture2D*> Resources;

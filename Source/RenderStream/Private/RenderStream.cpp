@@ -507,7 +507,8 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
     // Each call must always have a frame response, because there will be a corresponding render call.
     {
         std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        info.m_frameResponses.push_back({ frameData.tTracked, cameraData });
+        uint64 frameCounter = bIsDx11 ? GFrameCounter : static_cast<uint64>(GFrameNumber);
+        info.m_frameResponsesMap[frameCounter] = {frameData.tTracked, cameraData};
     }
 
     if (!info.Camera.IsValid())
