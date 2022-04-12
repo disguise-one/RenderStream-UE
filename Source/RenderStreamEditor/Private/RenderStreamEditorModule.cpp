@@ -57,8 +57,8 @@ void FRenderStreamEditorModule::StartupModule()
         PropertyModule.NotifyCustomizationModuleChanged();
     }
 
-    void PreAssetDelete(const TArray<UObject*> InObjectToDelete);
-    FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
+    FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
+    FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
@@ -73,7 +73,8 @@ void FRenderStreamEditorModule::ShutdownModule()
         PropertyModule.UnregisterCustomClassLayout("RenderStreamSettings");
     }
 
-    FEditorDelegates::PostSaveWorld.RemoveAll(this);
+    FEditorDelegates::PostSaveExternalActors.RemoveAll(this);
+    FEditorDelegates::PostSaveWorldWithContext.RemoveAll(this);
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
@@ -602,10 +603,15 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     DeleteCaches(CachesForDelete);
 }
 
-void FRenderStreamEditorModule::OnPostSaveWorld(UWorld* World, FObjectPostSaveContext context)
+void FRenderStreamEditorModule::OnPostSaveWorldContext(UWorld* World, FObjectPostSaveContext context)
 {
     if (context.SaveSucceeded())
         DirtyAssetMetadata = true;
+}
+
+void FRenderStreamEditorModule::OnPostSaveWorld(UWorld* World)
+{
+    DirtyAssetMetadata = true;
 }
 
 void FRenderStreamEditorModule::OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses)
