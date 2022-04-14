@@ -11,6 +11,7 @@
 #include <mutex>
 #include <set>
 #include <vector>
+#include <map>
 
 #include "RenderStreamLogOutputDevice.h"
 #include "Math/UnitConversion.h"
@@ -28,14 +29,16 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 
+static const bool bIsDx11 = FCString::Stristr(GDynamicRHI->GetName(), TEXT("D3D11")) != nullptr; // Also covers -rhivalidation => D3D11_Validation
+
 struct FRenderStreamViewportInfo
 {
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
-    
+
     std::mutex m_frameResponsesLock;
-    std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
+    std::map<uint64, RenderStreamLink::CameraResponseData> m_frameResponsesMap;
 };
 
 class FRenderStreamModule : public IModuleInterface
