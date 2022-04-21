@@ -147,8 +147,7 @@ static const FName DisplayClusterModuleName(TEXT("DisplayCluster"));
 
 void FRenderStreamModule::StartupModule()
 {
-    const TCHAR* DynamicRHIModuleName = GetSelectedDynamicRHIModuleName(false);
-    if (FString("VulkanRHI") == FString(DynamicRHIModuleName))
+    if (FApp::CanEverRender() && FString("VulkanRHI") == FString(GetSelectedDynamicRHIModuleName(false)))
     {
         const TArray<const ANSICHAR*> ExtentionsToAdd{ 
             VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
