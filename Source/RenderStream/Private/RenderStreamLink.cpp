@@ -204,6 +204,8 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_getFrameCamera);
     LOAD_FN(rs_sendFrame);
 
+    LOAD_FN(rs_releaseImage);
+
     LOAD_FN(rs_logToD3);
     LOAD_FN(rs_sendProfilingData);
     LOAD_FN(rs_setNewStatusMessage);

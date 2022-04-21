@@ -303,6 +303,9 @@ public:
 
     typedef struct
     {
+        const char* engineName;
+        const char* engineVersion;
+        const char* info;
         Channels channels;
         Scenes scenes;
     } Schema;
@@ -378,6 +381,8 @@ private:
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
     typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const CameraResponseData* sendData); // publish a frame buffer which was generated from the associated tracking and timing information.
 
+    typedef RS_ERROR rs_releaseImageFn(SenderFrameType frameType, SenderFrameTypeData data); // release any references to image (e.g. before deletion)
+
     typedef RS_ERROR rs_logToD3Fn(const char * str);
     typedef RS_ERROR rs_sendProfilingDataFn(ProfilingEntry* entries, int count);
     typedef RS_ERROR rs_setNewStatusMessageFn(const char* msg);
@@ -392,14 +397,13 @@ public:
     {
         ScopedSchema()
         {
-            clear();
+            reset();
         }
         ~ScopedSchema()
         {
-            reset();
-        }
-        void reset()
-        {
+            free(const_cast<char*>(schema.engineName));
+            free(const_cast<char*>(schema.engineVersion));
+            free(const_cast<char*>(schema.info));
             for (size_t i = 0; i < schema.channels.nChannels; ++i)
                 free(const_cast<char*>(schema.channels.channels[i]));
             free(schema.channels.channels);
@@ -424,9 +428,18 @@ public:
                 free(scene.parameters);
             }
             free(schema.scenes.scenes);
-            clear();
+            reset();
         }
-
+        void reset()
+        {
+            schema.engineName = nullptr;
+            schema.engineVersion = nullptr;
+            schema.info = nullptr;
+            schema.channels.nChannels = 0;
+            schema.channels.channels = nullptr;
+            schema.scenes.nScenes = 0;
+            schema.scenes.scenes = nullptr;
+        }
         ScopedSchema(const ScopedSchema&) = delete;
         ScopedSchema(ScopedSchema&& other)
         {
@@ -442,15 +455,6 @@ public:
         }
 
         Schema schema;
-
-    private:
-        void clear()
-        {
-            schema.channels.nChannels = 0;
-            schema.channels.channels = nullptr;
-            schema.scenes.nScenes = 0;
-            schema.scenes.scenes = nullptr;
-        }
     };
 
 public: // d3renderstream.h API, but loaded dynamically.
@@ -482,6 +486,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
     rs_sendFrameFn* rs_sendFrame = nullptr;
+    rs_releaseImageFn* rs_releaseImage = nullptr;
     rs_logToD3Fn* rs_logToD3 = nullptr;
     rs_sendProfilingDataFn* rs_sendProfilingData = nullptr;
     rs_setNewStatusMessageFn* rs_setNewStatusMessage = nullptr;
