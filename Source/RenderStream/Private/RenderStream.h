@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "Core.h"
 #include "Core/Public/Modules/ModuleInterface.h"
 #include "DisplayClusterConfigurationTypes_Viewport.h"
 #include "Cluster/IDisplayClusterClusterManager.h"
@@ -29,7 +28,7 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 
-static const bool bIsDx11 = FCString::Stristr(GDynamicRHI->GetName(), TEXT("D3D11")) != nullptr; // Also covers -rhivalidation => D3D11_Validation
+static const bool bIsDx11RS = FCString::Stristr(GDynamicRHI->GetName(), TEXT("D3D11")) != nullptr; // Also covers -rhivalidation => D3D11_Validation
 
 struct FRenderStreamViewportInfo
 {
