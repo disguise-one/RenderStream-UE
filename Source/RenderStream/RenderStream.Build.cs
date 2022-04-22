@@ -20,7 +20,8 @@ public class RenderStream : ModuleRules
                 "Sockets", 
                 "Networking", 
                 "InputCore", 
-                "UMG"
+                "UMG",
+                "OpenColorIO"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 

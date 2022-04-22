@@ -7,6 +7,8 @@
 #include "UObject/Object.h"
 #include "Engine/EngineTypes.h"
 
+#include "OpenColorIO/Public/OpenColorIOConfiguration.h"
+
 #include "RenderStreamSettings.generated.h"
 
 class ACameraActor;
@@ -34,4 +36,7 @@ class RENDERSTREAM_API URenderStreamSettings : public UObject
 public:
     UPROPERTY(EditAnywhere, config, Category = Settings)
     ERenderStreamSceneSelector SceneSelector;
+
+    UPROPERTY(EditAnywhere, config, Category = Settings)
+    FOpenColorIODisplayConfiguration OCIOConfig;
 };
