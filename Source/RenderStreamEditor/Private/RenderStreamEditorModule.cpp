@@ -528,9 +528,17 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         URenderStreamChannelCacheAsset* MainMap = GetDefaultMapCache();
         if (MainMap)
         {
-            Schema.schema.scenes.nScenes = 1;
+            Schema.schema.scenes.nScenes = 1 + MainMap->SubLevels.Num();
             Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
-            GenerateScene(*Schema.schema.scenes.scenes, MainMap, nullptr);
+            RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
+
+            GenerateScene(*SceneParameters++, MainMap, nullptr);
+            for (FSoftObjectPath Path : MainMap->SubLevels)
+            {
+                URenderStreamChannelCacheAsset** Cache = LevelParams.Find(Path);
+                if (Cache != nullptr)
+                    GenerateScene(*SceneParameters++, *Cache, MainMap);
+            }
         }
         else
         {

@@ -88,6 +88,12 @@ namespace
     }
 }
 
+bool IsDX11()
+{
+    static const bool bIsDx11RS = FCString::Stristr(GDynamicRHI->GetName(), TEXT("D3D11")) != nullptr; // Also covers -rhivalidation => D3D11_Validation
+    return bIsDx11RS;
+}
+
 class FRenderStreamMonitor : public FRunnable
 {
 public:
@@ -513,7 +519,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
     // Each call must always have a frame response, because there will be a corresponding render call.
     {
         std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = bIsDx11RS ? GFrameCounter : static_cast<uint64>(GFrameNumber);
+        uint64 frameCounter = IsDX11() ? GFrameCounter : static_cast<uint64>(GFrameNumber);
         info.m_frameResponsesMap[frameCounter] = {frameData.tTracked, cameraData};
     }
 

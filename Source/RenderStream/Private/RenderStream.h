@@ -28,7 +28,7 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 
-static const bool bIsDx11RS = FCString::Stristr(GDynamicRHI->GetName(), TEXT("D3D11")) != nullptr; // Also covers -rhivalidation => D3D11_Validation
+bool IsDX11();
 
 struct FRenderStreamViewportInfo
 {

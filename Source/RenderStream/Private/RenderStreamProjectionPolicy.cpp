@@ -124,7 +124,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
     FVector centerShift = { 0.f, 0.f, 0.f };
     {
         std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-        uint64 frameCounter = bIsDx11RS ? GFrameCounter : static_cast<uint64>(GFrameNumber);
+        uint64 frameCounter = IsDX11() ? GFrameCounter : static_cast<uint64>(GFrameNumber);
         if (Info.m_frameResponsesMap.count(frameCounter)) // Check current frame data exists
         {
             // first frame can have no frame response.
