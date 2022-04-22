@@ -6,4 +6,3 @@ URenderStreamSettings::URenderStreamSettings(const FObjectInitializer& ObjectIni
     : Super(ObjectInitializer)
     , SceneSelector(ERenderStreamSceneSelector::None)
 {}
-
