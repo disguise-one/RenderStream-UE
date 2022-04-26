@@ -164,7 +164,7 @@ TArray<ACameraActor*> URenderStreamChannelDefinition::GetInstancedCameras()
 
 FString URenderStreamChannelDefinition::GetChannelName() const
 {
-    FString Name = GetOwner()->GetName();
+    FString Name = GetOwner()->GetActorNameOrLabel();
     Name.LeftChopInline(Name.Find("_UAID_", ESearchCase::CaseSensitive, ESearchDir::FromEnd), true);
     return Name;
 }
