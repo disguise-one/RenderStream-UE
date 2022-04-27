@@ -44,13 +44,7 @@ void SceneSelector_None::ApplyScene(const UWorld& World, uint32_t SceneId)
         return;
     }
 
-    AActor* persistentRoot = World.PersistentLevel->GetLevelScriptActor();
-
-    if (!persistentRoot)
-    {
-        UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in ApplyScene"));
-        return;
-    }
-
-    ApplyParameters(SceneId, { persistentRoot });
+    TArray<AActor*> LevelActors;
+    GetAllLevels(LevelActors, world.PersistentLevel);
+    ApplyParameters(SceneId, LevelActors);
 }
