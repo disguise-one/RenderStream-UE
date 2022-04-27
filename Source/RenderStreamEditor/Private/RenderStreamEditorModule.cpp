@@ -324,22 +324,49 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
     }
 }
 
-void GenerateScene(RenderStreamLink::RemoteParameters& SceneParameters, const URenderStreamChannelCacheAsset* cache, const URenderStreamChannelCacheAsset* persistent)
+void FetchLevelCaches(
+    TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
+    TArray<const URenderStreamChannelCacheAsset*>& Levels,
+    const URenderStreamChannelCacheAsset* Parent)
 {
-    FString sceneName = FPackageName::GetShortName(cache->Level.GetAssetPathName());
+    Levels.Push(Parent);
+    for (FSoftObjectPath Path : Parent->SubLevels)
+    {
+        URenderStreamChannelCacheAsset *const * Cache = LevelParams.Find(Path);
+        if (Cache != nullptr)
+            FetchLevelCaches(LevelParams, Levels, *Cache);
+    }
+}
+
+void GenerateScene(
+    TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
+    RenderStreamLink::RemoteParameters& SceneParameters,
+    const URenderStreamChannelCacheAsset* Cache,
+    const URenderStreamChannelCacheAsset* Persistent)
+{
+    FString sceneName = FPackageName::GetShortName(Cache->Level.GetAssetPathName());
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
-    const uint32_t nParams = (persistent ? persistent->ExposedParams.Num() : 0) + cache->ExposedParams.Num();
+    TArray<const URenderStreamChannelCacheAsset*> Levels;
+    if (Persistent != nullptr)
+        Levels.Push(Persistent);
+
+    FetchLevelCaches(LevelParams, Levels, Cache);
+
+    uint32_t nParams = 0;
+    for (auto Level : Levels)
+        nParams += Level->ExposedParams.Num();
+
     SceneParameters.nParameters = nParams;
-    SceneParameters.parameters = static_cast<RenderStreamLink::RemoteParameter*>(malloc(nParams * sizeof(RenderStreamLink::RemoteParameter)));
+    SceneParameters.parameters = static_cast<RenderStreamLink::RemoteParameter*>(
+        malloc(nParams * sizeof(RenderStreamLink::RemoteParameter)));
 
     size_t offset = 0;
-    if (persistent)
+    for (auto Level : Levels)
     {
-        ConvertFields(SceneParameters.parameters, persistent->ExposedParams);
-        offset += persistent->ExposedParams.Num();
+        ConvertFields(SceneParameters.parameters, Level->ExposedParams);
+        offset += Level->ExposedParams.Num();
     }
-    ConvertFields(SceneParameters.parameters + offset, cache->ExposedParams);
 
     UE_LOG(LogRenderStreamEditor, Log, TEXT("Generated schema for scene: %s"), UTF8_TO_TCHAR(SceneParameters.name));
 }
@@ -528,17 +555,19 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         URenderStreamChannelCacheAsset* MainMap = GetDefaultMapCache();
         if (MainMap)
         {
-            Schema.schema.scenes.nScenes = 1 + MainMap->SubLevels.Num();
-            Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
-            RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
-
-            GenerateScene(*SceneParameters++, MainMap, nullptr);
+            TArray<URenderStreamChannelCacheAsset*> SubLevels;
             for (FSoftObjectPath Path : MainMap->SubLevels)
             {
                 URenderStreamChannelCacheAsset** Cache = LevelParams.Find(Path);
                 if (Cache != nullptr)
-                    GenerateScene(*SceneParameters++, *Cache, MainMap);
+                    SubLevels.Add(*Cache);
             }
+
+            Schema.schema.scenes.nScenes = 1;
+            Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(
+                malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
+            RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
+            GenerateScene(LevelParams, *SceneParameters++, MainMap, nullptr);
         }
         else
         {
@@ -555,15 +584,16 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         if (MainMap)
         {
             Schema.schema.scenes.nScenes = 1 + MainMap->SubLevels.Num();
-            Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
+            Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(
+                malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
             RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
 
-            GenerateScene(*SceneParameters++, MainMap, nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, MainMap, nullptr);
             for (FSoftObjectPath Path : MainMap->SubLevels)
             {
                 URenderStreamChannelCacheAsset** Cache = LevelParams.Find(Path);
                 if (Cache != nullptr)
-                    GenerateScene(*SceneParameters++, *Cache, MainMap);
+                    GenerateScene(LevelParams, *SceneParameters++, *Cache, MainMap);
             }
         }
         else
@@ -595,7 +625,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
         {
             const URenderStreamChannelCacheAsset** Entry = LevelParents.Find(Cache);
-            GenerateScene(*SceneParameters++, Cache, Entry != nullptr ? *Entry : nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, Cache, Entry != nullptr ? *Entry : nullptr);
         }
 
         break;

@@ -12,6 +12,16 @@
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
+void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*> Actors, ULevel * Level) const
+{
+    if (Level)
+    {
+        Actors.Push(Level->GetLevelScriptActor());
+        for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
+            GetAllLevels(Actors, SubLevel->GetLoadedLevel());
+    }
+}
+
 const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
 {
     if (!m_schemaMem.empty())
@@ -89,7 +99,7 @@ static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamL
     return true;
 }
 
-bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, std::initializer_list<const AActor*> Actors) const
+bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, TArray<AActor*> Actors) const
 {
     size_t offset = 0;
 
@@ -285,7 +295,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
     return nParameters;
 }
 
-void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) const
+void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*> Actors) const
 {
     if (sceneId >= Schema().scenes.nScenes)
     {

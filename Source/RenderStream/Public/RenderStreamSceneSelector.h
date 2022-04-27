@@ -1,7 +1,7 @@
 #pragma once
 
 #include "RenderStreamLink.h"
-#include <initializer_list>
+#include "Engine/LevelStreaming.h"
 #include <vector>
 
 class UWorld;
@@ -17,10 +17,11 @@ public:
 
 protected:
     const RenderStreamLink::Schema& Schema() const;
+    void GetAllLevels(TArray<AActor*> Actors, ULevel* Level) const;
 
     virtual bool OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema) = 0;
-    bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, std::initializer_list<const AActor*> Actors) const;
-    void ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) const;
+    bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, TArray<AActor*> Actors) const;
+    void ApplyParameters(uint32_t sceneId, TArray<AActor*> Actors) const;
 
 private:
     size_t ValidateParameters(const AActor* Root, RenderStreamLink::RemoteParameter* const parameters, size_t numParameters) const;
