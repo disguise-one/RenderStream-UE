@@ -45,6 +45,6 @@ void SceneSelector_None::ApplyScene(const UWorld& World, uint32_t SceneId)
     }
 
     TArray<AActor*> LevelActors;
-    GetAllLevels(LevelActors, world.PersistentLevel);
+    GetAllLevels(LevelActors, World.PersistentLevel);
     ApplyParameters(SceneId, LevelActors);
 }
