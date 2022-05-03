@@ -333,7 +333,7 @@ void FetchLevelCaches(
     for (FSoftObjectPath Path : Parent->SubLevels)
     {
         URenderStreamChannelCacheAsset *const * Cache = LevelParams.Find(Path);
-        if (Cache != nullptr)
+        if (Cache != nullptr && !Levels.Contains(*Cache))
             FetchLevelCaches(LevelParams, Levels, *Cache);
     }
 }
@@ -426,9 +426,13 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->ExposedParams.Empty();
     GenerateParameters(Cache->ExposedParams, Level->GetLevelScriptActor());
 
-    Cache->SubLevels.Empty();
-    for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
-        Cache->SubLevels.Add(SubLevel->GetWorldAsset()->GetPackage()->GetPathName());
+    // We can only know the sublevels of the persistent level.
+    if (Level->IsPersistentLevel())
+    {
+        Cache->SubLevels.Empty();
+        for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
+            Cache->SubLevels.Add(SubLevel->GetWorldAsset()->GetPackage()->GetPathName());
+    }
 
     // Save the Cache.
     UPackage* Package = Cache->GetPackage();
