@@ -525,12 +525,15 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
                         auto point2 = VulkanTexture->GetSizeXY();
 
-                        data.vk.memory = VulkanTexture->Surface.GetAllocationHandle();
-                        data.vk.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
-                        data.vk.format = frameData.format;
-                        data.vk.width = uint32_t(point2.X);
-                        data.vk.height = uint32_t(point2.Y);
+                        RenderStreamLink::VulkanDataStructure imageData = {};
+                        imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
+                        imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+                        imageData.format = frameData.format;
+                        imageData.width = uint32_t(point2.X);
+                        imageData.height = uint32_t(point2.Y);
                         // TODO: semaphores
+
+                        data.vk.image = &imageData;
 
                         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
                         if (RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data) != RenderStreamLink::RS_ERROR_SUCCESS)

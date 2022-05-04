@@ -157,6 +157,7 @@ void FRenderStreamModule::StartupModule()
             VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
         };
         VulkanRHIBridge::AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
+        UE_LOG(LogRenderStream, Warning, TEXT("Vulkan support is not fully implemented! DO NOT USE FOR SHOW"));
     }
 
     FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME))->GetBaseDir(), TEXT("Shaders"));

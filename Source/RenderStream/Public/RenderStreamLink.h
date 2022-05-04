@@ -93,7 +93,8 @@ public:
     enum REMOTEPARAMETER_FLAGS
     {
         REMOTEPARAMETER_NO_FLAGS = 0,
-        REMOTEPARAMETER_NO_SEQUENCE = 1
+        REMOTEPARAMETER_NO_SEQUENCE = 1,
+        REMOTEPARAMETER_READ_ONLY = 2
     };
 
     typedef uint64_t StreamHandle;
@@ -173,6 +174,11 @@ public:
         uint64_t waitSemaphoreValue;
         VkSemaphore signalSemaphore;
         uint64_t signalSemaphoreValue;
+    } VulkanDataStructure;
+
+    typedef struct
+    {
+        VulkanDataStructure* image;
     } VulkanData;
 
     typedef union
@@ -237,9 +243,9 @@ public:
         RS_DMX_8,
         RS_DMX_16_BE,
     };
-    
+
     static const char* ParamTypeToName(RemoteParameterType type);
-    
+
     typedef struct
     {
         float min;
@@ -337,6 +343,16 @@ public:
         RS_DX12_DO_NOT_USE_SHARED_HEAP_FLAG
     };
 
+    typedef struct
+    {
+        const CameraResponseData* cameraData;
+        uint64_t schemaHash;
+        uint32_t parameterDataSize;
+        void* parameterData;
+        uint32_t textDataCount;
+        const char** textData;
+    } FrameResponseData;
+
     RENDERSTREAM_API static RenderStreamLink& instance();
 
 private:
@@ -379,7 +395,7 @@ private:
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
-    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const CameraResponseData* sendData); // publish a frame buffer which was generated from the associated tracking and timing information.
+    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const FrameResponseData* frameData); // publish a frame buffer which was generated from the associated tracking and timing information.
 
     typedef RS_ERROR rs_releaseImageFn(SenderFrameType frameType, SenderFrameTypeData data); // release any references to image (e.g. before deletion)
 
