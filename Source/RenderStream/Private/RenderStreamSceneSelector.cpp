@@ -24,10 +24,12 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*> Actors, ULevel * Le
         {
             auto World = Level->GetWorld();
             for (ULevelStreaming* SubLevel : World->GetStreamingLevels())
-                GetAllLevels(Actors, SubLevel->GetLoadedLevel());
+                if (SubLevel->GetLoadedLevel() != Level)
+                    GetAllLevels(Actors, SubLevel->GetLoadedLevel());
 
             for (ULevel* SubLevel : World->GetLevels())
-                GetAllLevels(Actors, SubLevel);
+                if (SubLevel != Level)
+                    GetAllLevels(Actors, SubLevel);
         }
     }
 }
