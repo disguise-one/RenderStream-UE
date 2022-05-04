@@ -16,9 +16,19 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*> Actors, ULevel * Le
 {
     if (Level)
     {
-        Actors.Push(Level->GetLevelScriptActor());
-        for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
-            GetAllLevels(Actors, SubLevel->GetLoadedLevel());
+        auto Actor = Level->GetLevelScriptActor();
+        if (Actor && !Actors.Contains(Actor))
+            Actors.Push(Level->GetLevelScriptActor());
+
+        if (Level->IsPersistentLevel())
+        {
+            auto World = Level->GetWorld();
+            for (ULevelStreaming* SubLevel : World->GetStreamingLevels())
+                GetAllLevels(Actors, SubLevel->GetLoadedLevel());
+
+            for (ULevel* SubLevel : World->GetLevels())
+                GetAllLevels(Actors, SubLevel);
+        }
     }
 }
 
