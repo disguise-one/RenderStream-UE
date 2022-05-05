@@ -12,7 +12,7 @@
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
-void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*> Actors, ULevel * Level) const
+void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * Level) const
 {
     if (Level)
     {
@@ -131,7 +131,9 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
 
     if (offset < sceneParameters.nParameters)
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Unexpected extra parameters in schema"));
+        UE_LOG(LogRenderStream, Error,
+            TEXT("Unexpected extra parameters in schema (nactors = %d, offset = %d, nparams = %d)"), 
+            Actors.Num(), offset, sceneParameters.nParameters);
         return false;
     }
 
@@ -304,6 +306,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
         }
     }
 
+    UE_LOG(LogRenderStream, Log, TEXT("Exposed level '%s' with %d parameters"), *Root->GetActorNameOrLabel(), nParameters);
     return nParameters;
 }
 
