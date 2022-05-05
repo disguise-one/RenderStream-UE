@@ -306,7 +306,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
         }
     }
 
-    UE_LOG(LogRenderStream, Log, TEXT("Exposed level '%s' with %d parameters"), *Root->GetActorNameOrLabel(), nParameters);
+    UE_LOG(LogRenderStream, Log, TEXT("Exposed level '%s' with %d parameters"), *Root->GetName(), nParameters);
     return nParameters;
 }
 
