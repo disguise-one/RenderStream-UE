@@ -52,7 +52,7 @@ void FRenderStreamEditorModule::StartupModule()
             "RenderStreamSettings",
             FOnGetDetailCustomizationInstance::CreateStatic(&MakeSettingsCustomizationInstance)
         );
-        
+
 
         PropertyModule.NotifyCustomizationModuleChanged();
     }
@@ -332,7 +332,7 @@ void FetchLevelCaches(
     Levels.Push(Parent);
     for (FSoftObjectPath Path : Parent->SubLevels)
     {
-        URenderStreamChannelCacheAsset *const * Cache = LevelParams.Find(Path);
+        URenderStreamChannelCacheAsset* const* Cache = LevelParams.Find(Path);
         if (Cache != nullptr && !Levels.Contains(*Cache))
             FetchLevelCaches(LevelParams, Levels, *Cache);
     }
@@ -364,7 +364,7 @@ void GenerateScene(
     size_t offset = 0;
     for (auto Level : Levels)
     {
-        ConvertFields(SceneParameters.parameters, Level->ExposedParams);
+        ConvertFields(SceneParameters.parameters + offset, Level->ExposedParams);
         offset += Level->ExposedParams.Num();
     }
 
@@ -578,7 +578,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             UE_LOG(LogRenderStreamEditor, Error, TEXT("%s"), *defaultMapErrMsg);
             GEngine->AddOnScreenDebugMessage(-1, 20.f, FColor::Red, defaultMapErrMsg);
         }
-            
+
         break;
     }
 
@@ -625,7 +625,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         Schema.schema.scenes.nScenes = ChannelCaches.Num();
         Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
         RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
-        
+
         for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
         {
             const URenderStreamChannelCacheAsset** Entry = LevelParents.Find(Cache);
