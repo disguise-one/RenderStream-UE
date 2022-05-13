@@ -10,7 +10,7 @@
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelDefinition, Log, All);
 
 UENUM()
-enum class EVisibilty
+enum class EChannelVisibilty 
 {
     Visible,
     Hidden
@@ -34,7 +34,7 @@ public:
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")
     TSet<TSoftObjectPtr<AActor>> Hidden;
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)
-    EVisibilty DefaultVisibility;
+    EChannelVisibilty DefaultVisibility;
     UPROPERTY(EditAnywhere, interp, Category = SceneCapture)
     TArray<struct FEngineShowFlagsSetting> ShowFlagSettings;
     UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)

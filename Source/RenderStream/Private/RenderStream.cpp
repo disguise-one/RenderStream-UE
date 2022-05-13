@@ -375,7 +375,7 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             URenderStreamChannelDefinition* Definition = Info.Template->FindComponentByClass<URenderStreamChannelDefinition>();
             if (Definition)
             {
-                const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
+                const bool DefaultVisible = Definition->DefaultVisibility == EChannelVisibilty::Visible;
                 const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
