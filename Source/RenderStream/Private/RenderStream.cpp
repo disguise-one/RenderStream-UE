@@ -563,6 +563,19 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
         SceneComponent->SetRelativeLocation(pos);
     }
+
+    // Detect camera switch and apply flag if switching (allows switches while using e.g. motion blur, TAA etc.)
+    if (cameraData.cameraHandle != info.CameraHandleLast)
+    {
+        APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, info.PlayerId);
+        if (Controller)
+        {
+            APlayerCameraManager* Manager = Controller->PlayerCameraManager;
+            if (Manager)
+                Manager->SetGameCameraCutThisFrame();
+        }
+        info.CameraHandleLast = cameraData.cameraHandle;
+    }
 }
 
 void FRenderStreamModule::OnPostEngineInit()
