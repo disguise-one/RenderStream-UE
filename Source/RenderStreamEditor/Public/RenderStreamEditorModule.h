@@ -29,6 +29,8 @@ private:
 
     void OnPostEngineInit();
 
+    void OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
+
     void RegisterSettings();
     void UnregisterSettings();
 

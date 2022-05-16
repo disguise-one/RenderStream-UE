@@ -60,6 +60,7 @@ void FRenderStreamEditorModule::StartupModule()
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &FRenderStreamEditorModule::OnObjectPostEditChange);
 }
 
 void FRenderStreamEditorModule::ShutdownModule()
@@ -75,6 +76,7 @@ void FRenderStreamEditorModule::ShutdownModule()
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.RemoveAll(this);
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
 
@@ -672,6 +674,16 @@ void FRenderStreamEditorModule::OnBeginFrame()
 void FRenderStreamEditorModule::OnPostEngineInit()
 {
     RegisterSettings();
+}
+
+void FRenderStreamEditorModule::OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent)
+{
+    if (Object && Object->HasAnyFlags(RF_ClassDefaultObject))
+    {
+        // we only care if default objects have been changed eg. project settings objects like UGameMapSettings
+        // add include/exclude filters here if required
+        DirtyAssetMetadata = true;
+    }
 }
 
 void FRenderStreamEditorModule::RegisterSettings()
