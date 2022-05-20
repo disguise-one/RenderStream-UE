@@ -23,6 +23,7 @@
 #include "RenderStreamSettings.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/ObjectLibrary.h"
+#include "SourceControlHelpers.h"
 
 #include "RenderStream/Public/RenderStreamLink.h"
 #include <set>
@@ -638,6 +639,12 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         break;
     }
     }
+
+    const FString projectName = FPaths::GetBaseFilename(FPaths::GetProjectFilePath()).ToLower();
+    const FString fullSchemaJsonFileDir = FPaths::ProjectDir() + "rs_" + projectName + ".json";
+
+    if (FPaths::FileExists(fullSchemaJsonFileDir))
+        SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
 
     if (RenderStreamLink::instance().rs_saveSchema(TCHAR_TO_UTF8(*FPaths::GetProjectFilePath()), &Schema.schema) != RenderStreamLink::RS_ERROR_SUCCESS)
     {
