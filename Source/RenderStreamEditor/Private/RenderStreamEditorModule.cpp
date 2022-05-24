@@ -21,6 +21,7 @@
 #include "RenderStreamChannelDefinition.h"
 #include "RenderStreamCustomization.h"
 #include "RenderStreamSettings.h"
+#include "RenderStreamValidation.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/ObjectLibrary.h"
 #include "SourceControlHelpers.h"
@@ -31,6 +32,10 @@
 #include <vector>
 
 #include "GameMapsSettings.h"
+
+#include "MessageLog/Public/MessageLogInitializationOptions.h"
+#include "MessageLog/Public/MessageLogModule.h"
+#include "MessageLog/Public/IMessageLogListing.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
@@ -62,6 +67,14 @@ void FRenderStreamEditorModule::StartupModule()
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
     FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &FRenderStreamEditorModule::OnObjectPostEditChange);
+
+    // Create a validation message log
+    FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
+    FMessageLogInitializationOptions InitOptions;
+    InitOptions.bShowPages = false;
+    InitOptions.bAllowClear = true;
+    InitOptions.bShowFilters = true;
+    MessageLogModule.RegisterLogListing("RenderStreamValidation", NSLOCTEXT("RenderStreamValidation", "RenderStreamValidationLogLabel", "Renderstream Validation"), InitOptions);
 }
 
 void FRenderStreamEditorModule::ShutdownModule()
@@ -82,6 +95,13 @@ void FRenderStreamEditorModule::ShutdownModule()
         GEditor->OnBlueprintCompiled().RemoveAll(this);
 
     UnregisterSettings();
+
+    if (FModuleManager::Get().IsModuleLoaded("MessageLog"))
+    {
+        // unregister message log
+        FMessageLogModule& MessageLogModule = FModuleManager::GetModuleChecked<FMessageLogModule>("MessageLog");
+        MessageLogModule.UnregisterLogListing("RenderStreamValidation");
+    }
 }
 
 FString FRenderStreamEditorModule::StreamName()
@@ -413,14 +433,17 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     const FString LevelPath = Level->GetPackage()->GetPathName();
     Cache->Level = LevelPath;
     Cache->Channels.Empty();
+    Cache->ChannelInfoMap.Empty();
     for (auto Actor : Level->Actors)
     {
         if (Actor)
         {
-            const URenderStreamChannelDefinition* Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
+            URenderStreamChannelDefinition* Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
             if (Definition)
             {
-                Cache->Channels.Emplace(TCHAR_TO_UTF8(*Actor->GetName()));
+                FString ChannelName = TCHAR_TO_UTF8(*Actor->GetName());
+                Cache->Channels.Emplace(ChannelName);
+                Cache->ChannelInfoMap.Emplace(ChannelName, FRenderStreamValidation::GetChannelInfo(Definition, Level));
             }
         }
     }
@@ -500,6 +523,15 @@ URenderStreamChannelCacheAsset* GetDefaultMapCache()
     }
 
     return Cache;
+}
+
+void FRenderStreamEditorModule::RunValidation(const TArray<URenderStreamChannelCacheAsset*> Caches)
+{
+    FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
+    TSharedPtr<IMessageLogListing> RSVLog = MessageLogModule.GetLogListing("RenderStreamValidation");
+    if (RSVLog)
+        RSVLog->ClearMessages();
+    FRenderStreamValidation::RunValidation(Caches);
 }
 
 void FRenderStreamEditorModule::GenerateAssetMetadata()
@@ -650,6 +682,8 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     {
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to save schema"));
     }
+
+    RunValidation(ChannelCaches);
 
     ObjectLibrary->ClearLoaded();
     DeleteCaches(CachesForDelete);

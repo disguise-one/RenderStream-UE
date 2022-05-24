@@ -363,31 +363,21 @@ namespace
             if (Definition)
                 Definition->Modify();
 
-            const int32 SettingIndex = DefinitionArchetype ? DefinitionArchetype->ShowFlags.FindIndexByName(*FlagName) : INDEX_NONE;
-            const bool bDefaultValue = (SettingIndex != INDEX_NONE) ? DefinitionArchetype->ShowFlags.GetSingleFlag(SettingIndex) : false;
-
             TArray<FEngineShowFlagsSetting>& ShowFlagSettings = *static_cast<TArray<FEngineShowFlagsSetting>*>(Data);
-            if (bNewEnabledState == bDefaultValue)
+
+            FEngineShowFlagsSetting* Setting = ShowFlagSettings.FindByPredicate([&FlagName](const FEngineShowFlagsSetting& S) { return S.ShowFlagName == FlagName; });
+            if (Setting)
             {
-                // Just remove settings that are the same as defaults. This lets the flags return to their default state
-                ShowFlagSettings.RemoveAll([&FlagName](const FEngineShowFlagsSetting& Setting) { return Setting.ShowFlagName == FlagName; });
+                // If the setting exists already, update it
+                Setting->Enabled = bNewEnabledState;
             }
             else
             {
-                FEngineShowFlagsSetting* Setting = ShowFlagSettings.FindByPredicate([&FlagName](const FEngineShowFlagsSetting& S) { return S.ShowFlagName == FlagName; });
-                if (Setting)
-                {
-                    // If the setting exists already for some reason, update it
-                    Setting->Enabled = bNewEnabledState;
-                }
-                else
-                {
-                    // Otherwise create a new setting
-                    FEngineShowFlagsSetting NewFlagSetting;
-                    NewFlagSetting.ShowFlagName = FlagName;
-                    NewFlagSetting.Enabled = bNewEnabledState;
-                    ShowFlagSettings.Add(NewFlagSetting);
-                }
+                // Otherwise create a new setting
+                FEngineShowFlagsSetting NewFlagSetting;
+                NewFlagSetting.ShowFlagName = FlagName;
+                NewFlagSetting.Enabled = bNewEnabledState;
+                ShowFlagSettings.Add(NewFlagSetting);
             }
         }
     }

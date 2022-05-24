@@ -37,8 +37,6 @@ public:
     EChannelVisibilty DefaultVisibility;
     UPROPERTY(EditAnywhere, interp, Category = SceneCapture)
     TArray<struct FEngineShowFlagsSetting> ShowFlagSettings;
-    UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = SceneCapture)
-    bool EnableCameraMotionBlur;
 
     UFUNCTION(BlueprintCallable, Category = SceneCapture)
     TArray<ACameraActor*> GetInstancedCameras();

@@ -732,7 +732,7 @@ void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FScen
     {
         // This only really works if we have a single view per view family which is currently the case in nDisplay.
         ViewFamily->EngineShowFlags = Definition->ShowFlags;
-        View->bCameraMotionBlur = Definition->EnableCameraMotionBlur;
+        View->bCameraMotionBlur = Definition->ShowFlags.MotionBlur;
         const TSet<TSoftObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EChannelVisibilty::Visible ? Definition->Hidden : Definition->Visible;
         for (const TSoftObjectPtr<AActor> Actor : Actors)
         {

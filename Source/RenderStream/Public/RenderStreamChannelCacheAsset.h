@@ -2,6 +2,7 @@
 
 #include "RenderStreamLink.h"
 #include "CoreMinimal.h"
+#include "ShowFlags.h"
 #include "RenderStreamChannelCacheAsset.generated.h"
 
 //DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelCacheAsset, Log, All);
@@ -48,6 +49,22 @@ public:
     uint32 DmxType;
 };
 
+USTRUCT()
+struct FRenderStreamChannelInfo
+{
+public:
+    GENERATED_BODY()
+
+    FRenderStreamChannelInfo() : ShowFlags(EShowFlagInitMode::ESFIM_Game)
+    {}
+    
+    UPROPERTY(EditAnywhere, Category = "ChannelInfo")
+    FString Name;
+    UPROPERTY(EditAnywhere, Category = "ChannelInfo")
+    FPostProcessSettings PostProcessSettings;
+    FEngineShowFlags ShowFlags;
+};
+
 UCLASS(ClassGroup = (RenderStream))
 class RENDERSTREAM_API URenderStreamChannelCacheAsset : public UObject
 {
@@ -62,4 +79,7 @@ public:
     TSet<FString> Channels;
     UPROPERTY(EditAnywhere, Category = "ChannelCacheAsset")
     TArray<FRenderStreamExposedParameterEntry> ExposedParams;
+
+    UPROPERTY(EditAnywhere, Category = "ChannelCacheAsset")
+    TMap<FString, FRenderStreamChannelInfo> ChannelInfoMap;
 };
