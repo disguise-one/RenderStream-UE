@@ -70,6 +70,9 @@
 #include "DisplayClusterRootActor.h" 
 #include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
 
+#include "GameMapsSettings.h"
+#include "Engine/ObjectLibrary.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -187,6 +190,10 @@ void FRenderStreamModule::StartupModule()
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
         FCoreDelegates::OnEndFrame.AddRaw(this, &FRenderStreamModule::OnEndFrame);
         FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
+
+        FWorldDelegates::OnStartGameInstance.AddRaw(this, &FRenderStreamModule::GameInstanceStarted);
+        FCoreDelegates::ApplicationWillTerminateDelegate.AddRaw(this, &FRenderStreamModule::AppWillTerminate);
+        
         Monitor.Open();
     }
 
@@ -244,6 +251,9 @@ void FRenderStreamModule::ShutdownModule()
     FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
+
+    FWorldDelegates::OnStartGameInstance.RemoveAll(this);
+    FCoreDelegates::ApplicationWillTerminateDelegate.RemoveAll(this);
 
     // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
     // we call this function before unloading the module.
@@ -575,7 +585,6 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
 
 void FRenderStreamModule::OnPostEngineInit()
 {
-
     int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
 
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -628,6 +637,34 @@ void FRenderStreamModule::OnPostEngineInit()
         m_sceneSelector = std::make_unique<SceneSelector_None>();
     }
 
+}
+
+void FRenderStreamModule::GameInstanceStarted(UGameInstance* Instance)
+{
+    m_gameInstanceStarted = true;
+}
+
+void FRenderStreamModule::AppWillTerminate()
+{
+    RenderStreamLink& link = RenderStreamLink::instance();
+    if (!m_gameInstanceStarted && IsInCluster() && link.isAvailable())
+    {
+        // Something went wrong during launch, check some stuff for troubleshooting and report
+        const UGameMapsSettings* GameMapsSettings = GetDefault<UGameMapsSettings>();
+        const FString& DefaultMap = GameMapsSettings->GetGameDefaultMap();
+
+        TArray<FAssetData> MapAssets;
+        const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
+        MapLibrary->LoadAssetDataFromPath("/Game/");
+        MapLibrary->GetAssetDataList(MapAssets);
+
+        FAssetData* Found = MapAssets.FindByPredicate([&DefaultMap](const FAssetData& Asset) { return Asset.PackageName.ToString() == DefaultMap; });
+        if (!Found)
+        {
+            // The Game Default Map set cannot be loaded because it doesn't exist
+            UE_LOG(LogRenderStream, Error, TEXT("Uneal Cannot load the Game Default Map '%s' because it no longer exists. This must be corrected by the user by either updating the project settings or supplying a command line argument in d3 specifying a map override eg. '/Game/Maps/MyMap.umap'."), *DefaultMap);
+        }
+    }
 }
 
 void FRenderStreamModule::OnSystemError()

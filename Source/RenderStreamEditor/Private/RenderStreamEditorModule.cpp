@@ -707,6 +707,7 @@ void FRenderStreamEditorModule::OnBeginFrame()
     // and the old level is still around when OnPostSaveWorld is triggered, remove this once fixed by Epic.
     if (DirtyAssetMetadata)
     {
+        RemoveInvalidCacheEntries();
         GenerateAssetMetadata();
         DirtyAssetMetadata = false;
     }
@@ -745,6 +746,52 @@ void FRenderStreamEditorModule::UnregisterSettings()
     {
         SettingsModule->UnregisterSettings("Project", "Plugins", "DisguiseRenderStream");
     }
+}
+
+bool FRenderStreamEditorModule::RemoveInvalidCacheEntries()
+{
+    TArray<URenderStreamChannelCacheAsset*> ChannelCaches;
+    auto ObjectLibrary = UObjectLibrary::CreateLibrary(URenderStreamChannelCacheAsset::StaticClass(), false, false);
+    ObjectLibrary->LoadAssetsFromPath(CacheFolder);
+    ObjectLibrary->GetObjects(ChannelCaches);
+
+    TArray<FAssetData> Assets;
+    const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
+    LevelLibrary->LoadAssetDataFromPath("/Game/");
+    LevelLibrary->GetAssetDataList(Assets);
+
+    TArray<FAssetData> MapAssets;
+    const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
+    MapLibrary->LoadAssetDataFromPath("/Game/");
+    MapLibrary->GetAssetDataList(MapAssets);
+
+    Assets.Append(MapAssets);
+
+    TArray<UObject*> ObjectsToDelete;
+
+    auto IsInvalidCacheAsset = [&Assets, &ObjectsToDelete](URenderStreamChannelCacheAsset* CacheAsset) {
+        bool Invalid = false;
+        
+        FString CachedPath = CacheAsset->Level.ToString();
+        auto MatchesCached = [&CachedPath](const FAssetData& Asset) {
+            const FString PackageName = Asset.PackageName.ToString();
+            return PackageName == CachedPath;
+        };
+
+        if (!Assets.FindByPredicate(MatchesCached))
+            Invalid = true;
+
+        if (Invalid)
+            ObjectsToDelete.Add(CacheAsset);
+
+        return Invalid;
+    };
+
+    const auto RemoveCount = ChannelCaches.RemoveAll(IsInvalidCacheAsset);
+    if (RemoveCount > 0)
+        ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+
+    return RemoveCount > 0;
 }
 
 #undef LOCTEXT_NAMESPACE
