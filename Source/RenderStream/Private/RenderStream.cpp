@@ -4,7 +4,6 @@
 #include "RenderStreamLink.h"
 
 #include "RenderStreamSettings.h"
-#include "RenderStreamStatus.h"
 #include "RenderStreamSceneSelector.h"
 #include "SceneSelector_None.h"
 #include "SceneSelector_StreamingLevels.h"
@@ -157,12 +156,10 @@ void FRenderStreamModule::StartupModule()
     AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
     // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-    RenderStreamStatus().InputOutput("Initialising stream", "Waiting for data from d3", RSSTATUS_ORANGE);
 
     if (!RenderStreamLink::instance().loadExplicit())
     {
         UE_LOG(LogRenderStream, Error, TEXT ("Failed to load RenderStream DLL - d3 not installed?"));
-        RenderStreamStatus().InputOutput("Error", "Failed to load RenderStream DLL - d3 not installed?", RSSTATUS_RED);
     }
     else
     {
@@ -175,13 +172,11 @@ void FRenderStreamModule::StartupModule()
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
             {
                 UE_LOG(LogRenderStream, Error, TEXT("Unsupported RenderStream library, expected version %i.%i"), RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
-                RenderStreamStatus().InputOutput("Error", "Unsupported RenderStream library", RSSTATUS_RED);
                 RenderStreamLink::instance().unloadExplicit();
                 return;
             }
 
             UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
-            RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
             RenderStreamLink::instance().unloadExplicit();
             return;
         }
@@ -604,7 +599,6 @@ void FRenderStreamModule::OnPostEngineInit()
     if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
     {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
-        RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
         RenderStreamLink::instance().unloadExplicit();
         return;
     }
