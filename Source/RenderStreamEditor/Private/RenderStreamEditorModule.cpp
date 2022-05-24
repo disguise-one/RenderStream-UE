@@ -67,6 +67,7 @@ void FRenderStreamEditorModule::StartupModule()
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
     FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &FRenderStreamEditorModule::OnObjectPostEditChange);
+    FEditorDelegates::OnShutdownPostPackagesSaved.AddRaw(this, &FRenderStreamEditorModule::OnShutdownPostPackagesSaved);
 
     // Create a validation message log
     FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
@@ -91,6 +92,7 @@ void FRenderStreamEditorModule::ShutdownModule()
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
     FCoreUObjectDelegates::OnObjectPropertyChanged.RemoveAll(this);
+    FEditorDelegates::OnShutdownPostPackagesSaved.RemoveAll(this);
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
 
@@ -479,8 +481,56 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     return Cache;
 }
 
+bool RemoveInvalidCacheEntries()
+{
+    TArray<URenderStreamChannelCacheAsset*> ChannelCaches;
+    const auto ObjectLibrary = UObjectLibrary::CreateLibrary(URenderStreamChannelCacheAsset::StaticClass(), false, false);
+    ObjectLibrary->LoadAssetsFromPath(CacheFolder);
+    ObjectLibrary->GetObjects(ChannelCaches);
+
+    TArray<FAssetData> Assets;
+    const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
+    LevelLibrary->LoadAssetDataFromPath("/Game/");
+    LevelLibrary->GetAssetDataList(Assets);
+
+    TArray<FAssetData> MapAssets;
+    const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
+    MapLibrary->LoadAssetDataFromPath("/Game/");
+    MapLibrary->GetAssetDataList(MapAssets);
+
+    Assets.Append(MapAssets);
+
+    TArray<UObject*> ObjectsToDelete;
+
+    auto IsInvalidCacheAsset = [&Assets, &ObjectsToDelete](URenderStreamChannelCacheAsset* CacheAsset) {
+        bool Invalid = false;
+        
+        FString CachedPath = CacheAsset->Level.ToString();
+        auto MatchesCached = [&CachedPath](const FAssetData& Asset) {
+            const FString PackageName = Asset.PackageName.ToString();
+            return PackageName == CachedPath;
+        };
+
+        if (!Assets.FindByPredicate(MatchesCached))
+            Invalid = true;
+
+        if (Invalid)
+            ObjectsToDelete.Add(CacheAsset);
+
+        return Invalid;
+    };
+
+    const auto RemoveCount = ChannelCaches.RemoveAll(IsInvalidCacheAsset);
+    if (RemoveCount > 0)
+        ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+
+    return RemoveCount > 0;
+}
+
 void UpdateChannelCache()
 {
+    RemoveInvalidCacheEntries();
+
     UWorld* World = GEditor->GetEditorWorldContext().World();
     for (ULevel* Level : World->GetLevels())
     {
@@ -707,7 +757,6 @@ void FRenderStreamEditorModule::OnBeginFrame()
     // and the old level is still around when OnPostSaveWorld is triggered, remove this once fixed by Epic.
     if (DirtyAssetMetadata)
     {
-        RemoveInvalidCacheEntries();
         GenerateAssetMetadata();
         DirtyAssetMetadata = false;
     }
@@ -725,6 +774,17 @@ void FRenderStreamEditorModule::OnObjectPostEditChange(UObject* Object, FPropert
         // we only care if default objects have been changed eg. project settings objects like UGameMapSettings
         // add include/exclude filters here if required
         DirtyAssetMetadata = true;
+    }
+}
+
+void FRenderStreamEditorModule::OnShutdownPostPackagesSaved()
+{
+    if (DirtyAssetMetadata)
+    {
+        // due to our metadata generation happening in OnBeginFrame we rely on the engine ticking in order detect that metadata should be generated
+        // if however the metadata is dirty in this callback it means the editor is closing and won't tick again
+        // therefore this is our last chance to generate metadata during this runtime, if we don't our metadata may be made stale
+        GenerateAssetMetadata();
     }
 }
 
@@ -746,52 +806,6 @@ void FRenderStreamEditorModule::UnregisterSettings()
     {
         SettingsModule->UnregisterSettings("Project", "Plugins", "DisguiseRenderStream");
     }
-}
-
-bool FRenderStreamEditorModule::RemoveInvalidCacheEntries()
-{
-    TArray<URenderStreamChannelCacheAsset*> ChannelCaches;
-    auto ObjectLibrary = UObjectLibrary::CreateLibrary(URenderStreamChannelCacheAsset::StaticClass(), false, false);
-    ObjectLibrary->LoadAssetsFromPath(CacheFolder);
-    ObjectLibrary->GetObjects(ChannelCaches);
-
-    TArray<FAssetData> Assets;
-    const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
-    LevelLibrary->LoadAssetDataFromPath("/Game/");
-    LevelLibrary->GetAssetDataList(Assets);
-
-    TArray<FAssetData> MapAssets;
-    const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
-    MapLibrary->LoadAssetDataFromPath("/Game/");
-    MapLibrary->GetAssetDataList(MapAssets);
-
-    Assets.Append(MapAssets);
-
-    TArray<UObject*> ObjectsToDelete;
-
-    auto IsInvalidCacheAsset = [&Assets, &ObjectsToDelete](URenderStreamChannelCacheAsset* CacheAsset) {
-        bool Invalid = false;
-        
-        FString CachedPath = CacheAsset->Level.ToString();
-        auto MatchesCached = [&CachedPath](const FAssetData& Asset) {
-            const FString PackageName = Asset.PackageName.ToString();
-            return PackageName == CachedPath;
-        };
-
-        if (!Assets.FindByPredicate(MatchesCached))
-            Invalid = true;
-
-        if (Invalid)
-            ObjectsToDelete.Add(CacheAsset);
-
-        return Invalid;
-    };
-
-    const auto RemoveCount = ChannelCaches.RemoveAll(IsInvalidCacheAsset);
-    if (RemoveCount > 0)
-        ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
-
-    return RemoveCount > 0;
 }
 
 #undef LOCTEXT_NAMESPACE

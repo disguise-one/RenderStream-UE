@@ -32,6 +32,8 @@ private:
 
     void OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
 
+    void OnShutdownPostPackagesSaved();
+
     void RegisterSettings();
     void UnregisterSettings();
 
