@@ -675,7 +675,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     const FString projectName = FPaths::GetBaseFilename(FPaths::GetProjectFilePath()).ToLower();
     const FString fullSchemaJsonFileDir = FPaths::ProjectDir() + "rs_" + projectName + ".json";
 
-    if (FPaths::FileExists(fullSchemaJsonFileDir))
+    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir))
         SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
 
     if (RenderStreamLink::instance().rs_saveSchema(TCHAR_TO_UTF8(*FPaths::GetProjectFilePath()), &Schema.schema) != RenderStreamLink::RS_ERROR_SUCCESS)
