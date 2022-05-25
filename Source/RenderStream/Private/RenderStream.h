@@ -54,6 +54,9 @@ protected:
     void OnSystemError();
     void OnEndFrame();
 
+    void GameInstanceStarted(UGameInstance* Instance);
+    void AppWillTerminate();
+    
     void EnableStats() const;
 
     TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
@@ -86,4 +89,5 @@ public:
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     double m_LastTime = 0;
+    bool m_gameInstanceStarted = false;
 };
