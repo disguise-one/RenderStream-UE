@@ -10,13 +10,14 @@ struct FRenderStreamChannelInfo;
 class URenderStreamChannelCacheAsset;
 
 USTRUCT()
-struct RENDERSTREAM_API FRenderStreamValidation
+struct RENDERSTREAMEDITOR_API FRenderStreamValidation
 {
 public:
     GENERATED_BODY()
 
-    static FRenderStreamChannelInfo GetChannelInfo(URenderStreamChannelDefinition* ChannelDefinition, const ULevel* Level);
-    static void ValidateChannelInfo(const FRenderStreamChannelInfo& Info);
-    static void ValidateProjectSettings();
+    static FRenderStreamChannelInfo GetChannelInfo(TWeakObjectPtr<URenderStreamChannelDefinition> ChannelDefinition, const ULevel* Level);
+    static bool ValidateChannelInfo(const FRenderStreamChannelInfo& Info);
+    static bool ValidateProjectSettings();
     static void RunValidation(const TArray<URenderStreamChannelCacheAsset*>& Caches);
+    static void ForceRunValidation();
 };

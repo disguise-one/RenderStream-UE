@@ -1,5 +1,6 @@
 #include "RenderStreamValidation.h"
 #include "RenderStreamChannelCacheAsset.h"
+#include "RenderStreamEditorModule.h"
 
 #include "UObject/Class.h"
 #include "Engine/RendererSettings.h"
@@ -8,31 +9,73 @@
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
 #include "Misc/MapErrors.h"
+#include "Camera/CameraComponent.h"
 
-
-void FRenderStreamValidation::ValidateProjectSettings()
+bool FRenderStreamValidation::ValidateProjectSettings()
 {
     FMessageLog RSV("RenderStreamValidation");
+    RSV.SuppressLoggingToOutputLog(true);
+    bool IssuesFound = false;
 
     const URendererSettings* RenderSettings = GetDefault<URendererSettings>();
 
     // Texture streaming
     if (RenderSettings->bTextureStreaming)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Texture streaming enabled in project settings. May cause pixellated content")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixTextureStreaming;
+        FixTextureStreaming.BindLambda([]() {
+            URendererSettings* RenderSettings = GetMutableDefault<URendererSettings>();
+            RenderSettings->bTextureStreaming = false;
+            RenderSettings->SaveConfig();
+            ForceRunValidation();
+            });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Texture streaming enabled in project settings. May cause pixellated content.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixTextureStreaming"), FixTextureStreaming));
+    }
 
     // Screen space global illumination
     if (RenderSettings->bSSGI)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Screen-space global illumination enabled in project settings. May cause seams if using clustered rendering")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixSSGI;
+        FixSSGI.BindLambda([]() {
+            URendererSettings* RenderSettings = GetMutableDefault<URendererSettings>();
+            RenderSettings->bSSGI = false;
+            RenderSettings->SaveConfig();
+            ForceRunValidation();
+            });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Screen-space global illumination enabled in project settings. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixSSGI"), FixSSGI));
+    }
+
+    // Ray-tracing
+    if (RenderSettings->bEnableRayTracing)
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixRayTracing;
+        FixRayTracing.BindLambda([]() {
+            URendererSettings* RenderSettings = GetMutableDefault<URendererSettings>();
+            RenderSettings->bEnableRayTracing = false;
+            RenderSettings->SaveConfig();
+            ForceRunValidation();
+            });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Ray tracing enabled in project settings. May cause seams if using clustered rendering")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixRayTracing"), FixRayTracing));
+    }
+
+    return IssuesFound;
 }
 
-FRenderStreamChannelInfo FRenderStreamValidation::GetChannelInfo(URenderStreamChannelDefinition* ChannelDefinition, const ULevel* Level)
+FRenderStreamChannelInfo FRenderStreamValidation::GetChannelInfo(TWeakObjectPtr<URenderStreamChannelDefinition> ChannelDefinition, const ULevel* Level)
 {
     FRenderStreamChannelInfo Info;
-    if (ChannelDefinition)
+    if (ChannelDefinition.IsValid())
     {
         // Get the show flags from the channel definition
         ChannelDefinition->UpdateShowFlags();
         Info.ShowFlags = ChannelDefinition->ShowFlags;
+        Info.ChannelDefinition = ChannelDefinition;
 
         // Get post-processing settings from the camera
         ACameraActor* Camera = Cast<ACameraActor>(ChannelDefinition->GetOwner());
@@ -104,9 +147,43 @@ FRenderStreamChannelInfo FRenderStreamValidation::GetChannelInfo(URenderStreamCh
     return Info;
 }
 
-void FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo& Info)
+void DisableShowFlag(const FRenderStreamChannelInfo& Info, const FString& SettingName)
+{
+    if (!Info.ChannelDefinition.IsValid())
+    {
+        FMessageLog RSV("RenderStreamValidation");
+        RSV.Error()->AddToken(FTextToken::Create(FText::FromString("Could not fix " + SettingName + " due to invalid channel definition. Load and save level and try again.")));
+        return;
+    }
+
+    // Update or add show flag setting
+    bool SettingFound = false;
+    for (FEngineShowFlagsSetting& ShowFlagSetting : Info.ChannelDefinition->ShowFlagSettings)
+    {
+        if (ShowFlagSetting.ShowFlagName == SettingName)
+        {
+            ShowFlagSetting.Enabled = false;
+            SettingFound = true;
+        }
+    }
+    if (!SettingFound)
+    {
+        FEngineShowFlagsSetting ShowFlagSetting;
+        ShowFlagSetting.ShowFlagName = SettingName;
+        ShowFlagSetting.Enabled = false;
+        Info.ChannelDefinition->ShowFlagSettings.Add(ShowFlagSetting);
+    }
+
+    // Ensure show flags are up to date
+    Info.ChannelDefinition->UpdateShowFlags();
+    FRenderStreamValidation::ForceRunValidation();
+}
+
+bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo& Info)
 {
     FMessageLog RSV("RenderStreamValidation");
+    RSV.SuppressLoggingToOutputLog(true);
+    bool IssuesFound = false;
 
     const URendererSettings* RenderSettings = GetDefault<URendererSettings>();
     const FPostProcessSettings& PPS = Info.PostProcessSettings;
@@ -119,26 +196,51 @@ void FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
         && ((PPS.bOverride_MotionBlurAmount && PPS.MotionBlurAmount > 0.f)                       // Overriden and enabled in camera
             || (!PPS.bOverride_MotionBlurAmount && RenderSettings->bDefaultFeatureMotionBlur));  // Not overridden in camera - enabled in project settings
     if (motionBlurEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has motion blur enabled. May require padding / overlap if using clustered rendering.It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixMotionBlur;
+        FixMotionBlur.BindLambda([&Info]() { DisableShowFlag(Info, "MotionBlur"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has motion blur enabled. May require padding / overlap if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixMotionBlur"), FixMotionBlur));
+    }
 
     // Bloom
     bool bloomEnabled = ShowFlags.Bloom                                                  // Enabled in RenderStreamChannelDefinition
         && ((PPS.bOverride_BloomIntensity && PPS.BloomIntensity > 0.f)                   // Overriden and enabled in camera
             || (!PPS.bOverride_BloomIntensity && RenderSettings->bDefaultFeatureBloom)); // Not overridden in camera - enabled in project settings
     if (bloomEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has bloom enabled. May require padding/overlap if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixBloom;
+        FixBloom.BindLambda([&Info]() { DisableShowFlag(Info, "Bloom"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has bloom enabled. May require padding/overlap if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixBloom"), FixBloom));
+    }
 
     // Screen-space AO
     bool ssaoEnabled = ShowFlags.ScreenSpaceAO                                                                  // Enabled in RenderStreamChannelDefinition
         && ((PPS.bOverride_AmbientOcclusionIntensity && PPS.AmbientOcclusionIntensity > 0.f)                    // Overriden and enabled in camera
             || (!PPS.bOverride_AmbientOcclusionIntensity && RenderSettings->bDefaultFeatureAmbientOcclusion));  // Not overridden in camera - enabled in project settings
     if (ssaoEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has screen-space AO enabled. May require padding/overlap if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixSSAO;
+        FixSSAO.BindLambda([&Info]() { DisableShowFlag(Info, "ScreenSpaceAO"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has screen-space AO enabled. May require padding/overlap if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixSSAO"), FixSSAO));
+    }
 
     // Temporal anti-aliasing
-    if (ShowFlags.AntiAliasing && ShowFlags.TemporalAA                                         // Enabled in RenderStreamChannelDefinition
-        && RenderSettings->DefaultFeatureAntiAliasing == EAntiAliasingMethod::AAM_TemporalAA)  // Enabled in project settings
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has temporal anti-aliasing enabled. May require padding/overlap if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    bool taaEnabled = ShowFlags.AntiAliasing && ShowFlags.TemporalAA                           // Enabled in RenderStreamChannelDefinition
+        && RenderSettings->DefaultFeatureAntiAliasing == EAntiAliasingMethod::AAM_TemporalAA;  // Enabled in project settings
+    if (taaEnabled)
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixTAA;
+        FixTAA.BindLambda([&Info]() { DisableShowFlag(Info, "TemporalAA"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has temporal anti-aliasing enabled. May require padding/overlap if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixTAA"), FixTAA));
+    }
 
     // Features which don't work well for clustered rendering
 
@@ -148,33 +250,63 @@ void FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
         && ((PPS.bOverride_AutoExposureMethod && PPS.AutoExposureMethod != EAutoExposureMethod::AEM_Manual)                            // Overriden and not set to manual in camera
             || (!PPS.bOverride_AutoExposureMethod && RenderSettings->DefaultFeatureAutoExposure != EAutoExposureMethod::AEM_Manual));  // Not overridden in camera - not set to manual in project settings
     if (eyeAdaptationEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has eye adaptation (auto-exposure) enabled. May cause seams if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixEyeAdaptation;
+        FixEyeAdaptation.BindLambda([&Info]() { DisableShowFlag(Info, "EyeAdaptation"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has eye adaptation (auto-exposure) enabled. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixEyeAdaptation"), FixEyeAdaptation));
+    }
 
     // Lens flares
     bool lensFlaresEnabled = ShowFlags.LensFlares                                                 // Enabled in RenderStreamChannelDefinition
         && ((PPS.bOverride_LensFlareIntensity && PPS.LensFlareIntensity > 0.f)                    // Overriden and enabled in camera
             || (!PPS.bOverride_LensFlareIntensity && RenderSettings->bDefaultFeatureLensFlare));  // Not overridden in camera - enabled in project settings
     if (lensFlaresEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has lens flares enabled. May cause seams if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixLensFlares;
+        FixLensFlares.BindLambda([&Info]() { DisableShowFlag(Info, "LensFlares"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has lens flares enabled. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixLensFlares"), FixLensFlares));
+    }
 
     // Screen-space reflections (no project setting)
     bool ssrEnabled = ShowFlags.ScreenSpaceReflections                                                  // Enabled in RenderStreamChannelDefinition
         && (PPS.bOverride_ScreenSpaceReflectionIntensity && PPS.ScreenSpaceReflectionIntensity > 0.f);  // Overriden and enabled in camera
     if (ssrEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has screen-space reflections enabled. May cause seams if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixSSR;
+        FixSSR.BindLambda([&Info]() { DisableShowFlag(Info, "ScreenSpaceReflections"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has screen-space reflections enabled. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixSSR"), FixSSR));
+    }
 
     // Scene color fringe (no project setting)
     bool colorFringeEnabled = ShowFlags.SceneColorFringe                           // Enabled in RenderStreamChannelDefinition
         && (PPS.bOverride_SceneFringeIntensity && PPS.SceneFringeIntensity > 0.f); // Overriden and enabled in camera
     if (colorFringeEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has scene color fringe (chromatic aberration) enabled. May cause seams if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixColorFringe;
+        FixColorFringe.BindLambda([&Info]() { DisableShowFlag(Info, "SceneColorFringe"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has scene color fringe (chromatic aberration) enabled. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixColorFringe"), FixColorFringe));
+    }
 
     // Tone curve (no project setting, ExpandGamut also related)
     bool toneCurveEnabled = ShowFlags.ToneCurve                          // Enabled in RenderStreamChannelDefinition
         && (PPS.bOverride_ToneCurveAmount && PPS.ToneCurveAmount > 0.f)  // Overriden and enabled in camera
         && (PPS.bOverride_ExpandGamut && PPS.ExpandGamut > 0.f);         // Overriden and enabled in camera
     if (toneCurveEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has tone curve enabled. May cause seams if using clustered rendering. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixToneCurve;
+        FixToneCurve.BindLambda([&Info]() { DisableShowFlag(Info, "ToneCurve"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has tone curve enabled. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixToneCurve"), FixToneCurve));
+    }
 
     // Features which aren't recommended for other reasons
 
@@ -182,19 +314,49 @@ void FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     bool vignetteEnabled = ShowFlags.Vignette                                 // Enabled in RenderStreamChannelDefinition
         && (PPS.bOverride_VignetteIntensity && PPS.VignetteIntensity > 0.f);  // Overriden and enabled in camera
     if (vignetteEnabled)
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has vignette enabled. This may result in double vignette application when captured with a real camera. It can be disabled in the Renderstream channel definition.")));
+    {
+        IssuesFound = true;
+        FOnActionTokenExecuted FixVignette;
+        FixVignette.BindLambda([&Info]() { DisableShowFlag(Info, "Vignette"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has vignette enabled. This may result in double vignette application when captured with a real camera.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixVignette"), FixVignette));
+    }
+
+    return IssuesFound;
 }
 
 void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCacheAsset*>& Caches)
 {
-    ValidateProjectSettings();
+    bool IssuesFound = false;
+    {
+        FMessageLog RSV("RenderStreamValidation");
+        RSV.SuppressLoggingToOutputLog(true);
+        RSV.Info()->AddToken(FTextToken::Create(FText::FromString("Project settings:")));
+    }
+    IssuesFound |= ValidateProjectSettings();
 
     for (const URenderStreamChannelCacheAsset* Cache : Caches)
     {
         if (!Cache)
             continue;
 
+        {
+            FMessageLog RSV("RenderStreamValidation");
+            RSV.SuppressLoggingToOutputLog(true);
+            RSV.Info()->AddToken(FTextToken::Create(FText::FromString("Level " + Cache->Level.GetAssetPathName().ToString() + ":")));
+        }
+
         for (const FString& ChannelName : Cache->Channels)
-            ValidateChannelInfo(Cache->ChannelInfoMap[ChannelName]);
+            IssuesFound |= ValidateChannelInfo(Cache->ChannelInfoMap[ChannelName]);
     }
+
+    if (IssuesFound)
+        UE_LOG(LogRenderStreamEditor, Warning, TEXT("Potential issues found in project settings. Open Renderstream Validation tab in Message Log to view and fix."));
+
+}
+
+void FRenderStreamValidation::ForceRunValidation()
+{
+    FRenderStreamEditorModule& RenderStreamEditorModule = FModuleManager::LoadModuleChecked<FRenderStreamEditorModule>("RenderStreamEditor");
+    RenderStreamEditorModule.GenerateAssetMetadata();
 }

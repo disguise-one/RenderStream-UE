@@ -438,8 +438,8 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     {
         if (Actor)
         {
-            URenderStreamChannelDefinition* Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
-            if (Definition)
+            TWeakObjectPtr<URenderStreamChannelDefinition> Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (Definition.IsValid())
             {
                 FString ChannelName = TCHAR_TO_UTF8(*Actor->GetName());
                 Cache->Channels.Emplace(ChannelName);

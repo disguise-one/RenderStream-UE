@@ -2,6 +2,7 @@
 
 #include "RenderStreamLink.h"
 #include "CoreMinimal.h"
+#include "RenderStreamChannelDefinition.h"
 #include "ShowFlags.h"
 #include "RenderStreamChannelCacheAsset.generated.h"
 
@@ -62,6 +63,9 @@ public:
     FString Name;
     UPROPERTY(EditAnywhere, Category = "ChannelInfo")
     FPostProcessSettings PostProcessSettings;
+    UPROPERTY(EditAnywhere, Category = "ChannelInfo")
+    TWeakObjectPtr<URenderStreamChannelDefinition> ChannelDefinition;
+
     FEngineShowFlags ShowFlags;
 };
 
