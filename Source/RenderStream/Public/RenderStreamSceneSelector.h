@@ -20,7 +20,7 @@ protected:
 
     virtual bool OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema) = 0;
     bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, std::initializer_list<const AActor*> Actors) const;
-    void ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) const;
+    void ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) /*const*/;
 
 private:
     size_t ValidateParameters(const AActor* Root, RenderStreamLink::RemoteParameter* const parameters, size_t numParameters) const;
@@ -28,4 +28,5 @@ private:
 
     std::vector<uint8_t> m_schemaMem;
     RenderStreamLink::ScopedSchema m_defaultSchema;
+    std::vector<float> floatValuesLast;
 };

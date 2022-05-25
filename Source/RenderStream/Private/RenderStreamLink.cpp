@@ -34,6 +34,7 @@ const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
         "Pose",
         "Transform",
         "Text",
+        "Event",
     };
 
     static_assert(RS_PARAMETER_LAST + 1 == UE_ARRAY_COUNT(ParamTypeName), "Added a new parameter type without adding it's name!");

@@ -234,7 +234,8 @@ public:
         RS_PARAMETER_POSE,      // 4x4 TR matrix
         RS_PARAMETER_TRANSFORM, // 4x4 TRS matrix
         RS_PARAMETER_TEXT,
-        RS_PARAMETER_LAST=RS_PARAMETER_TEXT
+        RS_PARAMETER_EVENT,
+        RS_PARAMETER_LAST= RS_PARAMETER_EVENT
     };
 
     enum RemoteParameterDmxType
