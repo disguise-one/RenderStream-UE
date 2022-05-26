@@ -16,7 +16,7 @@ public:
     GENERATED_BODY()
 
     static FRenderStreamChannelInfo GetChannelInfo(TWeakObjectPtr<URenderStreamChannelDefinition> ChannelDefinition, const ULevel* Level);
-    static bool ValidateChannelInfo(const FRenderStreamChannelInfo& Info);
+    static bool ValidateChannelInfo(const FRenderStreamChannelInfo& Info, const FString& Level);
     static bool ValidateProjectSettings();
     static void RunValidation(const TArray<URenderStreamChannelCacheAsset*>& Caches);
     static void ForceRunValidation();

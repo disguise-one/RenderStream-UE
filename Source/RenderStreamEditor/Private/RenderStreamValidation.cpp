@@ -10,6 +10,7 @@
 #include "Misc/UObjectToken.h"
 #include "Misc/MapErrors.h"
 #include "Camera/CameraComponent.h"
+#include "EditorLevelLibrary.h"
 
 bool FRenderStreamValidation::ValidateProjectSettings()
 {
@@ -75,7 +76,6 @@ FRenderStreamChannelInfo FRenderStreamValidation::GetChannelInfo(TWeakObjectPtr<
         // Get the show flags from the channel definition
         ChannelDefinition->UpdateShowFlags();
         Info.ShowFlags = ChannelDefinition->ShowFlags;
-        Info.ChannelDefinition = ChannelDefinition;
 
         // Get post-processing settings from the camera
         ACameraActor* Camera = Cast<ACameraActor>(ChannelDefinition->GetOwner());
@@ -147,39 +147,84 @@ FRenderStreamChannelInfo FRenderStreamValidation::GetChannelInfo(TWeakObjectPtr<
     return Info;
 }
 
-void DisableShowFlag(const FRenderStreamChannelInfo& Info, const FString& SettingName)
+void DisableShowFlag(const FRenderStreamChannelInfo& Info, const FString& LevelName, const FString& SettingName)
 {
-    if (!Info.ChannelDefinition.IsValid())
+    FMessageLog RSV("RenderStreamValidation");
+
+    UWorld* World = GEditor->GetEditorWorldContext().World();
+    if (!World)
     {
-        FMessageLog RSV("RenderStreamValidation");
-        RSV.Error()->AddToken(FTextToken::Create(FText::FromString("Could not fix " + SettingName + " due to invalid channel definition. Load and save level and try again.")));
+        RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s in channel %s. Invalid world."), *SettingName, *Info.Name))));
         return;
     }
 
-    // Update or add show flag setting
-    bool SettingFound = false;
-    for (FEngineShowFlagsSetting& ShowFlagSetting : Info.ChannelDefinition->ShowFlagSettings)
+    // Check if the level is loaded
+    bool LevelLoaded = false;
+    for (ULevel* Level : World->GetLevels())
     {
-        if (ShowFlagSetting.ShowFlagName == SettingName)
+        if (Level && Level->GetPackage()->GetPathName() == LevelName)
+            LevelLoaded = true;
+    }
+    for (const ULevelStreaming* StreamingLevel : World->GetStreamingLevels())
+    {
+        if (StreamingLevel->IsLevelLoaded() && StreamingLevel->GetPackage()->GetPathName() == LevelName)
+            LevelLoaded = true;
+    }
+
+    if (!LevelLoaded)
+    {
+        // Save current level and load the required level for the channel
+        UEditorLevelLibrary::SaveCurrentLevel();
+        if (!UEditorLevelLibrary::LoadLevel(LevelName))
         {
-            ShowFlagSetting.Enabled = false;
-            SettingFound = true;
+            RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s in channel %s. Unable to load level %s."), *SettingName, *Info.Name, *LevelName))));
+            return;
         }
     }
-    if (!SettingFound)
+
+    // Try to find the channel definition in the loaded levels
+    TArray<AActor*> FoundCameras;
+    UGameplayStatics::GetAllActorsOfClass(GWorld, ACameraActor::StaticClass(), FoundCameras);
+    for (AActor* Camera : FoundCameras)
     {
-        FEngineShowFlagsSetting ShowFlagSetting;
-        ShowFlagSetting.ShowFlagName = SettingName;
-        ShowFlagSetting.Enabled = false;
-        Info.ChannelDefinition->ShowFlagSettings.Add(ShowFlagSetting);
+        if (Camera && Camera->GetName() == Info.Name)
+        {
+            TWeakObjectPtr<URenderStreamChannelDefinition> Definition = Camera->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (Definition.IsValid())
+            {
+                Definition->Modify(true);  // Ensure the definition gets marked as dirty
+
+                // Update or add show flag setting
+                bool SettingFound = false;
+                for (FEngineShowFlagsSetting& ShowFlagSetting : Definition->ShowFlagSettings)
+                {
+                    if (ShowFlagSetting.ShowFlagName == SettingName)
+                    {
+                        ShowFlagSetting.Enabled = false;
+                        SettingFound = true;
+                    }
+                }
+                if (!SettingFound)
+                {
+                    FEngineShowFlagsSetting ShowFlagSetting;
+                    ShowFlagSetting.ShowFlagName = SettingName;
+                    ShowFlagSetting.Enabled = false;
+                    Definition->ShowFlagSettings.Add(ShowFlagSetting);
+                }
+
+                // Ensure show flags are up to date and re-run validation
+                Definition->UpdateShowFlags();
+                FRenderStreamValidation::ForceRunValidation();
+                return;
+            }
+        }
     }
 
-    // Ensure show flags are up to date
-    Info.ChannelDefinition->UpdateShowFlags();
-    FRenderStreamValidation::ForceRunValidation();
+    RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s. Channel definition %s not found in level %."), *SettingName, *Info.Name, *LevelName))));
+
 }
 
-bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo& Info)
+bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo& Info, const FString& Level)
 {
     FMessageLog RSV("RenderStreamValidation");
     RSV.SuppressLoggingToOutputLog(true);
@@ -199,8 +244,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixMotionBlur;
-        FixMotionBlur.BindLambda([&Info]() { DisableShowFlag(Info, "MotionBlur"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has motion blur enabled. May require padding / overlap if using clustered rendering.")))
+        FixMotionBlur.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "MotionBlur"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has motion blur enabled. May require padding/overlap if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixMotionBlur"), FixMotionBlur));
     }
 
@@ -212,8 +257,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixBloom;
-        FixBloom.BindLambda([&Info]() { DisableShowFlag(Info, "Bloom"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has bloom enabled. May require padding/overlap if using clustered rendering.")))
+        FixBloom.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "Bloom"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has bloom enabled. May require padding/overlap if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixBloom"), FixBloom));
     }
 
@@ -225,8 +270,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixSSAO;
-        FixSSAO.BindLambda([&Info]() { DisableShowFlag(Info, "ScreenSpaceAO"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has screen-space AO enabled. May require padding/overlap if using clustered rendering.")))
+        FixSSAO.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "ScreenSpaceAO"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has screen-space AO enabled. May require padding/overlap if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixSSAO"), FixSSAO));
     }
 
@@ -237,8 +282,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixTAA;
-        FixTAA.BindLambda([&Info]() { DisableShowFlag(Info, "TemporalAA"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has temporal anti-aliasing enabled. May require padding/overlap if using clustered rendering.")))
+        FixTAA.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "TemporalAA"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has temporal anti-aliasing enabled. May require padding/overlap if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixTAA"), FixTAA));
     }
 
@@ -253,8 +298,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixEyeAdaptation;
-        FixEyeAdaptation.BindLambda([&Info]() { DisableShowFlag(Info, "EyeAdaptation"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has eye adaptation (auto-exposure) enabled. May cause seams if using clustered rendering.")))
+        FixEyeAdaptation.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "EyeAdaptation"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has eye adaptation (auto-exposure) enabled. May cause seams if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixEyeAdaptation"), FixEyeAdaptation));
     }
 
@@ -266,8 +311,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixLensFlares;
-        FixLensFlares.BindLambda([&Info]() { DisableShowFlag(Info, "LensFlares"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has lens flares enabled. May cause seams if using clustered rendering.")))
+        FixLensFlares.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "LensFlares"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has lens flares enabled. May cause seams if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixLensFlares"), FixLensFlares));
     }
 
@@ -278,8 +323,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixSSR;
-        FixSSR.BindLambda([&Info]() { DisableShowFlag(Info, "ScreenSpaceReflections"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has screen-space reflections enabled. May cause seams if using clustered rendering.")))
+        FixSSR.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "ScreenSpaceReflections"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has screen-space reflections enabled. May cause seams if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixSSR"), FixSSR));
     }
 
@@ -290,21 +335,21 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixColorFringe;
-        FixColorFringe.BindLambda([&Info]() { DisableShowFlag(Info, "SceneColorFringe"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has scene color fringe (chromatic aberration) enabled. May cause seams if using clustered rendering.")))
+        FixColorFringe.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "SceneColorFringe"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has scene color fringe (chromatic aberration) enabled. May cause seams if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixColorFringe"), FixColorFringe));
     }
 
     // Tone curve (no project setting, ExpandGamut also related)
-    bool toneCurveEnabled = ShowFlags.ToneCurve                          // Enabled in RenderStreamChannelDefinition
-        && (PPS.bOverride_ToneCurveAmount && PPS.ToneCurveAmount > 0.f)  // Overriden and enabled in camera
-        && (PPS.bOverride_ExpandGamut && PPS.ExpandGamut > 0.f);         // Overriden and enabled in camera
+    bool toneCurveEnabled = ShowFlags.ToneCurve                           // Enabled in RenderStreamChannelDefinition
+        && ((PPS.bOverride_ToneCurveAmount && PPS.ToneCurveAmount > 0.f)  // Overriden and enabled in camera
+        || (PPS.bOverride_ExpandGamut && PPS.ExpandGamut > 0.f));         // Overriden and enabled in camera
     if (toneCurveEnabled)
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixToneCurve;
-        FixToneCurve.BindLambda([&Info]() { DisableShowFlag(Info, "ToneCurve"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has tone curve enabled. May cause seams if using clustered rendering.")))
+        FixToneCurve.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "ToneCurve"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has tone curve enabled. May cause seams if using clustered rendering."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixToneCurve"), FixToneCurve));
     }
 
@@ -317,8 +362,8 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     {
         IssuesFound = true;
         FOnActionTokenExecuted FixVignette;
-        FixVignette.BindLambda([&Info]() { DisableShowFlag(Info, "Vignette"); });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Channel " + Info.Name + " has vignette enabled. This may result in double vignette application when captured with a real camera.")))
+        FixVignette.BindLambda([&Info, Level]() { DisableShowFlag(Info, Level, "Vignette"); });
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Channel %s has vignette enabled. This may result in double vignette application when captured with a real camera."), *Info.Name))))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixVignette"), FixVignette));
     }
 
@@ -340,14 +385,16 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
         if (!Cache)
             continue;
 
+        const FString LevelName = Cache->Level.GetAssetPathName().ToString();
+
         {
             FMessageLog RSV("RenderStreamValidation");
             RSV.SuppressLoggingToOutputLog(true);
-            RSV.Info()->AddToken(FTextToken::Create(FText::FromString("Level " + Cache->Level.GetAssetPathName().ToString() + ":")));
+            RSV.Info()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Level %s:"), *LevelName))));
         }
 
         for (const FString& ChannelName : Cache->Channels)
-            IssuesFound |= ValidateChannelInfo(Cache->ChannelInfoMap[ChannelName]);
+            IssuesFound |= ValidateChannelInfo(Cache->ChannelInfoMap[ChannelName], LevelName);
     }
 
     if (IssuesFound)

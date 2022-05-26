@@ -91,8 +91,9 @@ namespace
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_ToneCurve);
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_Tonemapper);
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_Vignette);
-        ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_LensFlares);
+        ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_LensFlares); 
         ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_SceneColorFringe);
+        ShowFlagsToAllowForCaptures.Add(FEngineShowFlags::EShowFlag::SF_ScreenSpaceAO);
 
         // Create array of flag name strings for each group
         TArray< TArray<FString> > ShowFlagsByGroup;
