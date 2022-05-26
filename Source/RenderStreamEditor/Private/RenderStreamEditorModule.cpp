@@ -529,7 +529,7 @@ bool RemoveInvalidCacheEntries()
 
 void UpdateChannelCache()
 {
-    RemoveInvalidCacheEntries();
+    //RemoveInvalidCacheEntries();
 
     UWorld* World = GEditor->GetEditorWorldContext().World();
     for (ULevel* Level : World->GetLevels())
