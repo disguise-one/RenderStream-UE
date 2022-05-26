@@ -82,6 +82,8 @@ public:
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
 
+    void HideDefaultPawns();
+
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
 
     TMap<FString, TSharedPtr<FRenderStreamViewportInfo>> ViewportInfos;
@@ -90,4 +92,5 @@ public:
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     double m_LastTime = 0;
     bool m_gameInstanceStarted = false;
+    bool m_isFirstFrame = true;
 };

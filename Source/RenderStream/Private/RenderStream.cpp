@@ -39,6 +39,7 @@
 
 #include "RenderStreamLogOutputDevice.h"
 #include "RenderStreamStats.h"
+#include "GameFramework/DefaultPawn.h"
 
 #include <map>
 #include <string>
@@ -694,6 +695,21 @@ void FRenderStreamModule::OnBeginFrame()
     {
         RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.bIsEnabled = true;
         RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.OCIOConfiguration = settings->OCIOConfig;
+    }
+
+    if (m_isFirstFrame)
+        HideDefaultPawns();
+    m_isFirstFrame = false;
+}
+
+void FRenderStreamModule::HideDefaultPawns()
+{
+    if (GWorld)
+    {
+        TArray<AActor*> FoundDefaultPawns;
+        UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
+        for (AActor* DefaultPawn : FoundDefaultPawns)
+            DefaultPawn->SetActorHiddenInGame(true);
     }
 }
 
