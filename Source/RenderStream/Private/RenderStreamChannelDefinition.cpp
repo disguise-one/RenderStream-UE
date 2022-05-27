@@ -116,14 +116,6 @@ URenderStreamChannelDefinition::URenderStreamChannelDefinition()
     , ShowFlags(EShowFlagInitMode::ESFIM_Game)
     , Registered(false)
 {
-    // Disable effects which we know cause problems by default
-    ShowFlags.SetBloom(false);
-    ShowFlags.SetEyeAdaptation(false);
-    ShowFlags.SetToneCurve(false);
-    ShowFlags.SetVignette(false);
-    ShowFlags.SetLensFlares(false);
-    ShowFlags.SetScreenSpaceReflections(false);
-    ShowFlags.SetSceneColorFringe(false);
 }
 
 void URenderStreamChannelDefinition::ResetDefaultVisibility(AActor* Actor)
