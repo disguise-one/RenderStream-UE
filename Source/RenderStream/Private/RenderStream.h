@@ -27,6 +27,7 @@ class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
+class UGameInstance;
 
 struct FRenderStreamViewportInfo
 {
