@@ -245,8 +245,8 @@ void URenderStreamChannelDefinition::BeginPlay()
 
 void URenderStreamChannelDefinition::EndPlay(const EEndPlayReason::Type Reason)
 {
-    Super::EndPlay(Reason);
     UnregisterCamera();
+    Super::EndPlay(Reason);
 }
 
 void URenderStreamChannelDefinition::AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera)
