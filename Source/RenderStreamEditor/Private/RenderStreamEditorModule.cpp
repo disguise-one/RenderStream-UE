@@ -42,6 +42,7 @@ DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
 const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
+const FString ContentFolder = TEXT("/Game");
 
 void FRenderStreamEditorModule::StartupModule()
 {
@@ -502,12 +503,12 @@ bool RemoveInvalidCacheEntries()
 
     TArray<FAssetData> Assets;
     const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
-    LevelLibrary->LoadAssetDataFromPath("/Game/");
+    LevelLibrary->LoadAssetDataFromPath(ContentFolder);
     LevelLibrary->GetAssetDataList(Assets);
 
     TArray<FAssetData> MapAssets;
     const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
-    MapLibrary->LoadAssetDataFromPath("/Game/");
+    MapLibrary->LoadAssetDataFromPath(ContentFolder);
     MapLibrary->GetAssetDataList(MapAssets);
 
     Assets.Append(MapAssets);
@@ -541,7 +542,7 @@ bool RemoveInvalidCacheEntries()
 
 void UpdateChannelCache()
 {
-    //RemoveInvalidCacheEntries();
+    RemoveInvalidCacheEntries();
 
     UWorld* World = GEditor->GetEditorWorldContext().World();
     for (ULevel* Level : World->GetLevels())
@@ -559,7 +560,7 @@ void UpdateChannelCache()
     // Loop over all levels and make sure caches exist for them.
     TArray<FAssetData> LevelAssets;
     const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
-    LevelLibrary->LoadAssetDataFromPath("/Game/");
+    LevelLibrary->LoadAssetDataFromPath(ContentFolder);
     LevelLibrary->GetAssetDataList(LevelAssets);
     for (FAssetData const& Asset : LevelAssets)
     {
