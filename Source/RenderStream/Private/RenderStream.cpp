@@ -405,7 +405,8 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId);
             if (!Controller)
             {
-                Controller = UGameplayStatics::CreatePlayer(GWorld);
+                if (GWorld)
+                    Controller = UGameplayStatics::CreatePlayer(GWorld);
                 if (Controller)
                     Info.PlayerId = UGameplayStatics::GetPlayerControllerID(Controller);
                 else
