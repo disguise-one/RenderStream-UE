@@ -313,6 +313,18 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed transform property: %s"), *Name);
                 CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Transform);
             }
+            else if (StructProperty->Struct == TBaseStructure<FRotator>::Get())
+            {
+                FRotator r;
+                const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
+                const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
+                const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
+                StructProperty->CopyCompleteValue(&r, StructAddress);
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed rotator property: %s is <%f, %f, %f>"), *Name, r.Yaw, r.Pitch, r.Roll);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "yaw", Name, "yaw", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Yaw);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "pitch", Name, "pitch", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Pitch);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "roll", Name, "roll", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Roll);
+            }
             else
             {
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed struct property: %s"), *Name);

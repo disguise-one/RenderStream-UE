@@ -443,9 +443,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             const UScriptStruct* col = TBaseStructure<FColor>::Get();
             const UScriptStruct* linCol = TBaseStructure<FLinearColor>::Get();
             const UScriptStruct* trans = TBaseStructure<FTransform>::Get();
+            const UScriptStruct* rot = TBaseStructure<FRotator>::Get();
             const size_t inc = StructProperty->Struct == vec ? 3
                                 : StructProperty->Struct == col || StructProperty->Struct == linCol ? 4
                                 : StructProperty->Struct == trans ? 16
+                                : StructProperty->Struct == rot ? 3
                                 : 0;
             if (iFloat + (inc - 1) >= nFloatVals)
             {
@@ -482,6 +484,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 FTransform v(YUpMatrix * m * YUpMatrixInv);
                 v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
                 StructProperty->CopyCompleteValue(StructAddress, &v);
+            }
+            else if (StructProperty->Struct == vec)
+            {
+                FRotator r(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
+                StructProperty->CopyCompleteValue(StructAddress, &r);
             }
             iFloat += inc;
         }
