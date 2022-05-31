@@ -27,6 +27,7 @@ class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
+class UGameInstance;
 
 bool IsDX11();
 
@@ -35,7 +36,8 @@ struct FRenderStreamViewportInfo
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
-
+    RenderStreamLink::CameraHandle CameraHandleLast = 0;
+    
     std::mutex m_frameResponsesLock;
     std::map<uint64, RenderStreamLink::CameraResponseData> m_frameResponsesMap;
 };
@@ -55,6 +57,9 @@ protected:
     void OnSystemError();
     void OnEndFrame();
 
+    void GameInstanceStarted(UGameInstance* Instance);
+    void AppWillTerminate();
+    
     void EnableStats() const;
 
     TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
@@ -80,6 +85,8 @@ public:
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
 
+    void HideDefaultPawns();
+
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
 
     TMap<FString, TSharedPtr<FRenderStreamViewportInfo>> ViewportInfos;
@@ -87,4 +94,6 @@ public:
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     double m_LastTime = 0;
+    bool m_gameInstanceStarted = false;
+    bool m_isFirstFrame = true;
 };

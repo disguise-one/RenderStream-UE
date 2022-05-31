@@ -40,7 +40,8 @@ public class RenderStream : ModuleRules
                 "Json", 
                 "JsonUtilities", 
                 "DisplayCluster",
-                "HeadMountedDisplay"
+                "HeadMountedDisplay",
+                "EngineSettings"
             });
 
         PrivateIncludePaths.AddRange(

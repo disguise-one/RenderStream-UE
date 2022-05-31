@@ -23,8 +23,10 @@
 #include "RenderStreamChannelDefinition.h"
 #include "RenderStreamCustomization.h"
 #include "RenderStreamSettings.h"
+#include "RenderStreamValidation.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Engine/ObjectLibrary.h"
+#include "SourceControlHelpers.h"
 
 #include "RenderStream/Public/RenderStreamLink.h"
 #include <set>
@@ -33,11 +35,16 @@
 
 #include "GameMapsSettings.h"
 
+#include "MessageLog/Public/MessageLogInitializationOptions.h"
+#include "MessageLog/Public/MessageLogModule.h"
+#include "MessageLog/Public/IMessageLogListing.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
 const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
+const FString ContentFolder = TEXT("/Game");
 
 void FRenderStreamEditorModule::StartupModule()
 {
@@ -62,6 +69,16 @@ void FRenderStreamEditorModule::StartupModule()
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &FRenderStreamEditorModule::OnObjectPostEditChange);
+    FEditorDelegates::OnShutdownPostPackagesSaved.AddRaw(this, &FRenderStreamEditorModule::OnShutdownPostPackagesSaved);
+
+    // Create a validation message log
+    FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
+    FMessageLogInitializationOptions InitOptions;
+    InitOptions.bShowPages = false;
+    InitOptions.bAllowClear = true;
+    InitOptions.bShowFilters = true;
+    MessageLogModule.RegisterLogListing("RenderStreamValidation", NSLOCTEXT("RenderStreamValidation", "RenderStreamValidationLogLabel", "Renderstream Validation"), InitOptions);
 }
 
 void FRenderStreamEditorModule::ShutdownModule()
@@ -78,10 +95,19 @@ void FRenderStreamEditorModule::ShutdownModule()
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.RemoveAll(this);
+    FEditorDelegates::OnShutdownPostPackagesSaved.RemoveAll(this);
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
 
     UnregisterSettings();
+
+    if (FModuleManager::Get().IsModuleLoaded("MessageLog"))
+    {
+        // unregister message log
+        FMessageLogModule& MessageLogModule = FModuleManager::GetModuleChecked<FMessageLogModule>("MessageLog");
+        MessageLogModule.UnregisterLogListing("RenderStreamValidation");
+    }
 }
 
 FString FRenderStreamEditorModule::StreamName()
@@ -291,6 +317,18 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed transform property: %s"), *Name);
                 CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Transform);
             }
+            else if (StructProperty->Struct == TBaseStructure<FRotator>::Get())
+            {
+                FRotator r;
+                const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
+                const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
+                const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
+                StructProperty->CopyCompleteValue(&r, StructAddress);
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed rotator property: %s is <%f, %f, %f>"), *Name, r.Yaw, r.Pitch, r.Roll);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "yaw", Name, "yaw", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Yaw);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "pitch", Name, "pitch", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Pitch);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "roll", Name, "roll", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Roll);
+            }
             else
             {
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed struct property: %s"), *Name);
@@ -413,13 +451,18 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     const FString LevelPath = Level->GetPackage()->GetPathName();
     Cache->Level = LevelPath;
     Cache->Channels.Empty();
+    Cache->ChannelInfoMap.Empty();
     for (auto Actor : Level->Actors)
     {
         if (Actor)
         {
-            const URenderStreamChannelDefinition* Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
-            if (Definition)
-                Cache->Channels.Emplace(TCHAR_TO_UTF8(*(Definition->GetChannelName())));
+            TWeakObjectPtr<URenderStreamChannelDefinition> Definition = Actor->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (Definition.IsValid())
+            {
+                FString ChannelName = TCHAR_TO_UTF8(*(Definition->GetChannelName()));
+                Cache->Channels.Emplace(ChannelName);
+                Cache->ChannelInfoMap.Emplace(ChannelName, FRenderStreamValidation::GetChannelInfo(Definition, Level));
+            }
         }
     }
 
@@ -452,8 +495,56 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     return Cache;
 }
 
+bool RemoveInvalidCacheEntries()
+{
+    TArray<URenderStreamChannelCacheAsset*> ChannelCaches;
+    const auto ObjectLibrary = UObjectLibrary::CreateLibrary(URenderStreamChannelCacheAsset::StaticClass(), false, false);
+    ObjectLibrary->LoadAssetsFromPath(CacheFolder);
+    ObjectLibrary->GetObjects(ChannelCaches);
+
+    TArray<FAssetData> Assets;
+    const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
+    LevelLibrary->LoadAssetDataFromPath(ContentFolder);
+    LevelLibrary->GetAssetDataList(Assets);
+
+    TArray<FAssetData> MapAssets;
+    const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
+    MapLibrary->LoadAssetDataFromPath(ContentFolder);
+    MapLibrary->GetAssetDataList(MapAssets);
+
+    Assets.Append(MapAssets);
+
+    TArray<UObject*> ObjectsToDelete;
+
+    auto IsInvalidCacheAsset = [&Assets, &ObjectsToDelete](URenderStreamChannelCacheAsset* CacheAsset) {
+        bool Invalid = false;
+        
+        FString CachedPath = CacheAsset->Level.ToString();
+        auto MatchesCached = [&CachedPath](const FAssetData& Asset) {
+            const FString PackageName = Asset.PackageName.ToString();
+            return PackageName == CachedPath;
+        };
+
+        if (!Assets.FindByPredicate(MatchesCached))
+            Invalid = true;
+
+        if (Invalid)
+            ObjectsToDelete.Add(CacheAsset);
+
+        return Invalid;
+    };
+
+    const auto RemoveCount = ChannelCaches.RemoveAll(IsInvalidCacheAsset);
+    if (RemoveCount > 0)
+        ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+
+    return RemoveCount > 0;
+}
+
 void UpdateChannelCache()
 {
+    RemoveInvalidCacheEntries();
+
     UWorld* World = GEditor->GetEditorWorldContext().World();
     for (ULevel* Level : World->GetLevels())
     {
@@ -470,7 +561,7 @@ void UpdateChannelCache()
     // Loop over all levels and make sure caches exist for them.
     TArray<FAssetData> LevelAssets;
     const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
-    LevelLibrary->LoadAssetDataFromPath("/Game/");
+    LevelLibrary->LoadAssetDataFromPath(ContentFolder);
     LevelLibrary->GetAssetDataList(LevelAssets);
     for (FAssetData const& Asset : LevelAssets)
     {
@@ -496,6 +587,15 @@ URenderStreamChannelCacheAsset* GetDefaultMapCache()
     }
 
     return Cache;
+}
+
+void FRenderStreamEditorModule::RunValidation(const TArray<URenderStreamChannelCacheAsset*> Caches)
+{
+    FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
+    TSharedPtr<IMessageLogListing> RSVLog = MessageLogModule.GetLogListing("RenderStreamValidation");
+    if (RSVLog)
+        RSVLog->ClearMessages();
+    FRenderStreamValidation::RunValidation(Caches);
 }
 
 void FRenderStreamEditorModule::GenerateAssetMetadata()
@@ -636,10 +736,18 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     }
     }
 
+    const FString projectName = FPaths::GetBaseFilename(FPaths::GetProjectFilePath()).ToLower();
+    const FString fullSchemaJsonFileDir = FPaths::ProjectDir() + "rs_" + projectName + ".json";
+
+    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir))
+        SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
+
     if (RenderStreamLink::instance().rs_saveSchema(TCHAR_TO_UTF8(*FPaths::GetProjectFilePath()), &Schema.schema) != RenderStreamLink::RS_ERROR_SUCCESS)
     {
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to save schema"));
     }
+
+    RunValidation(ChannelCaches);
 
     ObjectLibrary->ClearLoaded();
     DeleteCaches(CachesForDelete);
@@ -676,6 +784,27 @@ void FRenderStreamEditorModule::OnBeginFrame()
 void FRenderStreamEditorModule::OnPostEngineInit()
 {
     RegisterSettings();
+}
+
+void FRenderStreamEditorModule::OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent)
+{
+    if (Object && Object->HasAnyFlags(RF_ClassDefaultObject))
+    {
+        // we only care if default objects have been changed eg. project settings objects like UGameMapSettings
+        // add include/exclude filters here if required
+        DirtyAssetMetadata = true;
+    }
+}
+
+void FRenderStreamEditorModule::OnShutdownPostPackagesSaved()
+{
+    if (DirtyAssetMetadata)
+    {
+        // due to our metadata generation happening in OnBeginFrame we rely on the engine ticking in order detect that metadata should be generated
+        // if however the metadata is dirty in this callback it means the editor is closing and won't tick again
+        // therefore this is our last chance to generate metadata during this runtime, if we don't our metadata may be made stale
+        GenerateAssetMetadata();
+    }
 }
 
 void FRenderStreamEditorModule::RegisterSettings()

@@ -6,6 +6,7 @@
 #include <malloc.h>
 #include <algorithm>
 #include "RenderStream.h"
+#include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
@@ -443,9 +444,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             const UScriptStruct* col = TBaseStructure<FColor>::Get();
             const UScriptStruct* linCol = TBaseStructure<FLinearColor>::Get();
             const UScriptStruct* trans = TBaseStructure<FTransform>::Get();
+            const UScriptStruct* rot = TBaseStructure<FRotator>::Get();
             const size_t inc = StructProperty->Struct == vec ? 3
                                 : StructProperty->Struct == col || StructProperty->Struct == linCol ? 4
                                 : StructProperty->Struct == trans ? 16
+                                : StructProperty->Struct == rot ? 3
                                 : 0;
             if (iFloat + (inc - 1) >= nFloatVals)
             {
@@ -471,17 +474,22 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             else if (StructProperty->Struct == trans)
             {
                 static const FMatrix YUpMatrix(FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f));
-                static const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
 
-                const FMatrix m(
+                FMatrix m(
                     FPlane(floatValues[iFloat + 0], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]),
                     FPlane(floatValues[iFloat + 4], floatValues[iFloat + 5], floatValues[iFloat + 6], floatValues[iFloat + 7]),
                     FPlane(floatValues[iFloat + 8], floatValues[iFloat + 9], floatValues[iFloat + 10], floatValues[iFloat + 11]),
                     FPlane(floatValues[iFloat + 12], floatValues[iFloat + 13], floatValues[iFloat + 14], floatValues[iFloat + 15])
                 );
-                FTransform v(YUpMatrix * m * YUpMatrixInv);
-                v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+
+                FTransform v = d3ToUEHelpers::Convertd3TransformToUE(m, YUpMatrix);
+
                 StructProperty->CopyCompleteValue(StructAddress, &v);
+            }
+            else if (StructProperty->Struct == vec)
+            {
+                FRotator r(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
+                StructProperty->CopyCompleteValue(StructAddress, &r);
             }
             iFloat += inc;
         }

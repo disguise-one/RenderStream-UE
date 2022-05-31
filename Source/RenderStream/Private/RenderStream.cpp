@@ -4,7 +4,6 @@
 #include "RenderStreamLink.h"
 
 #include "RenderStreamSettings.h"
-#include "RenderStreamStatus.h"
 #include "RenderStreamSceneSelector.h"
 #include "SceneSelector_None.h"
 #include "SceneSelector_StreamingLevels.h"
@@ -40,6 +39,7 @@
 
 #include "RenderStreamLogOutputDevice.h"
 #include "RenderStreamStats.h"
+#include "GameFramework/DefaultPawn.h"
 
 #include <map>
 #include <string>
@@ -70,6 +70,9 @@
 #include "Game/IDisplayClusterGameManager.h" 
 #include "DisplayClusterRootActor.h" 
 #include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
+
+#include "GameMapsSettings.h"
+#include "Engine/ObjectLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -163,12 +166,10 @@ void FRenderStreamModule::StartupModule()
     AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
     // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-    RenderStreamStatus().InputOutput("Initialising stream", "Waiting for data from d3", RSSTATUS_ORANGE);
 
     if (!RenderStreamLink::instance().loadExplicit())
     {
         UE_LOG(LogRenderStream, Error, TEXT ("Failed to load RenderStream DLL - d3 not installed?"));
-        RenderStreamStatus().InputOutput("Error", "Failed to load RenderStream DLL - d3 not installed?", RSSTATUS_RED);
     }
     else
     {
@@ -181,13 +182,11 @@ void FRenderStreamModule::StartupModule()
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
             {
                 UE_LOG(LogRenderStream, Error, TEXT("Unsupported RenderStream library, expected version %i.%i"), RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
-                RenderStreamStatus().InputOutput("Error", "Unsupported RenderStream library", RSSTATUS_RED);
                 RenderStreamLink::instance().unloadExplicit();
                 return;
             }
 
             UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
-            RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
             RenderStreamLink::instance().unloadExplicit();
             return;
         }
@@ -198,6 +197,10 @@ void FRenderStreamModule::StartupModule()
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
         FCoreDelegates::OnEndFrame.AddRaw(this, &FRenderStreamModule::OnEndFrame);
         FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
+
+        FWorldDelegates::OnStartGameInstance.AddRaw(this, &FRenderStreamModule::GameInstanceStarted);
+        FCoreDelegates::ApplicationWillTerminateDelegate.AddRaw(this, &FRenderStreamModule::AppWillTerminate);
+        
         Monitor.Open();
     }
 
@@ -255,6 +258,9 @@ void FRenderStreamModule::ShutdownModule()
     FCoreUObjectDelegates::PostLoadMapWithWorld.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
+
+    FWorldDelegates::OnStartGameInstance.RemoveAll(this);
+    FCoreDelegates::ApplicationWillTerminateDelegate.RemoveAll(this);
 
     // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
     // we call this function before unloading the module.
@@ -381,7 +387,7 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             URenderStreamChannelDefinition* Definition = Info.Template->FindComponentByClass<URenderStreamChannelDefinition>();
             if (Definition)
             {
-                const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
+                const bool DefaultVisible = Definition->DefaultVisibility == EChannelVisibilty::Visible;
                 const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
@@ -405,7 +411,8 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId);
             if (!Controller)
             {
-                Controller = UGameplayStatics::CreatePlayer(GWorld);
+                if (GWorld)
+                    Controller = UGameplayStatics::CreatePlayer(GWorld);
                 if (Controller)
                     Info.PlayerId = UGameplayStatics::GetPlayerControllerID(Controller);
                 else
@@ -570,11 +577,23 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
         SceneComponent->SetRelativeLocation(pos);
     }
+
+    // Detect camera switch and apply flag if switching (allows switches while using e.g. motion blur, TAA etc.)
+    if (cameraData.cameraHandle != info.CameraHandleLast)
+    {
+        APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, info.PlayerId);
+        if (Controller)
+        {
+            APlayerCameraManager* Manager = Controller->PlayerCameraManager;
+            if (Manager)
+                Manager->SetGameCameraCutThisFrame();
+        }
+        info.CameraHandleLast = cameraData.cameraHandle;
+    }
 }
 
 void FRenderStreamModule::OnPostEngineInit()
 {
-
     int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
 
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -598,7 +617,6 @@ void FRenderStreamModule::OnPostEngineInit()
     if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
     {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
-        RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
         RenderStreamLink::instance().unloadExplicit();
         return;
     }
@@ -630,6 +648,34 @@ void FRenderStreamModule::OnPostEngineInit()
 
 }
 
+void FRenderStreamModule::GameInstanceStarted(UGameInstance* Instance)
+{
+    m_gameInstanceStarted = true;
+}
+
+void FRenderStreamModule::AppWillTerminate()
+{
+    RenderStreamLink& link = RenderStreamLink::instance();
+    if (!m_gameInstanceStarted && IsInCluster() && link.isAvailable())
+    {
+        // Something went wrong during launch, check some stuff for troubleshooting and report
+        const UGameMapsSettings* GameMapsSettings = GetDefault<UGameMapsSettings>();
+        const FString& DefaultMap = GameMapsSettings->GetGameDefaultMap();
+
+        TArray<FAssetData> MapAssets;
+        const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
+        MapLibrary->LoadAssetDataFromPath("/Game/");
+        MapLibrary->GetAssetDataList(MapAssets);
+
+        FAssetData* Found = MapAssets.FindByPredicate([&DefaultMap](const FAssetData& Asset) { return Asset.PackageName.ToString() == DefaultMap; });
+        if (!Found)
+        {
+            // The Game Default Map set cannot be loaded because it doesn't exist
+            UE_LOG(LogRenderStream, Error, TEXT("Uneal Cannot load the Game Default Map '%s' because it no longer exists. This must be corrected by the user by either updating the project settings or supplying a command line argument in d3 specifying a map override eg. '/Game/Maps/MyMap.umap'."), *DefaultMap);
+        }
+    }
+}
+
 void FRenderStreamModule::OnSystemError()
 {
     RenderStreamLink& link = RenderStreamLink::instance();
@@ -657,6 +703,21 @@ void FRenderStreamModule::OnBeginFrame()
     {
         RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.bIsEnabled = true;
         RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.OCIOConfiguration = settings->OCIOConfig;
+    }
+
+    if (m_isFirstFrame)
+        HideDefaultPawns();
+    m_isFirstFrame = false;
+}
+
+void FRenderStreamModule::HideDefaultPawns()
+{
+    if (GWorld)
+    {
+        TArray<AActor*> FoundDefaultPawns;
+        UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
+        for (AActor* DefaultPawn : FoundDefaultPawns)
+            DefaultPawn->SetActorHiddenInGame(true);
     }
 }
 

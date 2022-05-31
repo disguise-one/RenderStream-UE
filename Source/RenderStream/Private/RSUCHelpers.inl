@@ -11,8 +11,6 @@
 #include <d3d11.h>
 #include "Windows/HideWindowsPlatformTypes.h"
 
-#include "RenderStreamStatus.h"
-
 #include "MediaShaders.h"
 #include "RHIStaticStates.h"
 #include "ShaderParameterUtils.h"
