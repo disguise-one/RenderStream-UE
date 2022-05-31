@@ -10,7 +10,7 @@
 #include "Misc/UObjectToken.h"
 #include "Misc/MapErrors.h"
 #include "Camera/CameraComponent.h"
-#include "EditorLevelLibrary.h"
+#include "LevelEditorSubsystem.h"
 
 bool FRenderStreamValidation::ValidateProjectSettings()
 {
@@ -35,19 +35,19 @@ bool FRenderStreamValidation::ValidateProjectSettings()
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixTextureStreaming"), FixTextureStreaming));
     }
 
-    // Screen space global illumination
-    if (RenderSettings->bSSGI)
+    // Global illumination
+    if (RenderSettings->DynamicGlobalIllumination != EDynamicGlobalIlluminationMethod::None)
     {
         IssuesFound = true;
-        FOnActionTokenExecuted FixSSGI;
-        FixSSGI.BindLambda([]() {
+        FOnActionTokenExecuted FixGI;
+        FixGI.BindLambda([]() {
             URendererSettings* RenderSettings = GetMutableDefault<URendererSettings>();
-            RenderSettings->bSSGI = false;
+            RenderSettings->DynamicGlobalIllumination = EDynamicGlobalIlluminationMethod::None;
             RenderSettings->SaveConfig();
             ForceRunValidation();
             });
-        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Screen-space global illumination enabled in project settings. May cause seams if using clustered rendering.")))
-            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixSSGI"), FixSSGI));
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Global illumination enabled in project settings. May cause seams if using clustered rendering.")))
+            ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixGI"), FixGI));
     }
 
     // Ray-tracing
@@ -174,8 +174,14 @@ void DisableShowFlag(const FRenderStreamChannelInfo& Info, const FString& LevelN
     if (!LevelLoaded)
     {
         // Save current level and load the required level for the channel
-        UEditorLevelLibrary::SaveCurrentLevel();
-        if (!UEditorLevelLibrary::LoadLevel(LevelName))
+		ULevelEditorSubsystem* LevelEditorSubsystem = GEditor ? GEditor->GetEditorSubsystem<ULevelEditorSubsystem>() : nullptr;
+		if (!LevelEditorSubsystem)
+		{
+			RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s in channel %s. Could not get level editor subsystem."), *SettingName, *Info.Name))));
+			return;
+		}
+		LevelEditorSubsystem->SaveCurrentLevel();
+        if (!LevelEditorSubsystem->LoadLevel(LevelName))
         {
             RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s in channel %s. Unable to load level %s."), *SettingName, *Info.Name, *LevelName))));
             return;
