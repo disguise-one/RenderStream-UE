@@ -37,10 +37,6 @@
 		{
 			"Name": "nDisplay",
 			"Enabled": true
-		},
-		{
-			"Name": "EditorScriptingUtilities",
-			"Enabled": true
 		}
 	]
 }
