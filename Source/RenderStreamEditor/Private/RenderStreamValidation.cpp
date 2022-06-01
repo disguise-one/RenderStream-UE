@@ -394,7 +394,10 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
         }
 
         for (const FString& ChannelName : Cache->Channels)
-            IssuesFound |= ValidateChannelInfo(Cache->ChannelInfoMap[ChannelName], LevelName);
+        {
+            if (Cache->ChannelInfoMap.Contains(ChannelName))
+                IssuesFound |= ValidateChannelInfo(Cache->ChannelInfoMap[ChannelName], LevelName);
+        }
     }
 
     if (IssuesFound)
