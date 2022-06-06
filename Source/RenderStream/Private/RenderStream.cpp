@@ -704,21 +704,6 @@ void FRenderStreamModule::OnBeginFrame()
         RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.bIsEnabled = true;
         RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.OCIOConfiguration = settings->OCIOConfig;
     }
-
-    if (m_isFirstFrame)
-        HideDefaultPawns();
-    m_isFirstFrame = false;
-}
-
-void FRenderStreamModule::HideDefaultPawns()
-{
-    if (GWorld)
-    {
-        TArray<AActor*> FoundDefaultPawns;
-        UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
-        for (AActor* DefaultPawn : FoundDefaultPawns)
-            DefaultPawn->SetActorHiddenInGame(true);
-    }
 }
 
 void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange)
@@ -798,7 +783,30 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
         }
     }
 
+    if (InWorld)
+    {
+        FOnActorSpawned::FDelegate ActorSpawnedDelegate = FOnActorSpawned::FDelegate::CreateRaw(this, &FRenderStreamModule::OnActorSpawned);
+        InWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
+    }
+
     EnableStats();
+}
+
+void FRenderStreamModule::OnActorSpawned(AActor* InActor)
+{
+    if (dynamic_cast<ADefaultPawn*>(InActor))
+    {
+        // For some reason it doesn't work to just set InActor hidden.
+        // We also need to loop over all default pawns and make sure they are hidden
+        InActor->SetActorHiddenInGame(true);
+        if (GWorld)
+        {
+            TArray<AActor*> FoundDefaultPawns;
+            UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
+            for (AActor* DefaultPawn : FoundDefaultPawns)
+                DefaultPawn->SetActorHiddenInGame(true);
+        }
+    }
 }
 
 #if STATS
