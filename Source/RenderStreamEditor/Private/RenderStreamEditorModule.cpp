@@ -265,7 +265,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1000;
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 1.f, float(v), Options);
         }
-        else if (const FDoubleProperty* DoubleProperty = CastField<const FDoubleProperty>(Property))
+        else if (const FDoubleProperty* DoubleProperty = CastField<const FDoubleProperty>(Property)) //Property defined as a float in the blueprint
         {
             const float v = DoubleProperty->GetPropertyValue_InContainer(Root);
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed float property: %s is %f"), *Name, v);
@@ -274,7 +274,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 0.001f, v);
         }
-        else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Property))
+        else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Property)) 
         {
             const float v = FloatProperty->GetPropertyValue_InContainer(Root);
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed float property: %s is %f"), *Name, v);
@@ -283,7 +283,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 0.001f, v);
         }
-        else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property)) //Property defined as a float in the blueprint
+        else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property)) 
         {
             const void* StructAddress = StructProperty->ContainerPtrToValuePtr<void>(Root);
             if (StructProperty->Struct == TBaseStructure<FVector>::Get())
