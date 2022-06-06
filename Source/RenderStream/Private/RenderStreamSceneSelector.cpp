@@ -189,6 +189,18 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 return SIZE_MAX;
             ++nParameters;
         }
+        else if (const FDoubleProperty* DoubleProperty = CastField<const FDoubleProperty>(Property))
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("Exposed float property: %s"), *Name);
+            if (numParameters < nParameters + 1)
+            {
+                UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                return SIZE_MAX;
+            }
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+                return SIZE_MAX;
+            ++nParameters;
+        }
         else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Property))
         {
             UE_LOG(LogRenderStream, Log, TEXT("Exposed float property: %s"), *Name);
@@ -407,7 +419,8 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             continue;
 
         if (Property->HasAnyCastFlags(FBoolProperty::StaticClassCastFlagsPrivate() | FByteProperty::StaticClassCastFlagsPrivate() 
-                                      | FIntProperty::StaticClassCastFlagsPrivate() | FFloatProperty::StaticClassCastFlagsPrivate()))
+                                      | FIntProperty::StaticClassCastFlagsPrivate() | FFloatProperty::StaticClassCastFlagsPrivate()
+                                      | FDoubleProperty::StaticClassCastFlagsPrivate()))
         {
             if (iFloat >= nFloatVals)
             {
@@ -434,6 +447,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             {
                 const float v = floatValues[iFloat];
                 FloatProperty->SetPropertyValue_InContainer(Root, v);
+            }
+            else if (FDoubleProperty* DoubleProperty = CastField<FDoubleProperty>(Property))
+            {
+                const float v = floatValues[iFloat];
+                DoubleProperty->SetPropertyValue_InContainer(Root, v);
             }
             ++iFloat;
         }
