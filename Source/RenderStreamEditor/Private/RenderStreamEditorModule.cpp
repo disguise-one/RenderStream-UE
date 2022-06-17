@@ -748,11 +748,13 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     const FString fullSchemaJsonFileDir = FPaths::ProjectDir() + "rs_" + projectName + ".json";
     bool fileIsCheckedOut = false;
 
-    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir))
-        fileIsCheckedOut = SourceControlHelpers::CheckOutOrAddFile(fullSchemaJsonFileDir);
+    const FSourceControlState shemeSCState = SourceControlHelpers::QueryFileState(fullSchemaJsonFileDir);
 
-    if(!fileIsCheckedOut)
-        UE_LOG(LogRenderStreamEditor, Log, TEXT("Schema file failed to check out."));
+    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir) && shemeSCState.bIsAdded)
+        fileIsCheckedOut = SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
+
+    if(SourceControlHelpers::IsEnabled() && !fileIsCheckedOut)
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("Schema file failed to check out."));
 
     if (RenderStreamLink::instance().rs_saveSchema(TCHAR_TO_UTF8(*FPaths::GetProjectFilePath()), &Schema.schema) != RenderStreamLink::RS_ERROR_SUCCESS)
     {
