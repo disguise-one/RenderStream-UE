@@ -83,6 +83,7 @@ public:
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
     void OnActorSpawned(AActor* InActor);
+    void HideDefaultPawns();
 
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
 
