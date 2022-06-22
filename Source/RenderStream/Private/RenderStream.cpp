@@ -787,6 +787,7 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
     {
         FOnActorSpawned::FDelegate ActorSpawnedDelegate = FOnActorSpawned::FDelegate::CreateRaw(this, &FRenderStreamModule::OnActorSpawned);
         InWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
+        HideDefaultPawns();
     }
 
     EnableStats();
@@ -799,13 +800,18 @@ void FRenderStreamModule::OnActorSpawned(AActor* InActor)
         // For some reason it doesn't work to just set InActor hidden.
         // We also need to loop over all default pawns and make sure they are hidden
         InActor->SetActorHiddenInGame(true);
-        if (GWorld)
-        {
-            TArray<AActor*> FoundDefaultPawns;
-            UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
-            for (AActor* DefaultPawn : FoundDefaultPawns)
-                DefaultPawn->SetActorHiddenInGame(true);
-        }
+        HideDefaultPawns();
+    }
+}
+
+void FRenderStreamModule::HideDefaultPawns()
+{
+    if (GWorld)
+    {
+        TArray<AActor*> FoundDefaultPawns;
+        UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
+        for (AActor* DefaultPawn : FoundDefaultPawns)
+            DefaultPawn->SetActorHiddenInGame(true);
     }
 }
 
