@@ -504,7 +504,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
                 StructProperty->CopyCompleteValue(StructAddress, &v);
             }
-            else if (StructProperty->Struct == vec)
+            else if (StructProperty->Struct == rot)
             {
                 FRotator r(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
                 StructProperty->CopyCompleteValue(StructAddress, &r);
