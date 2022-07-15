@@ -7,10 +7,20 @@
 struct ID3D11Device;
 struct ID3D12Device;
 struct ID3D12CommandQueue;
+typedef struct VkDevice_T* VkDevice;
+// Forward declare Windows compatible handles.
+#define D3_DECLARE_HANDLE(name) \
+  struct name##__;                  \
+  typedef struct name##__* name
+D3_DECLARE_HANDLE(HGLRC);
+D3_DECLARE_HANDLE(HDC);
 struct ID3D11Resource;
 struct ID3D12Resource;
 struct ID3D12Fence;
 typedef unsigned int GLuint;
+typedef struct VkDeviceMemory_T* VkDeviceMemory;
+typedef uint64_t VkDeviceSize;
+typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
 
@@ -83,7 +93,8 @@ public:
     enum REMOTEPARAMETER_FLAGS
     {
         REMOTEPARAMETER_NO_FLAGS = 0,
-        REMOTEPARAMETER_NO_SEQUENCE = 1
+        REMOTEPARAMETER_NO_SEQUENCE = 1,
+        REMOTEPARAMETER_READ_ONLY = 2
     };
 
     typedef uint64_t StreamHandle;
@@ -152,12 +163,31 @@ public:
         GLuint texture;
     } OpenGlData;
 
+    typedef struct
+    {
+        VkDeviceMemory memory;
+        VkDeviceSize size;
+        RSPixelFormat format;
+        uint32_t width;
+        uint32_t height;
+        VkSemaphore waitSemaphore;
+        uint64_t waitSemaphoreValue;
+        VkSemaphore signalSemaphore;
+        uint64_t signalSemaphoreValue;
+    } VulkanDataStructure;
+
+    typedef struct
+    {
+        VulkanDataStructure* image;
+    } VulkanData;
+
     typedef union
     {
         HostMemoryData cpu;
         Dx11Data dx11;
         Dx12Data dx12;
         OpenGlData gl;
+        VulkanData vk;
     } SenderFrameTypeData;
 
     typedef struct
@@ -204,7 +234,8 @@ public:
         RS_PARAMETER_POSE,      // 4x4 TR matrix
         RS_PARAMETER_TRANSFORM, // 4x4 TRS matrix
         RS_PARAMETER_TEXT,
-        RS_PARAMETER_LAST=RS_PARAMETER_TEXT
+        RS_PARAMETER_EVENT,
+        RS_PARAMETER_LAST= RS_PARAMETER_EVENT
     };
 
     enum RemoteParameterDmxType
@@ -213,9 +244,9 @@ public:
         RS_DMX_8,
         RS_DMX_16_BE,
     };
-    
+
     static const char* ParamTypeToName(RemoteParameterType type);
-    
+
     typedef struct
     {
         float min;
@@ -279,6 +310,9 @@ public:
 
     typedef struct
     {
+        const char* engineName;
+        const char* engineVersion;
+        const char* info;
         Channels channels;
         Scenes scenes;
     } Schema;
@@ -292,13 +326,15 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 1
-#define RENDER_STREAM_VERSION_MINOR 29
+#define RENDER_STREAM_VERSION_MINOR 30
 
     enum SenderFrameType
     {
         RS_FRAMETYPE_HOST_MEMORY,
         RS_FRAMETYPE_DX11_TEXTURE,
         RS_FRAMETYPE_DX12_TEXTURE,
+        RS_FRAMETYPE_OPENGL_TEXTURE,
+        RS_FRAMETYPE_VULKAN_TEXTURE,
         RS_FRAMETYPE_UNKNOWN
     };
 
@@ -307,6 +343,16 @@ public:
         RS_DX12_USE_SHARED_HEAP_FLAG,
         RS_DX12_DO_NOT_USE_SHARED_HEAP_FLAG
     };
+
+    typedef struct
+    {
+        const CameraResponseData* cameraData;
+        uint64_t schemaHash;
+        uint32_t parameterDataSize;
+        void* parameterData;
+        uint32_t textDataCount;
+        const char** textData;
+    } FrameResponseData;
 
     RENDERSTREAM_API static RenderStreamLink& instance();
 
@@ -328,6 +374,8 @@ private:
     typedef RS_ERROR rs_initialiseFn(int expectedVersionMajor, int expectedVersionMinor);
     typedef RS_ERROR rs_initialiseGpGpuWithDX11DeviceFn(ID3D11Device* device);
     typedef RS_ERROR rs_initialiseGpGpuWithDX12DeviceAndQueueFn(ID3D12Device* device, ID3D12CommandQueue* queue);
+    typedef RS_ERROR rs_initialiseGpGpuWithOpenGlContextsFn(HGLRC glContext, HDC deviceContext);
+    typedef RS_ERROR rs_initialiseGpGpuWithVulkanDeviceFn(VkDevice device);
 
     typedef RS_ERROR rs_shutdownFn();
     // non-isolated functions, these require init prior to use
@@ -348,7 +396,9 @@ private:
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
-    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const CameraResponseData* sendData); // publish a frame buffer which was generated from the associated tracking and timing information.
+    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const FrameResponseData* frameData); // publish a frame buffer which was generated from the associated tracking and timing information.
+
+    typedef RS_ERROR rs_releaseImageFn(SenderFrameType frameType, SenderFrameTypeData data); // release any references to image (e.g. before deletion)
 
     typedef RS_ERROR rs_logToD3Fn(const char * str);
     typedef RS_ERROR rs_sendProfilingDataFn(ProfilingEntry* entries, int count);
@@ -364,14 +414,13 @@ public:
     {
         ScopedSchema()
         {
-            clear();
+            reset();
         }
         ~ScopedSchema()
         {
-            reset();
-        }
-        void reset()
-        {
+            free(const_cast<char*>(schema.engineName));
+            free(const_cast<char*>(schema.engineVersion));
+            free(const_cast<char*>(schema.info));
             for (size_t i = 0; i < schema.channels.nChannels; ++i)
                 free(const_cast<char*>(schema.channels.channels[i]));
             free(schema.channels.channels);
@@ -396,9 +445,18 @@ public:
                 free(scene.parameters);
             }
             free(schema.scenes.scenes);
-            clear();
+            reset();
         }
-
+        void reset()
+        {
+            schema.engineName = nullptr;
+            schema.engineVersion = nullptr;
+            schema.info = nullptr;
+            schema.channels.nChannels = 0;
+            schema.channels.channels = nullptr;
+            schema.scenes.nScenes = 0;
+            schema.scenes.scenes = nullptr;
+        }
         ScopedSchema(const ScopedSchema&) = delete;
         ScopedSchema(ScopedSchema&& other)
         {
@@ -414,15 +472,6 @@ public:
         }
 
         Schema schema;
-
-    private:
-        void clear()
-        {
-            schema.channels.nChannels = 0;
-            schema.channels.channels = nullptr;
-            schema.scenes.nScenes = 0;
-            schema.scenes.scenes = nullptr;
-        }
     };
 
 public: // d3renderstream.h API, but loaded dynamically.
@@ -437,6 +486,8 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_initialiseFn* rs_initialise = nullptr;
     rs_initialiseGpGpuWithDX11DeviceFn* rs_initialiseGpGpuWithDX11Device = nullptr;
     rs_initialiseGpGpuWithDX12DeviceAndQueueFn* rs_initialiseGpGpuWithDX12DeviceAndQueue = nullptr;
+    rs_initialiseGpGpuWithOpenGlContextsFn* rs_initialiseGpGpuWithOpenGlContexts = nullptr;
+    rs_initialiseGpGpuWithVulkanDeviceFn* rs_initialiseGpGpuWithVulkanDevice = nullptr;
     rs_useDX12SharedHeapFlagFn* rs_useDX12SharedHeapFlag = nullptr;
     rs_setSchemaFn* rs_setSchema = nullptr;
     rs_saveSchemaFn* rs_saveSchema = nullptr;
@@ -452,6 +503,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
     rs_sendFrameFn* rs_sendFrame = nullptr;
+    rs_releaseImageFn* rs_releaseImage = nullptr;
     rs_logToD3Fn* rs_logToD3 = nullptr;
     rs_sendProfilingDataFn* rs_sendProfilingData = nullptr;
     rs_setNewStatusMessageFn* rs_setNewStatusMessage = nullptr;

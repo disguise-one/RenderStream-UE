@@ -162,6 +162,19 @@ static const FName DisplayClusterModuleName(TEXT("DisplayCluster"));
 
 void FRenderStreamModule::StartupModule()
 {
+    if (FApp::CanEverRender() && FString("VulkanRHI") == FString(GetSelectedDynamicRHIModuleName(false)))
+    {
+        const TArray<const ANSICHAR*> ExtentionsToAdd{ 
+            VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+            VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME,
+            VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
+            VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
+            VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
+        };
+        VulkanRHIBridge::AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
+        UE_LOG(LogRenderStream, Warning, TEXT("Vulkan support is not fully implemented! DO NOT USE FOR SHOW"));
+    }
+
     FString ShaderDirectory = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME))->GetBaseDir(), TEXT("Shaders"));
     AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
@@ -612,6 +625,11 @@ void FRenderStreamModule::OnPostEngineInit()
         auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
 
         errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, cmdQueue);
+    }
+    else if (toggle == "Vulkan")
+    {
+        auto vulkanDevice = static_cast<VkDevice>(GDynamicRHI->RHIGetNativeDevice());
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithVulkanDevice(vulkanDevice);
     }
 
     if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)

@@ -145,6 +145,23 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
 {
     size_t nParameters = 0;
 
+    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    {
+        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        {
+            const FString Name = FuncIt->GetName();
+            UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s"), *Name);
+            if (numParameters < nParameters + 1)
+            {
+                UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                return SIZE_MAX;
+            }
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameters[nParameters]))
+                return SIZE_MAX;
+            ++nParameters;
+        }
+    }
+
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
     {
         const FProperty* Property = *PropIt;
@@ -323,7 +340,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
     return nParameters;
 }
 
-void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*> Actors) const
+void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*> Actors) /*const*/
 {
     if (sceneId >= Schema().scenes.nScenes)
     {
@@ -340,6 +357,7 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*
         switch (param.type)
         {
         case RenderStreamLink::RS_PARAMETER_NUMBER:
+        case RenderStreamLink::RS_PARAMETER_EVENT:
             nFloatParams++;
             break;
         case RenderStreamLink::RS_PARAMETER_IMAGE:
@@ -384,6 +402,8 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
         ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size());
     }
+
+    floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
 void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const
@@ -411,6 +431,23 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
     const float* floatValues = *ppFloatValues;
     const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
+
+    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    {
+        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        {
+            if (!floatValuesLast.data()) // first frame
+                break;
+            if (floatValues[iFloat] > floatValuesLast.data()[iFloat]) // value increment signals an invoke
+            {
+                uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
+                FFrame Frame = FFrame(Root, *FuncIt, Buffer);
+                FuncIt->Invoke(Root, Frame, Buffer);
+                UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
+            }
+            ++iFloat;
+        }
+    }
 
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt && iParam < nParams; ++PropIt)
     {
@@ -562,6 +599,32 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         
                         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
                         if (RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data) != RenderStreamLink::RS_ERROR_SUCCESS)
+                        {
+
+                        }
+                    }
+                    else if (toggle == "Vulkan")
+                    {
+                        {
+                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                        }
+
+                        FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
+                        auto point2 = VulkanTexture->GetSizeXY();
+
+                        RenderStreamLink::VulkanDataStructure imageData = {};
+                        imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
+                        imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+                        imageData.format = frameData.format;
+                        imageData.width = uint32_t(point2.X);
+                        imageData.height = uint32_t(point2.Y);
+                        // TODO: semaphores
+
+                        data.vk.image = &imageData;
+
+                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
+                        if (RenderStreamLink::instance().rs_getFrameImage(frameData.imageId, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data) != RenderStreamLink::RS_ERROR_SUCCESS)
                         {
 
                         }

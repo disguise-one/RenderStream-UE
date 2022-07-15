@@ -34,6 +34,7 @@ const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
         "Pose",
         "Transform",
         "Text",
+        "Event",
     };
 
     static_assert(RS_PARAMETER_LAST + 1 == UE_ARRAY_COUNT(ParamTypeName), "Added a new parameter type without adding it's name!");
@@ -172,6 +173,8 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_initialise);
     LOAD_FN(rs_initialiseGpGpuWithDX11Device);
     LOAD_FN(rs_initialiseGpGpuWithDX12DeviceAndQueue);
+    LOAD_FN(rs_initialiseGpGpuWithOpenGlContexts);
+    LOAD_FN(rs_initialiseGpGpuWithVulkanDevice);
     LOAD_FN(rs_shutdown);
 
     LOAD_FN(rs_registerLoggingFunc);
@@ -201,6 +204,8 @@ bool RenderStreamLink::loadExplicit()
 
     LOAD_FN(rs_getFrameCamera);
     LOAD_FN(rs_sendFrame);
+
+    LOAD_FN(rs_releaseImage);
 
     LOAD_FN(rs_logToD3);
     LOAD_FN(rs_sendProfilingData);

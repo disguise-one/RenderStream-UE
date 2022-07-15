@@ -4,6 +4,7 @@
 #include "CoreMinimal.h"
 #include "RenderStreamChannelDefinition.h"
 #include "ShowFlags.h"
+#include "UObject/CoreNative.h"
 #include "RenderStreamChannelCacheAsset.generated.h"
 
 //DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelCacheAsset, Log, All);
@@ -16,6 +17,7 @@ enum class RenderStreamParameterType : uint8
     Pose,
     Transform,
     Text,
+    Event,
 };
 
 RENDERSTREAM_API RenderStreamLink::RemoteParameterType RenderStreamParameterTypeToLink(RenderStreamParameterType type);

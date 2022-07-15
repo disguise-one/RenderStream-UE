@@ -28,6 +28,9 @@
 #include "Engine/ObjectLibrary.h"
 #include "SourceControlHelpers.h"
 
+#include "Runtime/Launch/Resources/Version.h"
+#include "GeneralProjectSettings.h"
+
 #include "RenderStream/Public/RenderStreamLink.h"
 #include <set>
 #include <string>
@@ -162,7 +165,7 @@ void CreateFieldInternal(FRenderStreamExposedParameterEntry& parameter, FString 
 
 void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min, float max, float step, float defaultValue, TArray<FString> options = {})
 {
-    check(type == RenderStreamParameterType::Float);
+    check(type == RenderStreamParameterType::Float || type == RenderStreamParameterType::Event);
     CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, min, max, step, FString::SanitizeFloat(defaultValue), options);
 }
 
@@ -233,6 +236,16 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
 {
     if (!Root)
         return;
+    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    {
+        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        {
+            const FString Name = FuncIt->GetName();
+            const FString Category = "Custom Events";
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
+        }
+    }
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
     {
         const FProperty* Property = *PropIt;
@@ -651,6 +664,9 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     }
 
     RenderStreamLink::ScopedSchema Schema;
+    Schema.schema.engineName = _strdup(EPIC_PRODUCT_NAME);
+    Schema.schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
+    Schema.schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
     Schema.schema.channels.nChannels = uint32_t(Channels.size());
     Schema.schema.channels.channels = static_cast<const char**>(malloc(Schema.schema.channels.nChannels * sizeof(const char*)));
     auto It = Channels.begin();
