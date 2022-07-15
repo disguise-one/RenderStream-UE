@@ -42,6 +42,8 @@ bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewpo
     const FString ViewportId = Viewport->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
+    if (!Module->StreamPool)
+        return false;
 
     auto Stream = Module->StreamPool->GetStream(ViewportId);
     if (Stream)
