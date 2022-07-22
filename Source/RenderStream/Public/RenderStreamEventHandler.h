@@ -4,7 +4,7 @@
 #include "RenderStreamEventHandler.generated.h"
 
 USTRUCT(BlueprintType)
-struct FStreamInfo
+struct RENDERSTREAM_API FStreamInfo
 {
     GENERATED_USTRUCT_BODY()
 
@@ -16,13 +16,16 @@ struct FStreamInfo
 
     UPROPERTY(BlueprintReadOnly, Category = "Stream")
     FBox2D Region;
+
+    UPROPERTY(BlueprintReadOnly, Category = "Stream")
+    FIntPoint Resolution;
 };
 
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRenderStreamStreamsChangedEvent, const TArray<FStreamInfo>&, StreamInfo);
 
 UCLASS(ClassGroup = (RenderStream), meta = (BlueprintSpawnableComponent))
-class ARenderStreamEventHandler : public AActor
+class RENDERSTREAM_API ARenderStreamEventHandler : public AActor
 {
     GENERATED_BODY()
 

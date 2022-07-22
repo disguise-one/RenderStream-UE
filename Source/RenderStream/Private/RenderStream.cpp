@@ -476,7 +476,7 @@ bool FRenderStreamModule::PopulateStreamPool()
             const FString Channel(description.channel);
             const RenderStreamLink::ProjectionClipping clipping = description.clipping;
             const FBox2D Region(FVector2D(clipping.left, clipping.top), FVector2D(clipping.right, clipping.bottom));
-            streamInfoArray.Push({ Channel, Name, Region });
+            streamInfoArray.Push({ Channel, Name, Region, Resolution });
 
             auto Stream = StreamPool->GetStream(Name);
             if (!Stream)  // Stream does not already exist in pool
