@@ -1,7 +1,6 @@
 #pragma once
 
 #include "RenderStreamLink.h"
-#include <initializer_list>
 #include <vector>
 
 class UWorld;
@@ -17,16 +16,16 @@ public:
 
 protected:
     const RenderStreamLink::Schema& Schema() const;
+    void GetAllLevels(TArray<AActor*>& Actors, ULevel* Level) const;
 
     virtual bool OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema) = 0;
-    bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, std::initializer_list<const AActor*> Actors) const;
-    void ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) /*const*/;
-
+    bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors) const;
+    void ApplyParameters(uint32_t sceneId, const TArray<AActor*>& Actors);
 private:
     size_t ValidateParameters(const AActor* Root, RenderStreamLink::RemoteParameter* const parameters, size_t numParameters) const;
     void ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const;
 
     std::vector<uint8_t> m_schemaMem;
     RenderStreamLink::ScopedSchema m_defaultSchema;
-    std::vector<float> floatValuesLast;
+    std::vector<float> m_floatValuesLast;
 };

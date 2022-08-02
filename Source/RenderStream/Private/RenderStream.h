@@ -27,12 +27,14 @@ class RenderStreamSceneSelector;
 class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
+class UGameInstance;
 
 struct FRenderStreamViewportInfo
 {
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
+    RenderStreamLink::CameraHandle CameraHandleLast = 0;
     
     std::mutex m_frameResponsesLock;
     std::deque<RenderStreamLink::CameraResponseData> m_frameResponses;
@@ -53,6 +55,9 @@ protected:
     void OnSystemError();
     void OnEndFrame();
 
+    void GameInstanceStarted(UGameInstance* Instance);
+    void AppWillTerminate();
+    
     void EnableStats() const;
 
     TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
@@ -77,6 +82,8 @@ public:
 
     void OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange);
     void OnPostLoadMapWithWorld(UWorld* InWorld);
+    void OnActorSpawned(AActor* InActor);
+    void HideDefaultPawns();
 
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
 
@@ -85,4 +92,5 @@ public:
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     double m_LastTime = 0;
+    bool m_gameInstanceStarted = false;
 };

@@ -20,7 +20,8 @@ public class RenderStream : ModuleRules
                 "Sockets", 
                 "Networking", 
                 "InputCore", 
-                "UMG"
+                "UMG",
+                "OpenColorIO"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 
@@ -39,7 +40,8 @@ public class RenderStream : ModuleRules
                 "Json", 
                 "JsonUtilities", 
                 "DisplayCluster",
-                "HeadMountedDisplay"
+                "HeadMountedDisplay",
+                "EngineSettings"
             });
 
         PrivateIncludePaths.AddRange(

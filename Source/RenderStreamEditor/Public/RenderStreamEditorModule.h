@@ -5,6 +5,7 @@
 
 class ULevel;
 class UWorld;
+class URenderStreamChannelCacheAsset;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamEditor, Log, All);
 
@@ -29,8 +30,14 @@ private:
 
     void OnPostEngineInit();
 
+    void OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
+
+    void OnShutdownPostPackagesSaved();
+
     void RegisterSettings();
     void UnregisterSettings();
+
+    void RunValidation(const TArray<URenderStreamChannelCacheAsset*> Caches);
 
     TWeakObjectPtr<UWorld> GameWorld;
     bool DirtyAssetMetadata = false;

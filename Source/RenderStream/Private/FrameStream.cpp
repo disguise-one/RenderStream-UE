@@ -35,11 +35,9 @@ bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const
 
     if (m_handle == 0) {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to create stream"));
-        RenderStreamStatus().Output("Error: Unable to create stream", RSSTATUS_RED);
         return false;
     }
     UE_LOG(LogRenderStream, Log, TEXT("Created stream '%s'"), *m_streamName);
-    RenderStreamStatus().Output("Connected to stream", RSSTATUS_GREEN);
     
     return true;
 }

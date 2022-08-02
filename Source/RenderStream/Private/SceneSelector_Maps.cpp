@@ -24,13 +24,8 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
             return;
         }
 
-        AActor* persistentRoot = world.PersistentLevel->GetLevelScriptActor();
-
-        if (!persistentRoot)
-        {
-            UE_LOG(LogRenderStream, Log, TEXT("LevelScriptActor was null in ApplyScene"));
-            return;
-        }
+        TArray<AActor*> LevelActors;
+        GetAllLevels(LevelActors, world.PersistentLevel);
 
         switch (map.ValidationState)
         {
@@ -38,10 +33,10 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
         {
             RenderStreamLink::RemoteParameters& parameters = Schema().scenes.scenes[sceneId];
             UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorMaps: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
-            if (ValidateParameters(parameters, { persistentRoot }))
+            if (ValidateParameters(parameters, LevelActors))
             {
                 map.ValidationState = MapData::Valid;
-                ApplyParameters(sceneId, { persistentRoot });
+                ApplyParameters(sceneId, LevelActors);
             }
             else
             {
@@ -51,7 +46,7 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
         }
 
         case MapData::Valid:
-            ApplyParameters(sceneId, { persistentRoot });
+            ApplyParameters(sceneId, LevelActors);
             break;
         }
     }
