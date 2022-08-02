@@ -9,6 +9,7 @@
 
 #include <system_error>
 
+#include "IDisplayCluster.h"
 #include "Interfaces/IPluginManager.h"
 #include "Windows/MinWindows.h"
 
@@ -69,42 +70,7 @@ bool RenderStreamLink::loadExplicit()
         return true;
 
 #ifdef WINDOWS
-
-    bool DevEnv = false;
-
-    /* hardcoded denenv.json file that contains the path that the dll can be found in
-     * place this devenv.json file in the plugin root directory
-     * eg.
-     * {
-     *     "dllpath": "<d3sourcedir>/fbuild/<config>/d3/build/msvc"
-     * }
-     */
-    auto GetDevD3Path = [&DevEnv]() -> FString
-    {
-        FString DevEnvJson = IPluginManager::Get().FindPlugin(RS_PLUGIN_NAME)->GetBaseDir() + "/devenv.json";
-        if (FPaths::FileExists(DevEnvJson))
-        {
-            DevEnv = true;
-            FString JsonString;
-            FFileHelper::LoadFileToString(JsonString, *DevEnvJson);
-            TSharedPtr<FJsonObject> JsonObj;
-            TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonString);
-            if (FJsonSerializer::Deserialize(Reader, JsonObj))
-            {
-                if (JsonObj->HasField(TEXT("dllpath")))
-                {
-                    FString path = JsonObj->GetStringField(TEXT("dllpath"));
-                    if (!path.EndsWith("/") || !path.EndsWith("\\"))
-                        path += "/";
-
-                    FPaths::MakePlatformFilename(path);
-                    return path;
-                }
-            }
-        }
-        return "";
-    };
-
+    
     auto GetD3PathFromReg = []() -> FString
     {
         HKEY hKey;
@@ -124,52 +90,60 @@ bool RenderStreamLink::loadExplicit()
             UE_LOG(LogRenderStream, Error, TEXT("Failed to query exe path registry value."));
             return "";
         }
-        return FString(buffer);
-    };
 
-    auto SanitizePath = [](const FString& exePath)
-    {
+        FString out(buffer);
         int32 index;
-        exePath.FindLastChar('\\', index);
-        if (index != -1 && index != exePath.Len() - 1)
-            return exePath.Left(index + 1);
-        return exePath;
+        out.FindLastChar('\\', index);
+        if (index != -1 && index != out.Len() - 1)
+            return out.Left(index + 1);
+        return out;
     };
 
-    FString dllName("d3renderstream.dll");
-    FString exePath = SanitizePath(GetDevD3Path());
-
-    if (!FPaths::FileExists(exePath + dllName))
+    const FString dllName("d3renderstream.dll");
+    const FString exePath = GetD3PathFromReg();
+    const FString dllPath = exePath + dllName;
+    if (!FPaths::FileExists(dllPath))
     {
-        if (DevEnv) // attempted dev environment, log the failure
-            UE_LOG(LogRenderStream, Error, TEXT("devenv.json existed but %s not found in %s."), *dllName, *exePath);
-
-        // revert to registry
-        exePath = SanitizePath(GetD3PathFromReg());
-        if (!FPaths::FileExists(exePath + dllName))
-        {
-            UE_LOG(LogRenderStream, Error, TEXT("%s not found in %s."), *dllName, *exePath);
-            return false;
-        }
+        UE_LOG(LogRenderStream, Error, TEXT("%s not found in %s."), *dllName, *exePath);
+        return false;
     }
 
-    m_dll = LoadLibraryEx(*(exePath + dllName), NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS);
+    auto LogFatalIfNotInEditor = [](const FString& msg)
+    {
+        if (!GIsEditor)
+            UE_LOG(LogRenderStream, Fatal, TEXT("RenderStream instance cannot launch, the app will exit to avoid other RenderStram errors during runtime. Reason: %s"), *msg);
+    };
+
+    UE_LOG(LogRenderStream, Log, TEXT("Loading RenderStream dll at %s."), *dllPath);
+    m_dll = LoadLibraryEx(*dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS);
     if (m_dll == nullptr)
     {
         std::error_code e = std::error_code(GetLastError(), std::system_category());
         FString osMsg = e.message().c_str();
-        UE_LOG(LogRenderStream, Error, TEXT("Failed to load %s. %s (%i)"), *(exePath + dllName), *osMsg, e.value());
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to load %s. %s (%i)"), *dllPath, *osMsg, e.value());
+        LogFatalIfNotInEditor("RenderStream DLL could not be loaded.");
         return false;
     }
 
-#define LOAD_FN(FUNC_NAME) \
-    FUNC_NAME = (FUNC_NAME ## Fn*)FPlatformProcess::GetDllExport(m_dll, TEXT(#FUNC_NAME)); \
-    if (!FUNC_NAME) { \
-        UE_LOG(LogRenderStream, Error, TEXT("Failed to get function " #FUNC_NAME " from DLL.")); \
-        m_loaded = false; \
-        return false; \
-    }
+    auto loadFn = [&](auto& fn, const auto& fnName)
+    {
+        fn = (std::decay_t<decltype(fn)>)FPlatformProcess::GetDllExport(m_dll, fnName);
+        if (!fn)
+        {
+            std::error_code e = std::error_code(GetLastError(), std::system_category());
+            FString osMsg = e.message().c_str();
+            UE_LOG(LogRenderStream, Error, TEXT("Failed to get function %s from DLL. %s (%i)"), fnName, *osMsg, e.value());
+            m_loaded = false;
+            LogFatalIfNotInEditor("A function failed to load from the RenderStream DLL, this suggests an incompatible version is installed.");
+            return false;
+        }
+        return true;
+    };
 
+#define LOAD_FN(FUNC) \
+    if (!loadFn(FUNC, TEXT(#FUNC))) \
+        return false;
+    
     LOAD_FN(rs_initialise);
     LOAD_FN(rs_initialiseGpGpuWithDX11Device);
     LOAD_FN(rs_initialiseGpGpuWithDX12DeviceAndQueue);
