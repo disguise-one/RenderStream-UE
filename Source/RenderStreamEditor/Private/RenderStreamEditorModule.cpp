@@ -129,7 +129,7 @@ void FRenderStreamEditorModule::DeleteCaches(const TArray<FAssetData>& InCachesT
     }
 
     if (Objects.Num() > 0) // Actually stalls for ages even if empty.
-		ObjectTools::DeleteObjectsUnchecked(ObjectsToDelete);
+		ObjectTools::DeleteObjectsUnchecked(Objects);
         //ObjectTools::ForceDeleteObjects(Objects, false);
 }
 
@@ -545,7 +545,8 @@ bool RemoveInvalidCacheEntries()
 
     const auto RemoveCount = ChannelCaches.RemoveAll(IsInvalidCacheAsset);
     if (RemoveCount > 0)
-        ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
+		ObjectTools::DeleteObjectsUnchecked(ObjectsToDelete);
+        //ObjectTools::ForceDeleteObjects(ObjectsToDelete, false);
 
     return RemoveCount > 0;
 }
