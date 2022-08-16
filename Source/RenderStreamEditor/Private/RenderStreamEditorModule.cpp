@@ -129,7 +129,8 @@ void FRenderStreamEditorModule::DeleteCaches(const TArray<FAssetData>& InCachesT
     }
 
     if (Objects.Num() > 0) // Actually stalls for ages even if empty.
-        ObjectTools::ForceDeleteObjects(Objects, false);
+		ObjectTools::DeleteObjectsUnchecked(ObjectsToDelete);
+        //ObjectTools::ForceDeleteObjects(Objects, false);
 }
 
 void CreateFieldInternal(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min = 0.f, float max = 255.f, float step = 1.f, FString defaultValue = "0", TArray<FString> options = {})
@@ -486,7 +487,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     // Save the Cache.
     UPackage* Package = Cache->GetPackage();
     Package->MarkPackageDirty();
-    FAssetRegistryModule::AssetCreated(Cache);
+    //FAssetRegistryModule::AssetCreated(Cache);
     const FString PackageFileName = FPackageName::LongPackageNameToFilename(CacheFolder + LevelPath, FPackageName::GetAssetPackageExtension());
     bool bSaved = UPackage::SavePackage(
         Package,
