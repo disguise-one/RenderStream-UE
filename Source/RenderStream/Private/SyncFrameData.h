@@ -20,6 +20,7 @@ public:
 
 protected:
     void FollowerReceive() const; // Follower receives from master, validates with RenderStream, calls Apply.
+    void FollowerReceive(bool streamsChanged, bool shouldQuit) const;
     void Apply() const;           // Applies changes from RS API to the engine, locally.
     void QuitNow() const;         // Exit the application due to a RenderStream-requested quit.
 

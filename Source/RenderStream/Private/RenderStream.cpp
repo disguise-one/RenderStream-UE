@@ -481,6 +481,9 @@ bool FRenderStreamModule::PopulateStreamPool()
         const RenderStreamLink::StreamDescriptions* header = nBytes >= sizeof(RenderStreamLink::StreamDescriptions) ? reinterpret_cast<const RenderStreamLink::StreamDescriptions*>(descMem.data()) : nullptr;
         const size_t numStreams = header ? header->nStreams : 0;
         TArray<FStreamInfo> streamInfoArray;
+        
+        FIntPoint NewViewportRes(GSystemResolution.ResX, GSystemResolution.ResY);
+        
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
@@ -498,6 +501,32 @@ bool FRenderStreamModule::PopulateStreamPool()
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
                 Stream = StreamPool->GetStream(Name);
+
+                // create a new viewport for this stream if needed
+                if (IDisplayCluster::IsAvailable())
+                {
+                    const FString LocalNodeId = IDisplayCluster::Get().GetConfigMgr()->GetLocalNodeId();
+                    ADisplayClusterRootActor* RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
+                    const UDisplayClusterConfigurationData* ConfigurationData = RootActor->GetConfigData();
+                    UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId);
+
+                    if (!ClusterNode->GetViewport(Name))
+                    {
+                        UDisplayClusterConfigurationViewport* Viewport = NewObject<UDisplayClusterConfigurationViewport>(ClusterNode, *Name, RF_Transactional | RF_ArchetypeObject | RF_Public);
+                        check(Viewport);
+
+                        // Base parameters
+                        Viewport->RenderSettings.BufferRatio = 1;
+                        Viewport->Camera = "";
+                        Viewport->Region = FDisplayClusterConfigurationRectangle(0, 0, Resolution.X, Resolution.Y);
+                        Viewport->GPUIndex = -1;
+
+                        // Projection policy
+                        Viewport->ProjectionPolicy.Type = "renderstream";
+
+                        ClusterNode->Viewports.Add(Name, Viewport);
+                    }
+                }
             }
             else
             {
@@ -506,8 +535,9 @@ bool FRenderStreamModule::PopulateStreamPool()
             }
 
             ConfigureStream(Stream);
+            NewViewportRes = NewViewportRes.ComponentMax(Resolution);
         }
-
+        
         // Broadcast streams changed event
         for (TWeakObjectPtr<ARenderStreamEventHandler> eventHandler : m_eventHandlers)
         {
@@ -806,6 +836,16 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
         FOnActorSpawned::FDelegate ActorSpawnedDelegate = FOnActorSpawned::FDelegate::CreateRaw(this, &FRenderStreamModule::OnActorSpawned);
         InWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
         HideDefaultPawns();
+    }
+
+    // understudy nodes may not have loaded schemas, load here to prevent later crashes
+    // only attempt to load if no attempt has been made previously, if an attempt failed and we're using the default schema don't try again
+    if (m_sceneSelector && m_sceneSelector->SchemaStatus() == RenderStreamSceneSelector::SchemaStatus::NotLoaded)
+    {
+        if (InWorld)
+            LoadSchemas(*InWorld);
+        else
+            LoadSchemas(*GWorld);
     }
 
     EnableStats();

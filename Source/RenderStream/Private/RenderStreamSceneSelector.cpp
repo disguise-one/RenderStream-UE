@@ -36,6 +36,17 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
     }
 }
 
+enum RenderStreamSceneSelector::SchemaStatus RenderStreamSceneSelector::SchemaStatus() const
+{
+    if (m_schemaMem.empty())
+    {
+        if (m_defaultSchema.schema.scenes.scenes)
+            return SchemaStatus::UsingDefault;
+        return SchemaStatus::NotLoaded;
+    }
+    return SchemaStatus::Loaded;
+}
+
 const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
 {
     if (!m_schemaMem.empty())

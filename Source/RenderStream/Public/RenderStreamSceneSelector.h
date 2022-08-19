@@ -14,6 +14,15 @@ public:
     void LoadSchemas(const UWorld& world);
     virtual void ApplyScene(const UWorld& world, uint32_t sceneId) = 0;
 
+    enum class SchemaStatus
+    {
+        NotLoaded,
+        UsingDefault,
+        Loaded
+    };
+
+    SchemaStatus SchemaStatus() const;
+
 protected:
     const RenderStreamLink::Schema& Schema() const;
     void GetAllLevels(TArray<AActor*>& Actors, ULevel* Level) const;

@@ -5,6 +5,7 @@
 
 #include "DisplayClusterConfigurationTypes_Base.h"
 #include "FrameStream.h"
+#include "IDisplayCluster.h"
 #include "RenderStream.h"
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
@@ -58,6 +59,15 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
             {
                 frameResponse = Info.m_frameResponsesMap[GFrameCounterRenderThread];
                 Info.m_frameResponsesMap.erase(GFrameCounterRenderThread);
+            }
+            else
+            {
+                // default values to avoid any math assertions in debug dlls
+                frameResponse.camera.nearZ = 0.1f;
+                frameResponse.camera.farZ = 1.f;
+                frameResponse.camera.sensorX = 1.f;
+                frameResponse.camera.sensorY = 1.f;
+                frameResponse.camera.focalLength = 1.f;
             }
         }
 
