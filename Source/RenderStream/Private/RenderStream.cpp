@@ -482,8 +482,6 @@ bool FRenderStreamModule::PopulateStreamPool()
         const size_t numStreams = header ? header->nStreams : 0;
         TArray<FStreamInfo> streamInfoArray;
         
-        FIntPoint NewViewportRes(GSystemResolution.ResX, GSystemResolution.ResY);
-        
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
@@ -535,7 +533,6 @@ bool FRenderStreamModule::PopulateStreamPool()
             }
 
             ConfigureStream(Stream);
-            NewViewportRes = NewViewportRes.ComponentMax(Resolution);
         }
         
         // Broadcast streams changed event
