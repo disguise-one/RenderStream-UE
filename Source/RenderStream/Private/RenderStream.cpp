@@ -504,11 +504,10 @@ bool FRenderStreamModule::PopulateStreamPool()
                 if (IDisplayCluster::IsAvailable())
                 {
                     const FString LocalNodeId = IDisplayCluster::Get().GetConfigMgr()->GetLocalNodeId();
-                    ADisplayClusterRootActor* RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
+                    const ADisplayClusterRootActor* RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
                     const UDisplayClusterConfigurationData* ConfigurationData = RootActor->GetConfigData();
-                    UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId);
-
-                    if (!ClusterNode->GetViewport(Name))
+                    
+                    if (UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId); !ClusterNode->GetViewport(Name))
                     {
                         UDisplayClusterConfigurationViewport* Viewport = NewObject<UDisplayClusterConfigurationViewport>(ClusterNode, *Name, RF_Transactional | RF_ArchetypeObject | RF_Public);
                         check(Viewport);
@@ -530,6 +529,18 @@ bool FRenderStreamModule::PopulateStreamPool()
             {
                 UE_LOG(LogRenderStream, Log, TEXT("Updating stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 Stream->Update(Resolution, Channel, description.clipping, description.handle, description.format);
+                if (IDisplayCluster::IsAvailable())
+                {
+                    const FString LocalNodeId = IDisplayCluster::Get().GetConfigMgr()->GetLocalNodeId();
+                    const ADisplayClusterRootActor* RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
+                    const UDisplayClusterConfigurationData* ConfigurationData = RootActor->GetConfigData();
+                    const UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId);
+
+                    if (UDisplayClusterConfigurationViewport* Viewport = ClusterNode->GetViewport(Name); Viewport)
+                    {
+                        Viewport->Region = FDisplayClusterConfigurationRectangle(0, 0, Resolution.X, Resolution.Y);
+                    }
+                }
             }
 
             ConfigureStream(Stream);
