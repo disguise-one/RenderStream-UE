@@ -79,6 +79,27 @@ bool FRenderStreamSyncFrameData::Map(FArchive& Ar)
     return true;
 }
 
+void handleDroppedNodes()
+{
+    int Size = 0;
+    RenderStreamLink::RS_ERROR Ret = RenderStreamLink::instance().rs_fetchDroppedNodes(Size, nullptr);
+    if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)
+        return;
+
+    TArray<int> DroppedNodes;
+    DroppedNodes.Reserve(Size);
+    Ret = RenderStreamLink::instance().rs_fetchDroppedNodes(Size, DroppedNodes.GetData());
+    if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)
+        return;
+
+    IDisplayClusterClusterManager* manager = IDisplayCluster::Get().GetClusterMgr();
+    for (int I = 0; I < Size; ++I)
+    {
+        const FString Name = FString::Format(TEXT("node_{0}"), { DroppedNodes[I] });
+        manager->DropClusterNode(Name);
+    }
+}
+
 void FRenderStreamSyncFrameData::ControllerReceive()
 {
     if (m_isQuitting)
@@ -102,6 +123,11 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         m_streamsChanged = true;
 
         // We need to actually get frame data, go back.
+        ControllerReceive();
+    }
+    else if (Ret == RenderStreamLink::RS_ERROR_DROPPED_NODE)
+    {
+        handleDroppedNodes();
         ControllerReceive();
     }
     else if (Ret == RenderStreamLink::RS_ERROR_QUIT)

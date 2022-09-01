@@ -74,6 +74,8 @@ public:
 
         RS_ERROR_INCOMPATIBLE_VERSION,
 
+        RS_ERROR_DROPPED_NODE,
+
         RS_ERROR_FAILED_TO_GET_DXDEVICE_FROM_RESOURCE,
 
         RS_ERROR_FAILED_TO_INITIALISE_GPGPU,
@@ -386,6 +388,7 @@ private:
     typedef RS_ERROR rs_setSchemaFn(/*InOut*/Schema* schema); // Set schema and fill in per-scene hash for use with rs_getFrameParameters
     typedef RS_ERROR rs_getStreamsFn(/*Out*/StreamDescriptions* streams, /*InOut*/uint32_t* nBytes); // Populate streams into a buffer of size (nBytes) starting at (streams)
 
+    typedef RS_ERROR rs_fetchDroppedNodesFn(int& size, int* buffer); // Fills the buffer with a list of the nodes that have been dropped and size with the length of that list, if the buffer is a nullptr only the size is set.
     typedef RS_ERROR rs_awaitFrameDataFn(int timeoutMs, /*Out*/FrameData* data); // waits for any asset, any stream to request a frame, provides the parameters for that frame.
     typedef RS_ERROR rs_setFollowerFn(int isFollower); // Used to mark this node as relying on alternative mechanisms to distribute FrameData. Users must provide correct CameraResponseData to sendFrame, and call rs_beginFollowerFrame at the start of the frame, where awaitFrame would normally be called.
     typedef RS_ERROR rs_beginFollowerFrameFn(double tTracked); // Pass the engine-distributed tTracked value in, if you have called rs_setFollower(1) otherwise do not call this function.
@@ -494,6 +497,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_loadSchemaFn* rs_loadSchema = nullptr;
     rs_shutdownFn* rs_shutdown = nullptr;
     rs_getStreamsFn* rs_getStreams = nullptr;
+    rs_fetchDroppedNodesFn* rs_fetchDroppedNodes = nullptr;
     rs_awaitFrameDataFn* rs_awaitFrameData = nullptr;
     rs_setFollowerFn* rs_setFollower = nullptr;
     rs_beginFollowerFrameFn* rs_beginFollowerFrame = nullptr;

@@ -167,6 +167,7 @@ bool RenderStreamLink::loadExplicit()
 
     LOAD_FN(rs_getStreams);
 
+    LOAD_FN(rs_fetchDroppedNodes);
     LOAD_FN(rs_awaitFrameData);
     LOAD_FN(rs_setFollower);
     LOAD_FN(rs_beginFollowerFrame);
