@@ -86,17 +86,19 @@ void handleDroppedNodes()
     if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)
         return;
 
-    TArray<int> DroppedNodes;
-    DroppedNodes.Reserve(Size);
-    Ret = RenderStreamLink::instance().rs_fetchDroppedNodes(Size, DroppedNodes.GetData());
+    std::vector<int> DroppedNodes;
+    DroppedNodes.resize(Size);
+    Ret = RenderStreamLink::instance().rs_fetchDroppedNodes(Size, DroppedNodes.data());
     if (Ret != RenderStreamLink::RS_ERROR_SUCCESS)
         return;
 
-    IDisplayClusterClusterManager* manager = IDisplayCluster::Get().GetClusterMgr();
-    for (int I = 0; I < Size; ++I)
+    if (IDisplayCluster::IsAvailable())
     {
-        const FString Name = FString::Format(TEXT("node_{0}"), { DroppedNodes[I] });
-        manager->DropClusterNode(Name);
+        if (IDisplayClusterClusterManager* manager = IDisplayCluster::Get().GetClusterMgr(); manager)
+        {
+            for (int DroppedNode : DroppedNodes)
+                manager->DropClusterNode(FString::Format(TEXT("node_{0}"), { DroppedNode }));
+        }
     }
 }
 
