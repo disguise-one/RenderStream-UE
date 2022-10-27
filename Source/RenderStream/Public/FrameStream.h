@@ -15,7 +15,7 @@ public:
 
     void SendFrame_RenderingThread(FRHICommandListImmediate & RHICmdList, 
                                    RenderStreamLink::CameraResponseData& FrameData,
-                                   FRHITexture2D* InSourceTexture,
+                                   FRHITexture* InSourceTexture,
                                    const FIntRect& ViewportRect);
 
     bool Setup(const FString& Name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);

@@ -17,6 +17,8 @@ class FRenderStreamModule;
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPostProcess);
 
+FString FRenderStreamCapturePostProcess::Type = TEXT("renderstream_capture");
+
 FRenderStreamCapturePostProcess::FRenderStreamCapturePostProcess(const FString& PostProcessId, const struct FDisplayClusterConfigurationPostprocess* InConfigurationPostProcess)
     : Id(PostProcessId)
 {}
@@ -71,7 +73,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
             }
         }
 
-        TArray<FRHITexture2D*> Resources;
+        TArray<FRHITexture*> Resources;
         TArray<FIntRect> Rects;
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::OutputFrameTargetableResource, Resources, Rects);
         check(Resources.Num() == 1);

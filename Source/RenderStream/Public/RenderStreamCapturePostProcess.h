@@ -19,7 +19,7 @@ public:
 public:
 	virtual const FString& GetId() const override { return Id; }
 	virtual int32 GetOrder() const override { return 0; }
-	virtual const FString GetTypeId() const override { return "renderstream_capture"; }
+	virtual const FString& GetType() const override { return Type; }
 	virtual const TMap<FString, FString>& GetParameters() const override { return Parameters; }
 	virtual bool IsPostProcessViewAfterWarpBlendRequired() const override { return true; }
 	
@@ -31,6 +31,7 @@ public:
 private:
 	TMap<FString, FString> Parameters;
 	FString Id;
+	static FString Type;
 };
 
 class FRenderStreamPostProcessFactory

@@ -24,6 +24,8 @@
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 
+FString FRenderStreamProjectionPolicy::RenderStreamPolicyType = TEXT("renderstream");
+
 FRenderStreamProjectionPolicy::FRenderStreamProjectionPolicy(const FString& _ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy)
     : ProjectionPolicyId(_ProjectionPolicyId)
     , Parameters(InConfigurationProjectionPolicy->Parameters)

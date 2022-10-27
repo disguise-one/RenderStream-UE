@@ -9,6 +9,7 @@
 #include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
 #include "Engine/LevelStreaming.h"
+#include "Engine/LevelScriptActor.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
@@ -18,9 +19,9 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
 {
     if (Level)
     {
-        auto Actor = Level->GetLevelScriptActor();
+        auto Actor = static_cast<AActor*>(Level->GetLevelScriptActor());
         if (Actor && !Actors.Contains(Actor))
-            Actors.Push(Level->GetLevelScriptActor());
+            Actors.Push(Actor);
 
         if (Level->IsPersistentLevel())
         {
@@ -467,9 +468,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         if (!Property->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || Property->HasAllPropertyFlags(CPF_DisableEditOnInstance))
             continue;
 
-        if (Property->HasAnyCastFlags(FBoolProperty::StaticClassCastFlagsPrivate() | FByteProperty::StaticClassCastFlagsPrivate() 
-                                      | FIntProperty::StaticClassCastFlagsPrivate() | FFloatProperty::StaticClassCastFlagsPrivate()
-                                      | FDoubleProperty::StaticClassCastFlagsPrivate()))
+        if (Property->IsA(FBoolProperty::StaticClass()) ||
+            Property->IsA(FByteProperty::StaticClass()) ||
+            Property->IsA(FIntProperty::StaticClass()) ||
+            Property->IsA(FFloatProperty::StaticClass()) ||
+            Property->IsA(FDoubleProperty::StaticClass()))
         {
             if (iFloat >= nFloatVals)
             {
@@ -622,12 +625,12 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                             RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
                         }
 
-                        FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
+                        FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(rtResource->TextureRHI->GetTexture2D());
                         auto point2 = VulkanTexture->GetSizeXY();
 
                         RenderStreamLink::VulkanDataStructure imageData = {};
-                        imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
-                        imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+                        imageData.memory = VulkanTexture->GetAllocationHandle();
+                        imageData.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
                         imageData.format = frameData.format;
                         imageData.width = uint32_t(point2.X);
                         imageData.height = uint32_t(point2.Y);

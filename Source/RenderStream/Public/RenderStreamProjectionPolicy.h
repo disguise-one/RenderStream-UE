@@ -19,7 +19,7 @@ class FRenderStreamProjectionPolicy
     : public IDisplayClusterProjectionPolicy
 {
 public:
-    static constexpr auto RenderStreamPolicyType = TEXT("renderstream");
+    static FString RenderStreamPolicyType;
 
     FRenderStreamProjectionPolicy(const FString& ProjectionPolicyId, const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy);
     virtual ~FRenderStreamProjectionPolicy();
@@ -31,7 +31,7 @@ public:
     virtual void HandleEndScene(class IDisplayClusterViewport* InViewport) override;
 
     const FString& GetId() const override { return ProjectionPolicyId; }
-    const FString GetTypeId() const override { return RenderStreamPolicyType; }
+    const FString& GetType() const override { return RenderStreamPolicyType; }
 
     bool IsConfigurationChanged(const struct FDisplayClusterConfigurationProjection* InConfigurationProjectionPolicy) const override { return false; }
     

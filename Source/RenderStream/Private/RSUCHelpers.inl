@@ -23,8 +23,9 @@
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
 #include <array>
+#include <VulkanResources.h>
 
-class FRHITexture2D;
+class FRHITexture;
 
 namespace {
 
@@ -51,7 +52,7 @@ namespace {
         { }
 
 
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions);
     };
 
 
@@ -67,7 +68,7 @@ namespace {
     IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
 
-    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture2D> RGBTexture, const FIntPoint& OutputDimensions)
+    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions)
     {
         RSResizeCopyUB UB;
         {
@@ -86,11 +87,10 @@ namespace RSUCHelpers
 {
     static ID3D12CommandQueue* GetDX12Queue(FRHICommandListImmediate& RHICmdList)
     {
-        void* queue = nullptr, * list = nullptr;
-        D3D12RHI::GetGfxCommandListAndQueue(RHICmdList, list, queue);
-        ID3D12CommandQueue* cmdQueue = reinterpret_cast<ID3D12CommandQueue*>(queue);
-        ID3D12GraphicsCommandList* cmdList = reinterpret_cast<ID3D12GraphicsCommandList*>(list);
-        return cmdQueue;
+        auto rhi = GetID3D12DynamicRHI();
+        IRHICommandContext* RHICmdContext = rhi->RHIGetDefaultContext();
+        FD3D12CommandContext* CmdContext = static_cast<FD3D12CommandContext*>(RHICmdContext);
+        return CmdContext->Device->GetQueue(CmdContext->QueueType).D3DCommandQueue;
     }
 
     static ID3D12Device* GetDX12Device() {
@@ -102,7 +102,7 @@ namespace RSUCHelpers
         FTextureRHIRef& BufTexture,
         FRHICommandListImmediate& RHICmdList,
         RenderStreamLink::CameraResponseData FrameData,
-        FRHITexture2D* InSourceTexture,
+        FRHITexture* InSourceTexture,
         FIntPoint Point,
         FVector2f CropU,
         FVector2f CropV)
@@ -218,12 +218,12 @@ namespace RSUCHelpers
                     return;
             }
 
-            FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(BufTexture->GetTexture2D());
+            FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(BufTexture);
             auto point2 = VulkanTexture->GetSizeXY();
 
             RenderStreamLink::VulkanDataStructure imageData = {};
-            imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
-            imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+            imageData.memory = VulkanTexture->GetAllocationHandle();
+            imageData.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
             imageData.format = fmt;
             imageData.width = uint32_t(point2.X);
             imageData.height = uint32_t(point2.Y);
@@ -251,8 +251,6 @@ namespace RSUCHelpers
         const FIntPoint& Resolution,
         RenderStreamLink::RSPixelFormat rsFormat)
     {
-        FRHIResourceCreateInfo info(TEXT("RenderStream:Stream"), FClearValueBinding::Green);
-
         struct
         {
             DXGI_FORMAT dxgi;
@@ -273,7 +271,10 @@ namespace RSUCHelpers
         RenderStreamLink::instance().rs_useDX12SharedHeapFlag(&rs_flag);
         flags = static_cast<ETextureCreateFlags>(flags | ((rs_flag == RenderStreamLink::RS_DX12_USE_SHARED_HEAP_FLAG) ? ETextureCreateFlags::Shared : ETextureCreateFlags::None));
         flags = flags | ETextureCreateFlags::External;
-        BufTexture = RHICreateTexture2D(Resolution.X, Resolution.Y, format.ue, 1, 1, flags, info);
+        auto desc = FRHITextureCreateDesc::Create2D(TEXT("RenderStream:Stream"), Resolution.X, Resolution.Y, format.ue);
+        desc.AddFlags(flags);
+        desc.SetClearValue(FClearValueBinding::Green);
+        BufTexture = RHICreateTexture(desc);
         return true;
     }
 }

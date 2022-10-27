@@ -28,7 +28,7 @@
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/IDisplayClusterRenderManager.h"
 
-#include "AssetRegistryModule.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 
 #include "Containers/Map.h"
 
@@ -171,7 +171,9 @@ void FRenderStreamModule::StartupModule()
             VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME,
             VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
         };
-        VulkanRHIBridge::AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
+
+        auto rhi = GetIVulkanDynamicRHI();
+        rhi->AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
         UE_LOG(LogRenderStream, Warning, TEXT("Vulkan support is not fully implemented! DO NOT USE FOR SHOW"));
     }
 
@@ -258,12 +260,12 @@ void FRenderStreamModule::ShutdownModule()
         {
             if (!RenderMgr->UnregisterProjectionPolicyFactory(FRenderStreamProjectionPolicy::RenderStreamPolicyType))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> projection factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> projection factory"), *FRenderStreamProjectionPolicy::RenderStreamPolicyType);
             }
 
             if (!RenderMgr->UnregisterPostProcessFactory(FRenderStreamPostProcessFactory::RenderStreamPostProcessType))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> post process factory"), FRenderStreamPostProcessFactory::RenderStreamPostProcessType);
+                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> post process factory"), *FRenderStreamPostProcessFactory::RenderStreamPostProcessType);
             }
         }
     }
@@ -340,7 +342,7 @@ bool UpdateViewport(FFrameStreamPtr Stream)
     UDisplayClusterConfigurationData* Config = ConfigMgr->GetConfig();
     check(Config);
 
-    UDisplayClusterConfigurationClusterNode** Node = Config->Cluster->Nodes.Find(ConfigMgr->GetLocalNodeId());
+    TObjectPtr<UDisplayClusterConfigurationClusterNode>* Node = Config->Cluster->Nodes.Find(ConfigMgr->GetLocalNodeId());
     if (!Node)
         return false;
 
@@ -656,13 +658,15 @@ void FRenderStreamModule::OnPostEngineInit()
     }
     else if (toggle == "D3D12")
     {
-        FRHICommandListImmediate& RHICmdList = GRHICommandList.GetImmediateCommandList();
-        void* queue = nullptr, * list = nullptr;
-        D3D12RHI::GetGfxCommandListAndQueue(RHICmdList, list, queue);
-        ID3D12CommandQueue* cmdQueue = reinterpret_cast<ID3D12CommandQueue*>(queue);
-        auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
+        auto rhi = GetID3D12DynamicRHI();
+        IRHICommandContext* RHICmdContext = rhi->RHIGetDefaultContext();
+        FD3D12CommandContext* CmdContext = static_cast<FD3D12CommandContext*>(RHICmdContext);
 
-        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, cmdQueue);
+        auto list = CmdContext->GraphicsCommandList().Get();
+        auto queue = CmdContext->Device->GetQueue(CmdContext->QueueType).D3DCommandQueue;
+
+        auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
+        errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, queue);
     }
     else if (toggle == "Vulkan")
     {
@@ -771,23 +775,23 @@ void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason
         {
             // Policies need to be available early for view setup
             ProjectionPolicyFactory = MakeShared<FRenderStreamProjectionPolicyFactory>();
-            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> projection policy factory..."), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> projection policy factory..."), *FRenderStreamProjectionPolicy::RenderStreamPolicyType);
 
             TSharedPtr<IDisplayClusterProjectionPolicyFactory> basePtr = StaticCastSharedPtr<IDisplayClusterProjectionPolicyFactory>(ProjectionPolicyFactory);
             if (!RenderMgr->RegisterProjectionPolicyFactory(FRenderStreamProjectionPolicy::RenderStreamPolicyType, basePtr))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> projection policy factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> projection policy factory"), *FRenderStreamProjectionPolicy::RenderStreamPolicyType);
             }
         }
         {
             // Policies need to be available early for view setup
             PostProcessFactory = MakeShared<FRenderStreamPostProcessFactory>();
-            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> post process factory..."), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+            UE_LOG(LogRenderStream, Log, TEXT("Registering <%s> post process factory..."), *FRenderStreamProjectionPolicy::RenderStreamPolicyType);
 
             TSharedPtr<IDisplayClusterPostProcessFactory> basePtr = StaticCastSharedPtr<IDisplayClusterPostProcessFactory>(PostProcessFactory);
             if (!RenderMgr->RegisterPostProcessFactory(FRenderStreamPostProcessFactory::RenderStreamPostProcessType, basePtr))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> post process factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
+                UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> post process factory"), *FRenderStreamProjectionPolicy::RenderStreamPolicyType);
             }
         }
 
