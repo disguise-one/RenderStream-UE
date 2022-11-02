@@ -45,6 +45,11 @@ void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportMana
 
 void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
 {
+    if (ViewportProxy == nullptr)
+    {
+        return;
+    }
+
     auto ViewportId = ViewportProxy->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);

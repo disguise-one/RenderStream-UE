@@ -647,6 +647,9 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
 
 void FRenderStreamModule::OnPostEngineInit()
 {
+    if (!IsInCluster())
+        return;
+
     int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
 
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -661,10 +664,10 @@ void FRenderStreamModule::OnPostEngineInit()
         auto rhi = GetID3D12DynamicRHI();
         IRHICommandContext* RHICmdContext = rhi->RHIGetDefaultContext();
         FD3D12CommandContext* CmdContext = static_cast<FD3D12CommandContext*>(RHICmdContext);
-
+        
         auto list = CmdContext->GraphicsCommandList().Get();
-        auto queue = CmdContext->Device->GetQueue(CmdContext->QueueType).D3DCommandQueue;
-
+        auto queue = CmdContext->Device->GetQueue(ED3D12QueueType::Direct).D3DCommandQueue;
+        
         auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
         errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, queue);
     }

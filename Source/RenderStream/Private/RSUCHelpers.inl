@@ -90,7 +90,7 @@ namespace RSUCHelpers
         auto rhi = GetID3D12DynamicRHI();
         IRHICommandContext* RHICmdContext = rhi->RHIGetDefaultContext();
         FD3D12CommandContext* CmdContext = static_cast<FD3D12CommandContext*>(RHICmdContext);
-        return CmdContext->Device->GetQueue(CmdContext->QueueType).D3DCommandQueue;
+        return CmdContext->Device->GetQueue(ED3D12QueueType::Direct).D3DCommandQueue;
     }
 
     static ID3D12Device* GetDX12Device() {
@@ -170,7 +170,11 @@ namespace RSUCHelpers
             data.dx11.resource = static_cast<ID3D11Resource*>(resource);
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
-            RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data, &Response);
+            auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data, &Response);
+            if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+            }
         }
         else if (toggle == "D3D12")
         {
@@ -186,8 +190,10 @@ namespace RSUCHelpers
             Response.cameraData = &FrameData;
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
+                auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response);
+                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
+                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
                 }
             }
         }
@@ -236,8 +242,10 @@ namespace RSUCHelpers
             Response.cameraData = &FrameData;
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
+                auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data, &Response);
+                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
+                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
                 }
             }
         }
