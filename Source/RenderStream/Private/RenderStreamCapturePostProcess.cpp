@@ -80,7 +80,8 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
 
         TArray<FRHITexture*> Resources;
         TArray<FIntRect> Rects;
-        ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::OutputFrameTargetableResource, Resources, Rects);
+        // NOTE: If you get a black screen on the stream when updating the plugin to a new unreal version try changing the EDisplayClusterViewportResourceType enum.
+        ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);

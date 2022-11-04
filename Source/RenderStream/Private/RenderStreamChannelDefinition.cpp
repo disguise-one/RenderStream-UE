@@ -177,8 +177,11 @@ void URenderStreamChannelDefinition::UnregisterCamera()
         ACameraActor* Owner = Cast<ACameraActor>(GetOwner());
         if (Owner)
         {
-            auto& Array = FindOrAdd(ChannelActorMap, GetChannelName());
+            FString ActorName = GetOwner()->GetActorNameOrLabel();
+            FString ChannelName = GetChannelName();
+            auto& Array = FindOrAdd(ChannelActorMap, ChannelName);
             Array.Remove(Owner);
+            UE_LOG(LogRenderStreamChannelDefinition, Log, TEXT("Removing camera '%s' from channel '%s'."), *ActorName, *ChannelName);
         }
         else
         {
@@ -232,9 +235,12 @@ void URenderStreamChannelDefinition::BeginPlay()
         if (Component)
             Component->SetConstraintAspectRatio(false);
 
-        auto& Array = FindOrAdd(ChannelActorMap, GetChannelName());
+        FString ActorName = GetOwner()->GetActorNameOrLabel();
+        FString ChannelName = GetChannelName();
+        auto& Array = FindOrAdd(ChannelActorMap, ChannelName);
         Array.Add(Owner);
         Registered = true;
+        UE_LOG(LogRenderStreamChannelDefinition, Log, TEXT("Adding camera '%s' to channel '%s'."), *ActorName, *ChannelName);
     }
     else
     {
