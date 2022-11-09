@@ -36,6 +36,7 @@ const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
         "Transform",
         "Text",
         "Event",
+        "Skeleton",
     };
 
     static_assert(RS_PARAMETER_LAST + 1 == UE_ARRAY_COUNT(ParamTypeName), "Added a new parameter type without adding it's name!");
@@ -175,6 +176,10 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_getFrameImageData);
     LOAD_FN(rs_getFrameImage);
     LOAD_FN(rs_getFrameText);
+
+    LOAD_FN(rs_getSkeletonLayout);
+    LOAD_FN(rs_getSkeletonRootPose);
+    LOAD_FN(rs_getSkeletonJointPoses);
 
     LOAD_FN(rs_getFrameCamera);
     LOAD_FN(rs_sendFrame);

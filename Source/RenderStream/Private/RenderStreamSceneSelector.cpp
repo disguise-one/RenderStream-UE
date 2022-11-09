@@ -326,6 +326,17 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameters[nParameters]);
                 ++nParameters;
             }
+            else if (USkeleton* Skeleton = Cast<USkeleton>(o))
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed skeleton property: %s"), *Name);
+                if (numParameters < nParameters + 1)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_SKELETON, parameters[nParameters]);
+                ++nParameters;
+            }
             else
             {
                 UE_LOG(LogRenderStream, Warning, TEXT("Unknown object property: %s"), *Name);
@@ -363,6 +374,7 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     size_t nFloatParams = 0;
     size_t nImageParams = 0;
     size_t nTextParams = 0;
+    size_t nPoseParams = 0;
     for (size_t i = 0; i < params.nParameters ; ++i)
     {
         const RenderStreamLink::RemoteParameter& param = params.parameters[i];
@@ -381,6 +393,9 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
             break;
         case RenderStreamLink::RS_PARAMETER_TEXT:
             nTextParams++;
+            break;
+        case RenderStreamLink::RS_PARAMETER_SKELETON:
+            nPoseParams++;
             break;
         default:
             UE_LOG(LogRenderStream, Error, TEXT("Unhandled parameter type"));
@@ -418,7 +433,7 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
-void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
     struct
@@ -440,6 +455,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     size_t iFloat = 0;
     size_t iImage = 0;
     size_t iText = 0;
+    size_t iPose = 0;
 
     const float* floatValues = *ppFloatValues;
     const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
@@ -562,16 +578,16 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         }
         else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
         {
-            if (iImage >= nImageVals)
-            {
-                UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
-                continue;
-            }
-
             const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
             UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
             if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
             {
+                if (iImage >= nImageVals)
+                {
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                    continue;
+                }
+
                 const RenderStreamLink::ImageFrameData& frameData = imageValues[iImage];
                 if (!Texture->bGPUSharedFlag || Texture->GetFormat() != formatMap[frameData.format].ue)
                 {
@@ -649,6 +665,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 });
                 ++iImage;
             }
+            else if (USkeleton* Skeleton = Cast<USkeleton>(o))
+            {
+                ApplySkeletalPose(specHash, iPose++, *Skeleton);
+            }
         }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
         {
@@ -659,12 +679,66 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             }
             ++iText;
         }
-        
         ++iParam;
     }
-    
+
     *ppFloatValues += iFloat;
     *ppImageValues += iImage;
     *ppParams += iParam;
+}
 
+void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPose, USkeleton& Skeleton)
+{
+    // first get the pose for this param index
+    SkeletalPose pose;
+    {
+        int nJoints;
+        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &pose.layoutId, &pose.layoutVersion, nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
+            return;
+        }
+
+        pose.joints.SetNum(nJoints);
+        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &pose.layoutId, &pose.layoutVersion, pose.joints.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
+            return;
+        }
+
+        if (RenderStreamLink::instance().rs_getSkeletonRootPose(specHash, pose.layoutId, 
+                                                                &pose.rootPosition.X, &pose.rootPosition.Y, &pose.rootPosition.Z,
+                                                                &pose.rootOrientation.X, &pose.rootOrientation.Y, &pose.rootOrientation.Z, &pose.rootOrientation.W
+                                                                ) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
+            return;
+        }
+    }
+
+    // check the layout cache for the layout associated with this pose
+    SkeletonLayout* layout = m_skeletalLayoutCache.Find(pose.layoutId);
+    if (!layout || layout->version != pose.layoutVersion)
+    {
+        // we either haven't seen this layout before or the version expected by the pose is different to our cached version so refresh
+        SkeletonLayout newLayout;
+        int nJoints;
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, pose.layoutId, &newLayout.version, nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
+            return;
+        }
+
+        newLayout.joints.SetNum(nJoints);
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, pose.layoutId, &newLayout.version, newLayout.joints.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
+            return;
+        }
+
+        layout = &m_skeletalLayoutCache.Emplace(pose.layoutId, newLayout);
+    }
+
+    // TODO: apply to unreal skeleton
+    _CRT_UNUSED(Skeleton);
 }

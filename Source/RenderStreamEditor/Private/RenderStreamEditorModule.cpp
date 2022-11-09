@@ -365,6 +365,11 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed render texture property: %s"), *Name);
                 CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Image);
             }
+            else if (const USkeleton* Skeleton = Cast<const USkeleton>(o))
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed skeleton property: %s"), *Name);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Skeleton);
+            }
             else
             {
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed object property: %s"), *Name);
