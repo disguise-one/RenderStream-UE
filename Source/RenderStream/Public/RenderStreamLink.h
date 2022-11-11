@@ -356,18 +356,36 @@ public:
 
     typedef struct
     {
-        uint64_t id;
         float x, y, z;
         float rx, ry, rz, rw;
+    } Transform;
+
+    typedef struct
+    {
+        uint64_t id;
+        Transform transform;
     } SkeletonJointPose;
 
     typedef struct
     {
         uint64_t id;
         uint64_t parentId;
-        float x, y, z;
-        float rx, ry, rz, rw;
+        Transform transform;
     } SkeletonJointDesc;
+
+    typedef struct
+    {
+        uint32_t version;
+        SkeletonJointDesc* joints;
+    } SkeletonLayout;
+
+    typedef struct
+    {
+        uint64_t layoutId;
+        uint32_t layoutVersion;
+        Transform rootTransform;
+        SkeletonJointPose* joints;
+    } SkeletonPose;
 
     RENDERSTREAM_API static RenderStreamLink& instance();
 
@@ -410,9 +428,8 @@ private:
     typedef RS_ERROR rs_getFrameImageFn(int64_t imageId, SenderFrameType frameType, /*InOut*/SenderFrameTypeData data); // fills in (data) with the remote image
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
     
-    typedef RS_ERROR rs_getSkeletonLayoutFn(uint64_t schemaHash, uint64_t id, /*Out*/uint32_t* layoutVersion, /*Out*/SkeletonJointDesc* joints, /*Out*/int* size);
-    typedef RS_ERROR rs_getSkeletonRootPoseFn(uint64_t schemaHash, uint64_t id, /*Out*/float* x, /*Out*/float* y, /*Out*/float* z, /*Out*/float* rx, /*Out*/float* ry, /*Out*/float* rz, /*Out*/float* rw);
-    typedef RS_ERROR rs_getSkeletonJointPosesFn(uint64_t schemaHash, uint32_t poseParamIndex, /*Out*/uint64_t* id, /*Out*/uint32_t* layoutVersion, /*Out*/SkeletonJointPose* joints, /*Out*/int* size);
+    typedef RS_ERROR rs_getSkeletonLayoutFn(uint64_t schemaHash, uint64_t id, /*Out*/SkeletonLayout* layout, /*Out*/int* numJoints);
+    typedef RS_ERROR rs_getSkeletonJointPosesFn(uint64_t schemaHash, uint32_t poseParamIndex, /*Out*/SkeletonPose* pose, /*Out*/int* numJoints);
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
     typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const FrameResponseData* frameData); // publish a frame buffer which was generated from the associated tracking and timing information.
@@ -521,7 +538,6 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getFrameImageFn* rs_getFrameImage = nullptr;
     rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getSkeletonLayoutFn* rs_getSkeletonLayout = nullptr;
-    rs_getSkeletonRootPoseFn* rs_getSkeletonRootPose = nullptr;
     rs_getSkeletonJointPosesFn* rs_getSkeletonJointPoses = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
     rs_sendFrameFn* rs_sendFrame = nullptr;

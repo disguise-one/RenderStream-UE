@@ -690,53 +690,54 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPose, USkeleton& Skeleton)
 {
     // first get the pose for this param index
-    SkeletalPose pose;
+    SkeletalPose Pose;
     {
+        RenderStreamLink::SkeletonPose rsPose{};
         int nJoints;
-        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &pose.layoutId, &pose.layoutVersion, nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
             return;
         }
 
-        pose.joints.SetNum(nJoints);
-        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &pose.layoutId, &pose.layoutVersion, pose.joints.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        Pose.joints.SetNum(nJoints);
+        rsPose.joints = Pose.joints.GetData();
+        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
             return;
         }
 
-        if (RenderStreamLink::instance().rs_getSkeletonRootPose(specHash, pose.layoutId, 
-                                                                &pose.rootPosition.X, &pose.rootPosition.Y, &pose.rootPosition.Z,
-                                                                &pose.rootOrientation.X, &pose.rootOrientation.Y, &pose.rootOrientation.Z, &pose.rootOrientation.W
-                                                                ) != RenderStreamLink::RS_ERROR_SUCCESS)
-        {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
-            return;
-        }
+        Pose.layoutId = rsPose.layoutId;
+        Pose.layoutVersion = rsPose.layoutVersion;
+        Pose.rootPosition = FVector3f(rsPose.rootTransform.x, rsPose.rootTransform.y, rsPose.rootTransform.z);
+        Pose.rootOrientation = FQuat4f(rsPose.rootTransform.rx, rsPose.rootTransform.ry, rsPose.rootTransform.rz, rsPose.rootTransform.rw);
     }
 
     // check the layout cache for the layout associated with this pose
-    SkeletonLayout* layout = m_skeletalLayoutCache.Find(pose.layoutId);
-    if (!layout || layout->version != pose.layoutVersion)
+    SkeletonLayout* layout = m_skeletalLayoutCache.Find(Pose.layoutId);
+    if (!layout || layout->version != Pose.layoutVersion)
     {
         // we either haven't seen this layout before or the version expected by the pose is different to our cached version so refresh
-        SkeletonLayout newLayout;
+        SkeletonLayout newLayout{};
+        RenderStreamLink::SkeletonLayout rsLayout{};
         int nJoints;
-        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, pose.layoutId, &newLayout.version, nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
             return;
         }
 
         newLayout.joints.SetNum(nJoints);
-        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, pose.layoutId, &newLayout.version, newLayout.joints.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        rsLayout.joints = newLayout.joints.GetData();
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
             return;
         }
 
-        layout = &m_skeletalLayoutCache.Emplace(pose.layoutId, newLayout);
+        newLayout.version = rsLayout.version;
+        layout = &m_skeletalLayoutCache.Emplace(Pose.layoutId, newLayout);
     }
 
     // TODO: apply to unreal skeleton
