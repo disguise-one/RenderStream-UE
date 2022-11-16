@@ -65,7 +65,7 @@
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 
-
+#include "Misc/ConfigCacheIni.h" 
 
 #include "Game/IDisplayClusterGameManager.h" 
 #include "DisplayClusterRootActor.h" 
