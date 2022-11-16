@@ -4,7 +4,6 @@
 
 #include "Engine/Public/HardwareInfo.h"
 
-#include "D3D12RHIPrivate.h"
 #include "D3D12RHIBridge.h"
 
 #include "VulkanRHIPrivate.h"
@@ -85,19 +84,6 @@ namespace {
 
 namespace RSUCHelpers
 {
-    static ID3D12CommandQueue* GetDX12Queue(FRHICommandListImmediate& RHICmdList)
-    {
-        auto rhi = GetID3D12DynamicRHI();
-        IRHICommandContext* RHICmdContext = rhi->RHIGetDefaultContext();
-        FD3D12CommandContext* CmdContext = static_cast<FD3D12CommandContext*>(RHICmdContext);
-        return CmdContext->Device->GetQueue(ED3D12QueueType::Direct).D3DCommandQueue;
-    }
-
-    static ID3D12Device* GetDX12Device() {
-        auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
-        return dx12device;
-    }
-
     static void SendFrame(const RenderStreamLink::StreamHandle Handle,
         FTextureRHIRef& BufTexture,
         FRHICommandListImmediate& RHICmdList,

@@ -662,13 +662,8 @@ void FRenderStreamModule::OnPostEngineInit()
     else if (toggle == "D3D12")
     {
         auto rhi = GetID3D12DynamicRHI();
-        IRHICommandContext* RHICmdContext = rhi->RHIGetDefaultContext();
-        FD3D12CommandContext* CmdContext = static_cast<FD3D12CommandContext*>(RHICmdContext);
-        
-        auto list = CmdContext->GraphicsCommandList().Get();
-        auto queue = CmdContext->Device->GetQueue(ED3D12QueueType::Direct).D3DCommandQueue;
-        
-        auto dx12device = static_cast<ID3D12Device*>(GDynamicRHI->RHIGetNativeDevice());
+        ID3D12CommandQueue* queue = rhi->RHIGetCommandQueue();
+        ID3D12Device* dx12device = static_cast<ID3D12Device*>(rhi->RHIGetNativeDevice());
         errCode = RenderStreamLink::instance().rs_initialiseGpGpuWithDX12DeviceAndQueue(dx12device, queue);
     }
     else if (toggle == "Vulkan")
