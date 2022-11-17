@@ -178,6 +178,7 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_getFrameText);
 
     LOAD_FN(rs_getSkeletonLayout);
+    LOAD_FN(rs_getSkeletonJointNames);
     LOAD_FN(rs_getSkeletonJointPoses);
 
     LOAD_FN(rs_getFrameCamera);

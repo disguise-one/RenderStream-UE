@@ -748,7 +748,38 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
             return;
         }
+        
+        TArray<int> nameLengths;
+        nameLengths.SetNum(nJoints);
+        TArray<int*> nameLengthPtrs;
+        nameLengthPtrs.SetNum(nJoints);
+        for (int32 i = 0; i < nJoints; ++i)
+            nameLengthPtrs[i] = &nameLengths[i];
 
+        if (RenderStreamLink::instance().rs_getSkeletonJointNames(specHash, Pose.layoutId, nullptr, nameLengthPtrs.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint name lengths."));
+            return;
+        }
+        
+        TArray<std::string> jointNames;
+        jointNames.SetNum(nJoints);
+        for (int32 i = 0; i < nJoints; ++i)
+            jointNames[i].resize(nameLengths[i]);
+        TArray<const char*> jointNamesCStrings;
+        jointNamesCStrings.SetNum(nJoints);
+        for (int32 i = 0; i < nJoints; ++i)
+            jointNamesCStrings[i] = jointNames[i].c_str();
+
+        if (RenderStreamLink::instance().rs_getSkeletonJointNames(specHash, Pose.layoutId, jointNamesCStrings.GetData(), nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint name lengths."));
+            return;
+        }
+
+        newLayout.jointNames.SetNum(nJoints);
+        for (int32 i = 0; i < newLayout.jointNames.Num(); ++i)
+            newLayout.jointNames[i] = FString(jointNames[i].c_str());
         newLayout.version = rsLayout.version;
         Layout = &m_skeletalLayoutCache.Emplace(Pose.layoutId, newLayout);
     }

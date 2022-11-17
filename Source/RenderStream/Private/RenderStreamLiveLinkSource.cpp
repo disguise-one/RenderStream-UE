@@ -38,12 +38,16 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
         FLiveLinkStaticDataStruct StaticDataStruct = FLiveLinkStaticDataStruct(FLiveLinkSkeletonStaticData::StaticStruct());
         FLiveLinkSkeletonStaticData& StaticSkeleton = *StaticDataStruct.Cast<FLiveLinkSkeletonStaticData>();
 
-        for (const auto& Joint : Layout.joints)
+        StaticSkeleton.BoneNames.SetNum(Layout.joints.Num());
+        StaticSkeleton.BoneParents.SetNum(Layout.joints.Num());
+        for (int32 i = 0; i < Layout.joints.Num(); ++i)
         {
-            // TODO: send bone names over RenderStream ?
-            StaticSkeleton.BoneNames.Add(FName(FString::FromInt(static_cast<int32>(Joint.id))));
-            int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
-            StaticSkeleton.BoneParents.Add(idx); // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
+            const RenderStreamLink::SkeletonJointDesc& Joint = Layout.joints[i];
+            const FString& Name = Layout.jointNames[i];
+            
+            StaticSkeleton.BoneNames[i] = FName(Name);
+            const int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
+            StaticSkeleton.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
         }
 
         Client->PushSubjectStaticData_AnyThread(SubjectKey, ULiveLinkAnimationRole::StaticClass(), MoveTemp(StaticDataStruct));
@@ -56,15 +60,19 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
         FLiveLinkFrameDataStruct FrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkAnimationFrameData::StaticStruct());
         FLiveLinkAnimationFrameData& FrameData = *FrameDataStruct.Cast<FLiveLinkAnimationFrameData>();
 
-        for (const auto& Joint : Pose.joints)
+        FrameData.Transforms.SetNum(Pose.joints.Num());
+        for (int32 i = 0; i < Pose.joints.Num(); ++i)
         {
+            const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[i];
+
+            int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
+
             FVector Scale(1, 1, 1);
             FQuat Rot(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw);
             FVector Trans(Joint.transform.x, Joint.transform.y, Joint.transform.z);
 
-            FTransform Transform = d3ToUEHelpers::Convertd3TransformToUE(Scale, Rot, Trans, YUpMatrix);
-
-            FrameData.Transforms.Add(Transform);
+            const FTransform Transform = d3ToUEHelpers::Convertd3TransformToUE(Scale, Rot, Trans, YUpMatrix);
+            FrameData.Transforms[idx] = Transform;
         }
 
         Client->PushSubjectFrameData_AnyThread(SubjectKey, MoveTemp(FrameDataStruct));

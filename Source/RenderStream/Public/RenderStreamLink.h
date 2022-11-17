@@ -429,6 +429,7 @@ private:
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
     
     typedef RS_ERROR rs_getSkeletonLayoutFn(uint64_t schemaHash, uint64_t id, /*Out*/SkeletonLayout* layout, /*Out*/int* numJoints);
+    typedef RS_ERROR rs_getSkeletonJointNamesFn(uint64_t schemaHash, uint64_t layoutId, /*Out*/ const char** names, /*Out*/int** nameByteLengths, /*Out*/int* numJoints);
     typedef RS_ERROR rs_getSkeletonJointPosesFn(uint64_t schemaHash, uint32_t poseParamIndex, /*Out*/SkeletonPose* pose, /*Out*/int* numJoints);
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
@@ -513,6 +514,7 @@ public:
     struct FSkeletalLayout
     {
         uint32_t version;
+        TArray<FString> jointNames;
         TArray<SkeletonJointDesc> joints;
     };
 
@@ -556,6 +558,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getFrameImageFn* rs_getFrameImage = nullptr;
     rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getSkeletonLayoutFn* rs_getSkeletonLayout = nullptr;
+    rs_getSkeletonJointNamesFn* rs_getSkeletonJointNames = nullptr;
     rs_getSkeletonJointPosesFn* rs_getSkeletonJointPoses = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
     rs_sendFrameFn* rs_sendFrame = nullptr;
