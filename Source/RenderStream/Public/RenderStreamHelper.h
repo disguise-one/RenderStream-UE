@@ -32,4 +32,15 @@ namespace d3ToUEHelpers
 
         return v;
     }
+
+    FTransform Convertd3TransformToUE(const FVector& Scale, const FQuat& Rotation, const FVector& Translation, const FMatrix& YUpMatrix)
+    {
+        CONTEXT();
+
+        FMatrix m = Rotation.ToMatrix();
+        m.SetOrigin(Translation);
+        m.ScaleTranslation(Scale);
+
+        return Convertd3TransformToUE(m, YUpMatrix);
+    }
 }

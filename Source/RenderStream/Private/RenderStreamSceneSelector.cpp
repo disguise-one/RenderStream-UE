@@ -9,6 +9,7 @@
 #include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
 #include "Engine/LevelStreaming.h"
+#include "RenderStream.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
@@ -326,7 +327,17 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameters[nParameters]);
                 ++nParameters;
             }
-            else if (USkeleton* Skeleton = Cast<USkeleton>(o))
+            else
+            {
+                UE_LOG(LogRenderStream, Warning, TEXT("Unknown object property: %s"), *Name);
+            }
+        }
+        else if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+        {
+            const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
+            FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
             {
                 UE_LOG(LogRenderStream, Log, TEXT("Exposed skeleton property: %s"), *Name);
                 if (numParameters < nParameters + 1)
@@ -336,10 +347,6 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 }
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_SKELETON, parameters[nParameters]);
                 ++nParameters;
-            }
-            else
-            {
-                UE_LOG(LogRenderStream, Warning, TEXT("Unknown object property: %s"), *Name);
             }
         }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
@@ -665,9 +672,15 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 });
                 ++iImage;
             }
-            else if (USkeleton* Skeleton = Cast<USkeleton>(o))
+        }
+        else if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+        {
+            const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
+            FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
             {
-                ApplySkeletalPose(specHash, iPose++, *Skeleton);
+                ApplySkeletalPose(specHash, iPose++, ppParams[iParam]->key, PropKey);
             }
         }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
@@ -687,10 +700,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     *ppParams += iParam;
 }
 
-void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPose, USkeleton& Skeleton)
+void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPose, const FString& ParamKey, RenderStreamLink::FAnimDataKey& PropKey)
 {
     // first get the pose for this param index
-    SkeletalPose Pose;
+    RenderStreamLink::FSkeletalPose Pose;
     {
         RenderStreamLink::SkeletonPose rsPose{};
         int nJoints;
@@ -715,11 +728,11 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
     }
 
     // check the layout cache for the layout associated with this pose
-    SkeletonLayout* layout = m_skeletalLayoutCache.Find(Pose.layoutId);
-    if (!layout || layout->version != Pose.layoutVersion)
+    RenderStreamLink::FSkeletalLayout* Layout = m_skeletalLayoutCache.Find(Pose.layoutId);
+    if (!Layout || Layout->version != Pose.layoutVersion)
     {
         // we either haven't seen this layout before or the version expected by the pose is different to our cached version so refresh
-        SkeletonLayout newLayout{};
+        RenderStreamLink::FSkeletalLayout newLayout{};
         RenderStreamLink::SkeletonLayout rsLayout{};
         int nJoints;
         if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
@@ -737,9 +750,8 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
         }
 
         newLayout.version = rsLayout.version;
-        layout = &m_skeletalLayoutCache.Emplace(Pose.layoutId, newLayout);
+        Layout = &m_skeletalLayoutCache.Emplace(Pose.layoutId, newLayout);
     }
 
-    // TODO: apply to unreal skeleton
-    _CRT_UNUSED(Skeleton);
+    FRenderStreamModule::Get()->PushAnimDataToSource(PropKey, ParamKey, *Layout, Pose);
 }

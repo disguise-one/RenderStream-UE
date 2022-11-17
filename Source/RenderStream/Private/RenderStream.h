@@ -89,10 +89,15 @@ public:
 
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
 
+    void PushAnimDataToSource(const RenderStreamLink::FAnimDataKey& Key, const FString& SubjectName, const RenderStreamLink::FSkeletalLayout& Layout, const RenderStreamLink::FSkeletalPose& Pose);
+    const FName* GetSubjectName(const RenderStreamLink::FAnimDataKey& Key) const;
+
     TMap<FString, TSharedPtr<FRenderStreamViewportInfo>> ViewportInfos;
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     double m_LastTime = 0;
     bool m_gameInstanceStarted = false;
+    
+    TMap<RenderStreamLink::FAnimDataKey, TPair<FName /*SubjectName*/, TSharedPtr<class FRenderStreamLiveLinkSource>>> AnimSources;
 };

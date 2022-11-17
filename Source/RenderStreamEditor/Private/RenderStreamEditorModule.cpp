@@ -365,14 +365,20 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed render texture property: %s"), *Name);
                 CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Image);
             }
-            else if (const USkeleton* Skeleton = Cast<const USkeleton>(o))
-            {
-                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed skeleton property: %s"), *Name);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Skeleton);
-            }
             else
             {
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed object property: %s"), *Name);
+            }
+        }
+        else if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+        {
+            const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
+            FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed skeleton property: %s"), *Name);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Skeleton);
             }
         }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))

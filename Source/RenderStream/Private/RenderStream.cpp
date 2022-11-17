@@ -72,6 +72,7 @@
 #include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
 
 #include "GameMapsSettings.h"
+#include "RenderStreamLiveLinkSource.h"
 #include "Engine/ObjectLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
@@ -1021,6 +1022,39 @@ FRenderStreamViewportInfo& FRenderStreamModule::GetViewportInfo(FString const& V
         return *(*Info);
     
     return *ViewportInfos.Add(ViewportId, MakeShareable<FRenderStreamViewportInfo>(new FRenderStreamViewportInfo()));
+}
+
+void FRenderStreamModule::PushAnimDataToSource(const RenderStreamLink::FAnimDataKey& Key, const FString& SubjectName, const RenderStreamLink::FSkeletalLayout& Layout, const RenderStreamLink::FSkeletalPose& Pose)
+{
+    auto Result = AnimSources.Find(Key);
+    if (!Result)
+    {
+        IModularFeatures& ModularFeatures = IModularFeatures::Get();
+
+        if (!ModularFeatures.IsModularFeatureAvailable(ILiveLinkClient::ModularFeatureName))
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("LiveLink is not available."));
+            return;
+        }
+
+        ILiveLinkClient* LiveLinkClient = &ModularFeatures.GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
+        TSharedPtr<FRenderStreamLiveLinkSource> NewSource = MakeShareable(new FRenderStreamLiveLinkSource());
+        LiveLinkClient->AddSource(NewSource);
+        Result = &AnimSources.Emplace(Key, MakeTuple(FName(SubjectName), NewSource));
+    }
+
+    const FName& SubjectFName = Result->Key;
+    const TSharedPtr<FRenderStreamLiveLinkSource>& Source = Result->Value;
+
+    Source->PushFrameAnimData(SubjectFName, Layout, Pose);
+}
+
+const FName* FRenderStreamModule::GetSubjectName(const RenderStreamLink::FAnimDataKey& Key) const
+{
+    const auto Result = AnimSources.Find(Key);
+    if (Result)
+        return &Result->Key;
+    return nullptr;
 }
 
 /*static*/ FRenderStreamModule* FRenderStreamModule::Get()

@@ -509,6 +509,24 @@ public:
 
         Schema schema;
     };
+    
+    struct FSkeletalLayout
+    {
+        uint32_t version;
+        TArray<SkeletonJointDesc> joints;
+    };
+
+    struct FSkeletalPose
+    {
+        uint64_t layoutId;
+        uint32_t layoutVersion;
+        FVector3f rootPosition;
+        FQuat4f rootOrientation;
+        TArray<SkeletonJointPose> joints;
+    };
+
+    using FAnimTarget = TSoftObjectPtr<USkeleton>;
+    using FAnimDataKey = FSoftObjectPath;
 
 public: // d3renderstream.h API, but loaded dynamically.
     rs_registerLoggingFuncFn* rs_registerLoggingFunc = nullptr;
