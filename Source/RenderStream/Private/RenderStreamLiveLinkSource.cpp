@@ -34,6 +34,8 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
 {
     check(Client);
 
+    int32 RootIdx = INDEX_NONE;
+
     FLiveLinkSubjectKey SubjectKey{ SourceGuid, SubjectName };
     { // Static data
         FLiveLinkStaticDataStruct StaticDataStruct = FLiveLinkStaticDataStruct(FLiveLinkSkeletonStaticData::StaticStruct());
@@ -49,20 +51,23 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
             StaticSkeleton.BoneNames[i] = FName(Name);
             const int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
             StaticSkeleton.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
+
+            if (idx == INDEX_NONE)
+                RootIdx = i;
         }
 
         Client->PushSubjectStaticData_AnyThread(SubjectKey, ULiveLinkAnimationRole::StaticClass(), MoveTemp(StaticDataStruct));
     }
 
     { // Frame Data
-
-        static const FMatrix YUpMatrix(FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f));
+        const double ScaleFactor = FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit());
 
         FLiveLinkFrameDataStruct FrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkAnimationFrameData::StaticStruct());
         FLiveLinkAnimationFrameData& FrameData = *FrameDataStruct.Cast<FLiveLinkAnimationFrameData>();
 
-        const double RootScale = FUnitConversion::Convert(1., EUnit::Meters, FRenderStreamModule::distanceUnit());
-        const double RestScale = 1.;
+        const FQuat RootRotation = d3ToUEHelpers::Convertd3QuaternionToUE(Pose.rootOrientation);
+        const FVector RootTranslation = d3ToUEHelpers::Convertd3VectorToUE(Pose.rootPosition);
+        const FTransform RootTransform(RootRotation, RootTranslation, FVector(ScaleFactor));
 
         FrameData.Transforms.SetNum(Pose.joints.Num());
         for (int32 i = 0; i < Pose.joints.Num(); ++i)
@@ -70,12 +75,14 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
             const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[i];
 
             int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
+            bool IsRoot = idx == RootIdx;
             
-            [[maybe_unused]] FVector Scale(RestScale);
-            [[maybe_unused]] FQuat Rot(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw);
-            [[maybe_unused]] FVector Trans(Joint.transform.x, Joint.transform.y, Joint.transform.z);
-            
-            FTransform Transform = FTransform(Rot, Trans, Scale);
+            FQuat Rot = d3ToUEHelpers::Convertd3QuaternionToUE(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw);
+            FVector Trans = d3ToUEHelpers::Convertd3VectorToUE(Joint.transform.x, Joint.transform.y, Joint.transform.z);
+
+            FTransform Transform(Rot, Trans);
+            if (IsRoot)
+                Transform = RootTransform * Transform;
             FrameData.Transforms[idx] = Transform;
         }
 

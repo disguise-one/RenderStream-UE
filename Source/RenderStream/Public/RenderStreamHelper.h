@@ -27,20 +27,39 @@ namespace d3ToUEHelpers
 
         scale = FVector(scale.Y, scale.X, scale.Z);
         v.SetScale3D(scale);
-
+        
         v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
 
         return v;
     }
 
-    FTransform Convertd3TransformToUE(const FVector& Scale, const FQuat& Rotation, const FVector& Translation, const FMatrix& YUpMatrix)
+    //                  coord systems translations
+    //    d3                                        UE
+    // +x = right                |             | +x = forward
+    // +y = up                   | Translation | +y = right
+    // +z = forward              |             | +z = up
+    //
+    // +x = anti-clockwise pitch |             | +x = anti-clockwise pitch
+    // +y = clockwise yaw        | Rotation    | +y = anti-clockwise roll
+    // +z = clockwise roll       |             | +z = clockwise yaw
+
+    FVector Convertd3VectorToUE(float x, float y, float z)
     {
-        CONTEXT();
+        return FVector(z, x, y);
+    }
 
-        FMatrix m = Rotation.ToMatrix();
-        m.SetOrigin(Translation);
-        m.ScaleTranslation(Scale);
+    FVector Convertd3VectorToUE(const FVector3f& Trans)
+    {
+        return Convertd3VectorToUE(Trans.X, Trans.Y, Trans.Z);
+    }
 
-        return Convertd3TransformToUE(m, YUpMatrix);
+    FQuat Convertd3QuaternionToUE(float rx, float ry, float rz, float rw)
+    {
+        return FQuat(rx, -rz, ry, rw);
+    }
+
+    FQuat Convertd3QuaternionToUE(const FQuat4f& Rot)
+    {
+        return Convertd3QuaternionToUE(Rot.X, Rot.Y, Rot.Z, Rot.W);
     }
 }
