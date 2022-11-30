@@ -3,6 +3,7 @@
 
 #include "RenderStreamLiveLinkSource.h"
 
+#include "RenderStream.h"
 #include "Roles/LiveLinkAnimationRole.h"
 #include "Roles/LiveLinkAnimationTypes.h"
 
@@ -60,18 +61,21 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
         FLiveLinkFrameDataStruct FrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkAnimationFrameData::StaticStruct());
         FLiveLinkAnimationFrameData& FrameData = *FrameDataStruct.Cast<FLiveLinkAnimationFrameData>();
 
+        const double RootScale = FUnitConversion::Convert(1., EUnit::Meters, FRenderStreamModule::distanceUnit());
+        const double RestScale = 1.;
+
         FrameData.Transforms.SetNum(Pose.joints.Num());
         for (int32 i = 0; i < Pose.joints.Num(); ++i)
         {
             const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[i];
 
             int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
-
-            FVector Scale(1, 1, 1);
-            FQuat Rot(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw);
-            FVector Trans(Joint.transform.x, Joint.transform.y, Joint.transform.z);
-
-            const FTransform Transform = d3ToUEHelpers::Convertd3TransformToUE(Scale, Rot, Trans, YUpMatrix);
+            
+            [[maybe_unused]] FVector Scale(RestScale);
+            [[maybe_unused]] FQuat Rot(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw);
+            [[maybe_unused]] FVector Trans(Joint.transform.x, Joint.transform.y, Joint.transform.z);
+            
+            FTransform Transform = FTransform(Rot, Trans, Scale);
             FrameData.Transforms[idx] = Transform;
         }
 

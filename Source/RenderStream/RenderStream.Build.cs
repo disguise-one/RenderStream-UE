@@ -21,7 +21,9 @@ public class RenderStream : ModuleRules
                 "Networking", 
                 "InputCore", 
                 "UMG",
-                "OpenColorIO", "LiveLinkInterface"
+                "OpenColorIO", 
+                "LiveLinkInterface", 
+                "LiveLinkAnimationCore"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 
