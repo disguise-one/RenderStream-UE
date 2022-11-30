@@ -51,7 +51,7 @@ namespace {
         { }
 
 
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions);
     };
 
 
@@ -61,18 +61,20 @@ namespace {
     BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, )
     SHADER_PARAMETER(FVector2f, UVScale)
     SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
+    SHADER_PARAMETER_TEXTURE(Texture2D, Depth)
     SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
     IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
 
-    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions)
+    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions)
     {
         RSResizeCopyUB UB;
         {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
             UB.Texture = RGBTexture;
+            UB.Depth = DepthTexture;
             UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
         }
 
@@ -89,6 +91,7 @@ namespace RSUCHelpers
         FRHICommandListImmediate& RHICmdList,
         RenderStreamLink::CameraResponseData FrameData,
         FRHITexture* InSourceTexture,
+        FRHITexture* InDepthTexture,
         FIntPoint Point,
         FVector2f CropU,
         FVector2f CropV)
@@ -123,7 +126,7 @@ namespace RSUCHelpers
             GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
             SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
             auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
-            ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+            ConvertShader->SetParameters(RHICmdList, InSourceTexture, InDepthTexture, Point);
 
             // draw full size quad into render target
             float ULeft = CropU.X;

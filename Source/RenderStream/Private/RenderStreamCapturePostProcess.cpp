@@ -11,6 +11,8 @@
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
 
+#include "RenderStreamSceneViewExtension.h"
+
 class UCameraComponent;
 class UWorld;
 class FRenderStreamModule;
@@ -38,6 +40,8 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     check(Module);
 
     Module->LoadSchemas(*GWorld);
+
+    ViewExtension = FRenderStreamSceneViewExtension::Create();
 
     return true;
 }
@@ -84,7 +88,10 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+        check(ViewExtension->getExtractedDepth().IsValid());
+        FRHITexture* depth = ViewExtension->getExtractedDepth()->GetRHI();
+        check(depth);
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], depth, Rects[0]);
     }
 
     // Uncomment this to restore client display

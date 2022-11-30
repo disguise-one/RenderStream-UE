@@ -6,6 +6,8 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamPostProcess, Log, All);
 
+class FRenderStreamSceneViewExtension;
+
 /**
  * 'renderstream' policy for disguise integration
  */
@@ -32,6 +34,7 @@ private:
 	TMap<FString, FString> Parameters;
 	FString Id;
 	static FString Type;
+    TSharedPtr<FRenderStreamSceneViewExtension> ViewExtension;
 };
 
 class FRenderStreamPostProcessFactory
