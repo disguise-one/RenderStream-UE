@@ -5,4 +5,5 @@
 URenderStreamSettings::URenderStreamSettings(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
     , SceneSelector(ERenderStreamSceneSelector::None)
+    , GenerateEvents(true)
 {}
