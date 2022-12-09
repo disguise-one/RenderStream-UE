@@ -60,31 +60,52 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
     }
 
     { // Frame Data
-        const double ScaleFactor = FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit());
+        static const FMatrix YUpMats[] = {
+            // Y up matrix for root pose transform and root bone transform
+            FMatrix(FVector(0.0f, 0.0f, 1.0f)
+                , FVector(1.0f, 0.0f, 0.0f)
+                , FVector(0.0f, 1.0f, 0.0f)
+                , FVector(0.0f, 0.0f, 0.0f)
+            ),
+            // Y up matrix for the relative transforms of the rest of the bones 
+            FMatrix(FVector(-1.0f, 0.0f, 0.0f)
+                , FVector(0.0f, 0.0f, 1.0f)
+                , FVector(0.0f, -1.0f, 0.0f)
+                , FVector(0.0f, 0.0f, 0.0f)
+            )
+        };
+
+        auto ToUnrealTransform = [](const FVector& S, const FQuat& R, const FVector& T, const FMatrix& YUpMatrix){
+            const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
+
+            FMatrix D3Mat = R.ToMatrix();
+            D3Mat.SetOrigin(T);
+            D3Mat.ScaleTranslation(S);
+
+            return FTransform(YUpMatrix * D3Mat * YUpMatrixInv);
+        };
 
         FLiveLinkFrameDataStruct FrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkAnimationFrameData::StaticStruct());
         FLiveLinkAnimationFrameData& FrameData = *FrameDataStruct.Cast<FLiveLinkAnimationFrameData>();
-
-        const FQuat RootRotation = d3ToUEHelpers::Convertd3QuaternionToUE(Pose.rootOrientation);
-        const FVector RootTranslation = d3ToUEHelpers::Convertd3VectorToUE(Pose.rootPosition);
-        const FTransform RootTransform(RootRotation, RootTranslation, FVector(ScaleFactor));
-
         FrameData.Transforms.SetNum(Pose.joints.Num());
         for (int32 i = 0; i < Pose.joints.Num(); ++i)
         {
             const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[i];
 
             int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
-            bool IsRoot = idx == RootIdx;
-            
-            FQuat Rot = d3ToUEHelpers::Convertd3QuaternionToUE(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw);
-            FVector Trans = d3ToUEHelpers::Convertd3VectorToUE(Joint.transform.x, Joint.transform.y, Joint.transform.z);
-
-            FTransform Transform(Rot, Trans);
-            if (IsRoot)
-                Transform = RootTransform * Transform;
-            FrameData.Transforms[idx] = Transform;
+            int YUpMatIdx = idx == RootIdx ? 0 : 1;
+            FrameData.Transforms[idx] = ToUnrealTransform(FVector(1.)
+                , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
+                , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
+                , YUpMats[YUpMatIdx]
+            );
         }
+
+        const FTransform PoseRootTransform = ToUnrealTransform(FVector(1.), FQuat(Pose.rootOrientation), FVector(Pose.rootPosition), YUpMats[0]);
+        FTransform& RootBoneTransform = FrameData.Transforms[RootIdx];
+        RootBoneTransform.SetRotation(PoseRootTransform.GetRotation() * RootBoneTransform.GetRotation());
+        RootBoneTransform.SetTranslation(PoseRootTransform.GetTranslation() + RootBoneTransform.GetTranslation());
+        RootBoneTransform.ConcatenateRotation(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
 
         Client->PushSubjectFrameData_AnyThread(SubjectKey, MoveTemp(FrameDataStruct));
     }
