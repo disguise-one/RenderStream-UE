@@ -446,9 +446,9 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         {
             if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
             {
-                if (!m_floatValuesLast.data()) // first frame
+                if (!floatValuesLast.data()) // first frame
                     break;
-                if (floatValues[iFloat] > m_floatValuesLast.data()[iFloat]) // value increment signals an invoke
+                if (floatValues[iFloat] > floatValuesLast.data()[iFloat]) // value increment signals an invoke
                 {
                     uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
                     FFrame Frame = FFrame(Root, *FuncIt, Buffer);
