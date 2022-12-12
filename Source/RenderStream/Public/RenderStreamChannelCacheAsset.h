@@ -2,9 +2,9 @@
 
 #include "RenderStreamLink.h"
 #include "CoreMinimal.h"
+#include "UObject/CoreNative.h"
 #include "RenderStreamChannelDefinition.h"
 #include "ShowFlags.h"
-#include "UObject/CoreNative.h"
 #include "RenderStreamChannelCacheAsset.generated.h"
 
 //DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelCacheAsset, Log, All);

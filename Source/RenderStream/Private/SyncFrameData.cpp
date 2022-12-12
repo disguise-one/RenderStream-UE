@@ -1,5 +1,6 @@
 #include "SyncFrameData.h"
 
+#include "IDisplayCluster.h"
 #include "RenderStreamLink.h"
 #include "RenderStream.h"
 #include "RenderStreamStats.h"
@@ -160,15 +161,24 @@ void FRenderStreamSyncFrameData::FollowerReceive() const
     const double StartTime = FPlatformTime::Seconds();
     RenderStreamLink::instance().rs_setFollower(1);
 
-    if (m_streamsChanged)
+    FollowerReceive(m_streamsChanged, m_isQuitting);
+
+    ReceiveTime = (FPlatformTime::Seconds() - StartTime) * 1000.f;
+}
+
+void FRenderStreamSyncFrameData::FollowerReceive(bool streamsChanged, bool shouldQuit) const
+{
+    if (streamsChanged)
     {
         // Update the streams
         FRenderStreamModule* Module = FRenderStreamModule::Get();
         check(Module);
+        IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::IsAvailable() ? IDisplayCluster::Get().GetClusterMgr() : nullptr;
+        const bool IsController = !ClusterMgr || ClusterMgr->IsPrimary();
         Module->PopulateStreamPool();
     }
 
-    if (m_isQuitting)
+    if (shouldQuit)
     {
         // get the quit status direct from RenderStream, so it can notify everyone that we heard.
         while (RenderStreamLink::instance().rs_beginFollowerFrame(DBL_MAX) != RenderStreamLink::RS_ERROR_QUIT)
@@ -189,11 +199,21 @@ void FRenderStreamSyncFrameData::FollowerReceive() const
             return;
         }
 
+        if (err == RenderStreamLink::RS_ERROR_STREAMS_CHANGED)
+        {
+            FollowerReceive(true, shouldQuit);
+            return;
+        }
+
+        if (err == RenderStreamLink::RS_ERROR_QUIT)
+        {
+            FollowerReceive(streamsChanged, true);
+            return;
+        }
+
         // Write into the engine for this node.
         Apply();
     }
-
-    ReceiveTime = (FPlatformTime::Seconds() - StartTime) * 1000.f;
 }
 
 void FRenderStreamSyncFrameData::Apply() const

@@ -9,6 +9,7 @@
 #include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
 #include "RenderStreamSettings.h"
+#include "Engine/LevelStreaming.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
@@ -34,6 +35,17 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
                     GetAllLevels(Actors, SubLevel);
         }
     }
+}
+
+enum RenderStreamSceneSelector::SchemaStatus RenderStreamSceneSelector::SchemaStatus() const
+{
+    if (m_schemaMem.empty())
+    {
+        if (m_defaultSchema.schema.scenes.scenes)
+            return SchemaStatus::UsingDefault;
+        return SchemaStatus::NotLoaded;
+    }
+    return SchemaStatus::Loaded;
 }
 
 const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
@@ -113,7 +125,7 @@ static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamL
     return true;
 }
 
-bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, TArray<AActor*> Actors) const
+bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors) const
 {
     size_t offset = 0;
 
@@ -346,7 +358,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
     return nParameters;
 }
 
-void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*> Actors) /*const*/
+void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<AActor*>& Actors)
 {
     if (sceneId >= Schema().scenes.nScenes)
     {
@@ -409,7 +421,7 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*
         ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size());
     }
 
-    floatValuesLast = floatValues; // event parameters need to lookup previous values
+    m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
 void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const
@@ -446,9 +458,9 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         {
             if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
             {
-                if (!floatValuesLast.data()) // first frame
+                if (!m_floatValuesLast.data()) // first frame
                     break;
-                if (floatValues[iFloat] > floatValuesLast.data()[iFloat]) // value increment signals an invoke
+                if (floatValues[iFloat] > m_floatValuesLast.data()[iFloat]) // value increment signals an invoke
                 {
                     uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
                     FFrame Frame = FFrame(Root, *FuncIt, Buffer);
