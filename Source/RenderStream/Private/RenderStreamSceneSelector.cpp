@@ -313,6 +313,22 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_TRANSFORM, parameters[nParameters]);
                 ++nParameters;
             }
+            else if (StructProperty->Struct == TBaseStructure<FRotator>::Get())
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed rotator property: %s"), *Name);
+                if (numParameters < nParameters + 3)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                if (!validateField(Name, "yaw", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
+                    !validateField(Name, "pitch", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
+                    !validateField(Name, "roll", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]))
+                {
+                    return SIZE_MAX;
+                }
+                nParameters += 3;
+            }
             else
             {
                 UE_LOG(LogRenderStream, Warning, TEXT("Unknown struct property: %s"), *Name);
