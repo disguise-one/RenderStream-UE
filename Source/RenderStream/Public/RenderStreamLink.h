@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "GeneralProjectSettings.h"
+#include "Runtime/Launch/Resources/Version.h"
 
 struct ID3D11Device;
 struct ID3D12Device;
