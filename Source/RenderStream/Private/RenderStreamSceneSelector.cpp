@@ -680,7 +680,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             FSoftObjectPath PropKey = o.ToSoftObjectPath();
             if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
             {
-                ApplySkeletalPose(specHash, iPose++, ppParams[iParam]->key, PropKey);
+                ApplySkeletalPose(specHash, iPose++, Property->GetName(), PropKey);
             }
         }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
