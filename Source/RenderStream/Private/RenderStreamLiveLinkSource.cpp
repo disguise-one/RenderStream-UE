@@ -100,12 +100,13 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
                 , YUpMats[YUpMatIdx]
             );
         }
-
-        const FTransform PoseRootTransform = ToUnrealTransform(FVector(1.), FQuat(Pose.rootOrientation), FVector(Pose.rootPosition), YUpMats[0]);
+        const FVector RootScale(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+        const FTransform PoseRootTransform = ToUnrealTransform(RootScale, FQuat(Pose.rootOrientation), FVector(Pose.rootPosition), YUpMats[0]);
         FTransform& RootBoneTransform = FrameData.Transforms[RootIdx];
-        RootBoneTransform.SetRotation(PoseRootTransform.GetRotation() * RootBoneTransform.GetRotation());
-        RootBoneTransform.SetTranslation(PoseRootTransform.GetTranslation() + RootBoneTransform.GetTranslation());
-        RootBoneTransform.ConcatenateRotation(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
+        FTransform FinalTransform = FTransform(PoseRootTransform.GetRotation() * RootBoneTransform.GetRotation());
+        FinalTransform.ConcatenateRotation(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
+        FinalTransform.SetTranslation(PoseRootTransform.GetTranslation() + RootBoneTransform.GetTranslation());
+        RootBoneTransform = FinalTransform;
 
         Client->PushSubjectFrameData_AnyThread(SubjectKey, MoveTemp(FrameDataStruct));
     }
