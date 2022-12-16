@@ -238,7 +238,7 @@ void URenderStreamRemapAsset::BuildPoseAndCurveFromBaseData(float DeltaTime, con
 
     for (const FName& SrcCurveName : SourceCurveNames)
     {
-        FName* TargetCurveName = CurveNameMap.Find(SrcCurveName);
+        const FName* TargetCurveName = CurveNameMap.Find(SrcCurveName);
         if (TargetCurveName == nullptr)
         {
             FName NewName = GetRemappedCurveName(SrcCurveName);

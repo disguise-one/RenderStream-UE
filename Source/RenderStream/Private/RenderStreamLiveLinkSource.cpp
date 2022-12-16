@@ -7,8 +7,6 @@
 #include "Roles/LiveLinkAnimationRole.h"
 #include "Roles/LiveLinkAnimationTypes.h"
 
-#include "RenderStreamHelper.h"
-
 void FRenderStreamLiveLinkSource::ReceiveClient(ILiveLinkClient* InClient, FGuid InSourceGuid)
 {
     Client = InClient;
@@ -17,7 +15,7 @@ void FRenderStreamLiveLinkSource::ReceiveClient(ILiveLinkClient* InClient, FGuid
 
 bool FRenderStreamLiveLinkSource::IsSourceStillValid() const
 {
-    return Client != NULL;
+    return Client != nullptr;
 }
 
 bool FRenderStreamLiveLinkSource::RequestSourceShutdown()

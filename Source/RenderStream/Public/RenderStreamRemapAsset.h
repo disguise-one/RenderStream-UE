@@ -42,7 +42,7 @@ class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
 {
     GENERATED_UCLASS_BODY()
     
-    virtual ~URenderStreamRemapAsset() {}
+    virtual ~URenderStreamRemapAsset() override {}
 
     //~ Begin UObject Interface
     virtual void BeginDestroy() override;

@@ -1,15 +1,12 @@
 #include "RenderStreamSceneSelector.h"
-#include "Core.h"
 #include "GameFramework/Actor.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include <string.h>
 #include <malloc.h>
-#include <algorithm>
 #include "RenderStream.h"
 #include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
 #include "Engine/LevelStreaming.h"
-#include "RenderStream.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
@@ -19,14 +16,14 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
 {
     if (Level)
     {
-        auto Actor = Level->GetLevelScriptActor();
+        const auto Actor = Level->GetLevelScriptActor();
         if (Actor && !Actors.Contains(Actor))
             Actors.Push(Level->GetLevelScriptActor());
 
         if (Level->IsPersistentLevel())
         {
-            auto World = Level->GetWorld();
-            for (ULevelStreaming* SubLevel : World->GetStreamingLevels())
+            const auto World = Level->GetWorld();
+            for (const ULevelStreaming* SubLevel : World->GetStreamingLevels())
                 if (SubLevel->GetLoadedLevel() != Level)
                     GetAllLevels(Actors, SubLevel->GetLoadedLevel());
 
@@ -63,7 +60,7 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
     uint32_t nBytes = 0;
     RenderStreamLink::instance().rs_loadSchema(AssetPath.c_str(), nullptr, &nBytes);
 
-    const static int MAX_TRIES = 3;
+    constexpr static int MAX_TRIES = 3;
     int iterations = 0;
 
     RenderStreamLink::RS_ERROR res = RenderStreamLink::RS_ERROR_BUFFER_OVERFLOW;
@@ -113,7 +110,7 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 
 static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamLink::RemoteParameterType expectedType, const RenderStreamLink::RemoteParameter& parameter)
 {
-    FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
+    const FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
     
     if (key != parameter.key || expectedType != parameter.type)
     {
@@ -134,7 +131,7 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
 
-        size_t increment = ValidateParameters(actor, sceneParameters.parameters + offset, sceneParameters.nParameters);
+        const size_t increment = ValidateParameters(actor, sceneParameters.parameters + offset, sceneParameters.nParameters);
         if (increment == SIZE_MAX)
         {
             UE_LOG(LogRenderStream, Error, TEXT("Schema validation failed for actor '%s'"), *actor->GetName());
@@ -336,7 +333,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
         {
             const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
             const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
-            FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            const FSoftObjectPath PropKey = o.ToSoftObjectPath();
             if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
             {
                 UE_LOG(LogRenderStream, Log, TEXT("Exposed skeleton property: %s"), *Name);
@@ -610,7 +607,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 [this, toggle, Texture, frameData, iImage](FRHICommandListImmediate& RHICmdList)
                 {
                     SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Block %d"), iImage);
-                    auto rtResource = Texture->GetRenderTargetResource();
+                    const auto rtResource = Texture->GetRenderTargetResource();
                     if (!rtResource)
                     {
                         return;
@@ -645,8 +642,8 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                             RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
                         }
 
-                        FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
-                        auto point2 = VulkanTexture->GetSizeXY();
+                        const FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
+                        const auto point2 = VulkanTexture->GetSizeXY();
 
                         RenderStreamLink::VulkanDataStructure imageData = {};
                         imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
@@ -730,7 +727,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
     }
 
     // check the layout cache for the layout associated with this pose
-    RenderStreamLink::FSkeletalLayout* Layout = m_skeletalLayoutCache.Find(Pose.layoutId);
+    const RenderStreamLink::FSkeletalLayout* Layout = m_skeletalLayoutCache.Find(Pose.layoutId);
     if (!Layout || Layout->version != Pose.layoutVersion)
     {
         // we either haven't seen this layout before or the version expected by the pose is different to our cached version so refresh
