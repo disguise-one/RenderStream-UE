@@ -707,17 +707,19 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
     {
         RenderStreamLink::SkeletonPose rsPose{};
         int nJoints;
-        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints);
+            Err != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose size. Error: %d"), Err);
             return;
         }
 
         Pose.joints.SetNum(nJoints);
         rsPose.joints = Pose.joints.GetData();
-        if (RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints);
+            Err  != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get pose."));
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose with %d joints. Error: %d"), Err, nJoints);
             return;
         }
 
