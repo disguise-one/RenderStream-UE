@@ -36,7 +36,7 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
 
     int32 RootIdx = INDEX_NONE;
 
-    FLiveLinkSubjectKey SubjectKey{ SourceGuid, SubjectName };
+    const FLiveLinkSubjectKey SubjectKey{ SourceGuid, SubjectName };
     { // Static data
         FLiveLinkStaticDataStruct StaticDataStruct = FLiveLinkStaticDataStruct(FLiveLinkSkeletonStaticData::StaticStruct());
         FLiveLinkSkeletonStaticData& StaticSkeleton = *StaticDataStruct.Cast<FLiveLinkSkeletonStaticData>();
@@ -88,24 +88,29 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
         FLiveLinkFrameDataStruct FrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkAnimationFrameData::StaticStruct());
         FLiveLinkAnimationFrameData& FrameData = *FrameDataStruct.Cast<FLiveLinkAnimationFrameData>();
         FrameData.Transforms.SetNum(Pose.joints.Num());
+        // calculate all transforms, for root joint and all others
         for (int32 i = 0; i < Pose.joints.Num(); ++i)
         {
             const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[i];
 
-            int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
-            int YUpMatIdx = idx == RootIdx ? 0 : 1;
+            const int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
+            const int YUpMatIdx = idx == RootIdx ? 0 : 1;
             FrameData.Transforms[idx] = ToUnrealTransform(FVector(1.)
                 , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
                 , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
                 , YUpMats[YUpMatIdx]
             );
         }
+        // get correct scale and parent transform for root joint
         const FVector RootScale(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
         const FTransform PoseRootTransform = ToUnrealTransform(RootScale, FQuat(Pose.rootOrientation), FVector(Pose.rootPosition), YUpMats[0]);
         FTransform& RootBoneTransform = FrameData.Transforms[RootIdx];
+        // combined rotations, including 90 degree yaw
         FTransform FinalTransform = FTransform(PoseRootTransform.GetRotation() * RootBoneTransform.GetRotation());
         FinalTransform.ConcatenateRotation(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
+        // combined translation, unaffected by rotations
         FinalTransform.SetTranslation(PoseRootTransform.GetTranslation() + RootBoneTransform.GetTranslation());
+        // update root joint transform
         RootBoneTransform = FinalTransform;
 
         Client->PushSubjectFrameData_AnyThread(SubjectKey, MoveTemp(FrameDataStruct));
