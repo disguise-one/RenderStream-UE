@@ -2,6 +2,7 @@
 
 
 #include "RenderStreamRemapAsset.h"
+#include "RenderStream.h"
 
 #include "BonePose.h"
 #include "Engine/Blueprint.h"
@@ -68,7 +69,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
     if (!Initialised)
     {
         // MeshBone Count
-        int32 MeshBoneCount = BoneContainerRef.GetNumBones();
+        const int32 MeshBoneCount = BoneContainerRef.GetNumBones();
 
         ReferenceWorldRotations.Init(FQuat::Identity, MeshBoneCount);
         ReferenceWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
@@ -97,7 +98,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
 
         // Compact Pose Bone Count
         // The BoneCount in LiveLink preview panel is greater than or equal at runtime.
-        int32 BoneCount = OutPose.GetNumBones();
+        const int32 BoneCount = OutPose.GetNumBones();
 
         TArray<FQuat> CompactRefPoseRotation;
         TArray<FVector> CompactRefPoseLocation;
@@ -133,6 +134,8 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             ReferenceWorldPositions[LocalMeshBoneIndex] = CompactRefPoseLocation[Index];
         }
 
+        UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones and %d mesh bones"),
+            *GetName(), BoneCount, MeshBoneCount);
         Initialised = true;
     }
 
@@ -160,7 +163,11 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             TransformedBoneNames.Add(*TargetBoneName);
         }
     }
-    
+    UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
+        *GetName(), TransformedBoneNames.Num());
+
+    TArray<FCompactPoseBoneIndex, TMemStackAllocator<>> ModifiedPoses;
+    ModifiedPoses.Reserve(TransformedBoneNames.Num());
     // Iterate over remapped bone names, find the index of that bone on the skeleton, and apply the Live Link pose data.
     for (int32 i = 0; i < TransformedBoneNames.Num(); i++)
     {
@@ -181,6 +188,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                 {
                     OutPose[CPBoneIndex].SetLocation(BoneTransform.GetTranslation());
                     OutPose[CPBoneIndex].SetRotation(BoneTransform.GetRotation() * ReferenceWorldRotations[MeshBoneIndex]);
+                    ModifiedPoses.Add(CPBoneIndex);
                 }
                 else
                 {
@@ -211,12 +219,15 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                                 FQuat TargetRotationInRealParent = ReferenceWorldRotations[RealParentMeshIndex].Inverse() * RotationInCS;
                                 OutPose[CPBoneIndex].SetRotation(TargetRotationInRealParent);
                             }
+                            ModifiedPoses.Add(CPBoneIndex);
                         }
                     }
                 }
             }
         }
     }
+    UE_LOG(LogRenderStream, Verbose, TEXT("%s: Applied Live Link pose data to %d poses for frame %d"),
+        *GetName(), ModifiedPoses.Num(), InFrameData->FrameId);
 }
 
 void URenderStreamRemapAsset::BuildPoseAndCurveFromBaseData(float DeltaTime, const FLiveLinkBaseStaticData* InBaseStaticData, const FLiveLinkBaseFrameData* InBaseFrameData, FCompactPose& OutPose, FBlendedCurve& OutCurve)
