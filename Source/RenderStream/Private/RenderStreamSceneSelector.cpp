@@ -10,6 +10,7 @@
 #include "RSUCHelpers.inl"
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
+#include "RenderStreamSettings.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
@@ -158,20 +159,25 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
 {
     size_t nParameters = 0;
 
-    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+
+    if (settings->GenerateEvents)
     {
-        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
         {
-            const FString Name = FuncIt->GetName();
-            UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s"), *Name);
-            if (numParameters < nParameters + 1)
+            if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
             {
-                UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
-                return SIZE_MAX;
+                const FString Name = FuncIt->GetName();
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s"), *Name);
+                if (numParameters < nParameters + 1)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameters[nParameters]))
+                    return SIZE_MAX;
+                ++nParameters;
             }
-            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameters[nParameters]))
-                return SIZE_MAX;
-            ++nParameters;
         }
     }
 
@@ -306,6 +312,22 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 }
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_TRANSFORM, parameters[nParameters]);
                 ++nParameters;
+            }
+            else if (StructProperty->Struct == TBaseStructure<FRotator>::Get())
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed rotator property: %s"), *Name);
+                if (numParameters < nParameters + 3)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                if (!validateField(Name, "yaw", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
+                    !validateField(Name, "pitch", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
+                    !validateField(Name, "roll", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]))
+                {
+                    return SIZE_MAX;
+                }
+                nParameters += 3;
             }
             else
             {
@@ -445,20 +467,25 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     const float* floatValues = *ppFloatValues;
     const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
 
-    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+
+    if (settings->GenerateEvents)
     {
-        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
         {
-            if (!m_floatValuesLast.data()) // first frame
-                break;
-            if (floatValues[iFloat] > m_floatValuesLast.data()[iFloat]) // value increment signals an invoke
+            if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
             {
-                uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
-                FFrame Frame = FFrame(Root, *FuncIt, Buffer);
-                FuncIt->Invoke(Root, Frame, Buffer);
-                UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
+                if (!m_floatValuesLast.data()) // first frame
+                    break;
+                if (floatValues[iFloat] > m_floatValuesLast.data()[iFloat]) // value increment signals an invoke
+                {
+                    uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
+                    FFrame Frame = FFrame(Root, *FuncIt, Buffer);
+                    FuncIt->Invoke(Root, Frame, Buffer);
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
+                }
+                ++iFloat;
             }
-            ++iFloat;
         }
     }
 

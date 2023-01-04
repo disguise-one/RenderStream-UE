@@ -172,8 +172,7 @@ void FRenderStreamModule::StartupModule()
             VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
         };
 
-        auto rhi = GetIVulkanDynamicRHI();
-        rhi->AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
+        IVulkanDynamicRHI::AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
         UE_LOG(LogRenderStream, Warning, TEXT("Vulkan support is not fully implemented! DO NOT USE FOR SHOW"));
     }
 
@@ -392,7 +391,11 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
     FRenderStreamViewportInfo& Info = GetViewportInfo(Name);
     const FString Channel = Stream ? Stream->Channel() : "";
     const TWeakObjectPtr<ACameraActor> ChannelCamera = URenderStreamChannelDefinition::GetChannelCamera(Channel);
-    if (Info.Template != ChannelCamera)
+    if (ChannelCamera == nullptr)
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Failed to find camera for channel '%s' on stream '%s'"), *Channel, *Name);
+    }
+    else if (Info.Template != ChannelCamera)
     {
         Info.Template = ChannelCamera;
         if (Info.Template.IsValid())
@@ -427,7 +430,22 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             if (!Controller)
             {
                 if (GWorld)
-                    Controller = UGameplayStatics::CreatePlayer(GWorld);
+                {
+                    // We need to find this id ourselves because of a bug introduced in 5.1
+                    UGameInstance* GameInstance = GWorld->GetGameInstance();
+                    int MaxSplitscreenPlayers = GameInstance->GetGameViewportClient() != NULL ?
+                        GameInstance->GetGameViewportClient()->MaxSplitscreenPlayers : 1;
+                    for (int32 Id = 0; Id < MaxSplitscreenPlayers; ++Id)
+                    {
+                        if (GameInstance->FindLocalPlayerFromControllerId(Id) == nullptr)
+                        {
+                            UE_LOG(LogRenderStreamPolicy, Log, TEXT("Created player with id '%d'."), Id);
+                            Controller = UGameplayStatics::CreatePlayer(GWorld, Id);
+                            break;
+                        }
+                    }
+                }
+
                 if (Controller)
                     Info.PlayerId = UGameplayStatics::GetPlayerControllerID(Controller);
                 else

@@ -236,16 +236,22 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
 {
     if (!Root)
         return;
-    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+    if (settings->GenerateEvents)
     {
-        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
         {
-            const FString Name = FuncIt->GetName();
-            const FString Category = "Custom Events";
-            UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
-            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
+            if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+            {
+                const FString Name = FuncIt->GetName();
+                const FString Category = "Custom Events";
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
+            }
         }
     }
+
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
     {
         const FProperty* Property = *PropIt;
@@ -343,8 +349,9 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             {
                 FRotator r;
                 const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
-                const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
-                const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
+                // Rotators use RUUs where 65536 is equal to 360 degrees.
+                const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -65536;
+                const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +65536;
                 StructProperty->CopyCompleteValue(&r, StructAddress);
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed rotator property: %s is <%f, %f, %f>"), *Name, r.Yaw, r.Pitch, r.Roll);
                 CreateField(Parameters.Emplace_GetRef(), Category, Name, "yaw", Name, "yaw", RenderStreamParameterType::Float, Min, Max, 0.001f, r.Yaw);

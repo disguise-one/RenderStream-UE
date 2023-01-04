@@ -50,4 +50,7 @@ public:
 
     UPROPERTY(Config)
     ERenderStreamAlphaEncoding AlphaEncoding;
+    
+    UPROPERTY(EditAnywhere, config, Category = Settings, DisplayName="Detect and control custom events")
+    bool GenerateEvents;
 };
