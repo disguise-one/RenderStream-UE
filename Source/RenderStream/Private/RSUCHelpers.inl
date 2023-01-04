@@ -51,7 +51,19 @@ namespace {
         { }
 
 
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions, const bool encodeDepthInAlpha);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions);
+    };
+
+    class RSResizeCopyWithDepth : public RSResizeCopy
+    {
+        DECLARE_EXPORTED_SHADER_TYPE(RSResizeCopyWithDepth, Global, /* RenderStream */);
+    public:
+        RSResizeCopyWithDepth() { }
+
+        RSResizeCopyWithDepth(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+            : RSResizeCopy(Initializer)
+        { }
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions);
     };
 
 
@@ -61,27 +73,47 @@ namespace {
     BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, )
     SHADER_PARAMETER(FVector2f, UVScale)
     SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
+    SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
+    END_GLOBAL_SHADER_PARAMETER_STRUCT()
+
+    BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyDepthUB, )
+    SHADER_PARAMETER(FVector2f, UVScale)
+    SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
     SHADER_PARAMETER_TEXTURE(Texture2D, Depth)
     SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
-    SHADER_PARAMETER(float, DepthBlend)
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
     IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
+    IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyDepthUB, "RSResizeCopyDepthUB");
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
+    IMPLEMENT_SHADER_TYPE(, RSResizeCopyWithDepth, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyWithDepthPS"), SF_Pixel);
 
-    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions, const bool encodeDepthInAlpha)
+    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions)
     {
         RSResizeCopyUB UB;
         {
-            UB.DepthBlend = encodeDepthInAlpha ? 1.0f : 0.0f;
+            UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
+            UB.Texture = RGBTexture;
+            UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
+        }
+
+        TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
+        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyUB>(), Data);
+    }
+
+
+    void RSResizeCopyWithDepth::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions)
+    {
+        RSResizeCopyDepthUB UB;
+        {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
             UB.Texture = RGBTexture;
             UB.Depth = DepthTexture;
             UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
         }
 
-        TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
-        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyUB>(), Data);
+        TUniformBufferRef<RSResizeCopyDepthUB> Data = TUniformBufferRef<RSResizeCopyDepthUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
+        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyDepthUB>(), Data);
     }
 
 }
@@ -96,7 +128,7 @@ namespace RSUCHelpers
         FRHITexture* InDepthTexture,
         FIntPoint Point,
         FVector2f CropU,
-        FVector2f CropV, bool EncodeDepthInAlpha)
+        FVector2f CropV)
     {
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
         // convert the source with a draw call
@@ -124,12 +156,22 @@ namespace RSUCHelpers
             GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
             GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 
-            TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
-            GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-            SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
-            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
-            ConvertShader->SetParameters(RHICmdList, InSourceTexture, InDepthTexture, Point, EncodeDepthInAlpha);
+            if (InDepthTexture)
+            {
+                TShaderMapRef<RSResizeCopyWithDepth> ConvertShader(ShaderMap);
+                GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+                SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
+                ConvertShader->SetParameters(RHICmdList, InSourceTexture, InDepthTexture, Point);
+            }
+            else
+            {
+                TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
+                GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+                SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
+                ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+            }
 
+            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
             // draw full size quad into render target
             float ULeft = CropU.X;
             float URight = CropU.Y;

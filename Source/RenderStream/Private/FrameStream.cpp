@@ -16,9 +16,8 @@ void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdLis
     float URight = (float)ViewportRect.Max.X / (float)SourceTexture->GetSizeX();
     float VTop = (float)ViewportRect.Min.Y / (float)SourceTexture->GetSizeY();
     float VBottom = (float)ViewportRect.Max.Y / (float)SourceTexture->GetSizeY();
-    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
-    const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
-    RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, DepthTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom }, encodeDepth);
+    
+    RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, DepthTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
 }
 
 bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat fmt)

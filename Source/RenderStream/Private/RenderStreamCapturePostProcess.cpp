@@ -41,7 +41,10 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
     Module->LoadSchemas(*GWorld);
 
-    ViewExtension = FRenderStreamSceneViewExtension::Create();
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+    const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
+    if (encodeDepth)
+        ViewExtension = FRenderStreamSceneViewExtension::Create();
 
     return true;
 }
@@ -88,9 +91,13 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
-        check(ViewExtension->getExtractedDepth().IsValid());
-        FRHITexture* depth = ViewExtension->getExtractedDepth()->GetRHI();
-        check(depth);
+        
+        FRHITexture* depth = nullptr;
+        if (ViewExtension && ViewExtension->getExtractedDepth().IsValid())
+        {
+            depth = ViewExtension->getExtractedDepth()->GetRHI();
+            check(depth);
+        }
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], depth, Rects[0]);
     }
 

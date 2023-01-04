@@ -10,8 +10,7 @@ DEFINE_LOG_CATEGORY(LogRenderStreamViewExtension);
 FRenderStreamSceneViewExtension::FRenderStreamSceneViewExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
 {
     m_depthEnabled = true;
-    //check(GConfig->GetBool(TEXT("/Script/RenderStream.Experimental"), TEXT("enableDepth"), m_depthEnabled, GEngineIni));
-
+    
     IsActiveThisFrameFunctions.Empty();
     FSceneViewExtensionIsActiveFunctor IsActiveFunctor;
     IsActiveFunctor.IsActiveFunction = [=](const ISceneViewExtension* SceneViewExtension, const FSceneViewExtensionContext& Context)

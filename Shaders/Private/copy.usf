@@ -9,9 +9,19 @@ void RSCopyPS(
 {
 	float2 ScaledUV = InUV; // * RSResizeCopyUB.UVScale;
 	OutColor = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV);
-    float depth = RSResizeCopyUB.Depth.Sample(RSResizeCopyUB.Sampler, ScaledUV);
-    float alpha = OutColor.a = 1.f - OutColor.a;
+    OutColor.a = 1.f - OutColor.a;
+	
+}
+
+void RSCopyWithDepthPS(
+	float4 InPosition : SV_POSITION,
+	float2 InUV : TEXCOORD0,
+	out float4 OutColor : SV_Target0)
+{
+	float2 ScaledUV = InUV; // * RSResizeCopyUB.UVScale;
+	OutColor = RSResizeCopyDepthUB.Texture.Sample(RSResizeCopyDepthUB.Sampler, ScaledUV);
+    float depth = RSResizeCopyDepthUB.Depth.Sample(RSResizeCopyDepthUB.Sampler, ScaledUV);
     depth = pow(depth, 0.1f);
-    OutColor.a = depth * RSResizeCopyUB.DepthBlend + alpha * (1.f-RSResizeCopyUB.DepthBlend);  
+    OutColor.a = depth;  
 	
 }
