@@ -10,8 +10,8 @@ void RSCopyPS(
 	float2 ScaledUV = InUV; // * RSResizeCopyUB.UVScale;
 	OutColor = RSResizeCopyUB.Texture.Sample(RSResizeCopyUB.Sampler, ScaledUV);
     float depth = RSResizeCopyUB.Depth.Sample(RSResizeCopyUB.Sampler, ScaledUV);
-    OutColor.a = pow(depth, 0.1f);
-    // OutColor.a = 1.f - OutColor.a;
-    
+    float alpha = OutColor.a = 1.f - OutColor.a;
+    depth = pow(depth, 0.1f);
+    OutColor.a = depth * RSResizeCopyUB.DepthBlend + alpha * (1.f-RSResizeCopyUB.DepthBlend);  
 	
 }
