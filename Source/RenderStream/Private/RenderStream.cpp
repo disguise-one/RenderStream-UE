@@ -172,8 +172,7 @@ void FRenderStreamModule::StartupModule()
             VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,
         };
 
-        auto rhi = GetIVulkanDynamicRHI();
-        rhi->AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
+        IVulkanDynamicRHI::AddEnabledDeviceExtensionsAndLayers(ExtentionsToAdd, TArray<const ANSICHAR*>());
         UE_LOG(LogRenderStream, Warning, TEXT("Vulkan support is not fully implemented! DO NOT USE FOR SHOW"));
     }
 
