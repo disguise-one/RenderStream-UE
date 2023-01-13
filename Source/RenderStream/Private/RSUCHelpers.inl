@@ -166,11 +166,12 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
             data.dx11.resource = static_cast<ID3D11Resource*>(resource);
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
-            RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data, &Response);
+            RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
         }
         else if (toggle == "D3D12")
         {
@@ -179,14 +180,15 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
             data.dx12.resource = static_cast<ID3D12Resource*>(resource);
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
+                if (RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
             }
@@ -229,14 +231,15 @@ namespace RSUCHelpers
             imageData.height = uint32_t(point2.Y);
             // TODO: semaphores
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
             data.vk.image = &imageData;
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
+                if (RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
             }

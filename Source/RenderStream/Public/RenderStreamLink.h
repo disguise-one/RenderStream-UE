@@ -102,6 +102,16 @@ public:
         REMOTEPARAMETER_READ_ONLY = 2
     };
 
+    enum SenderFrameType
+    {
+        RS_FRAMETYPE_HOST_MEMORY,
+        RS_FRAMETYPE_DX11_TEXTURE,
+        RS_FRAMETYPE_DX12_TEXTURE,
+        RS_FRAMETYPE_OPENGL_TEXTURE,
+        RS_FRAMETYPE_VULKAN_TEXTURE,
+        RS_FRAMETYPE_INTERNAL_GPGPU = 0xff // INTERNAL - do not include in API docs
+    };
+
     typedef uint64_t StreamHandle;
     typedef uint64_t CameraHandle;
     typedef void (*logger_t)(const char*);
@@ -185,15 +195,19 @@ public:
     {
         VulkanDataStructure* image;
     } VulkanData;
-
-    typedef union
+    
+    typedef struct
     {
-        HostMemoryData cpu;
-        Dx11Data dx11;
-        Dx12Data dx12;
-        OpenGlData gl;
-        VulkanData vk;
-    } SenderFrameTypeData;
+        SenderFrameType type;
+        union
+        {
+            HostMemoryData cpu;
+            Dx11Data dx11;
+            Dx12Data dx12;
+            OpenGlData gl;
+            VulkanData vk;
+        };
+    } SenderFrame;
 
     typedef struct
     {
@@ -333,16 +347,6 @@ public:
 #define RENDER_STREAM_VERSION_MAJOR 1
 #define RENDER_STREAM_VERSION_MINOR 31
 
-    enum SenderFrameType
-    {
-        RS_FRAMETYPE_HOST_MEMORY,
-        RS_FRAMETYPE_DX11_TEXTURE,
-        RS_FRAMETYPE_DX12_TEXTURE,
-        RS_FRAMETYPE_OPENGL_TEXTURE,
-        RS_FRAMETYPE_VULKAN_TEXTURE,
-        RS_FRAMETYPE_UNKNOWN
-    };
-
     enum UseDX12SharedHeapFlag
     {
         RS_DX12_USE_SHARED_HEAP_FLAG,
@@ -398,13 +402,13 @@ private:
 
     typedef RS_ERROR rs_getFrameParametersFn(uint64_t schemaHash, /*Out*/void* outParameterData, uint64_t outParameterDataSize);  // returns the remote parameters for this frame.
     typedef RS_ERROR rs_getFrameImageDataFn(uint64_t schemaHash, /*Out*/ImageFrameData* outParameterData, uint64_t outParameterDataCount);  // returns the remote image data for this frame.
-    typedef RS_ERROR rs_getFrameImageFn(int64_t imageId, SenderFrameType frameType, /*InOut*/SenderFrameTypeData data); // fills in (data) with the remote image
+    typedef RS_ERROR rs_getFrameImage2Fn(int64_t imageId, /*InOut*/const SenderFrame* data); // fills in (data) with the remote image
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
-    typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, SenderFrameType frameType, SenderFrameTypeData data, const FrameResponseData* frameData); // publish a frame buffer which was generated from the associated tracking and timing information.
+    typedef RS_ERROR rs_sendFrame2Fn(StreamHandle streamHandle, const SenderFrame* data, const void* frameData); // publish a frame which was generated from the associated tracking and timing information.
 
-    typedef RS_ERROR rs_releaseImageFn(SenderFrameType frameType, SenderFrameTypeData data); // release any references to image (e.g. before deletion)
+    typedef RS_ERROR rs_releaseImage2Fn(const SenderFrame* image); // release any references to image (e.g. before deletion)
 
     typedef RS_ERROR rs_logToD3Fn(const char * str);
     typedef RS_ERROR rs_sendProfilingDataFn(ProfilingEntry* entries, int count);
@@ -505,11 +509,11 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_beginFollowerFrameFn* rs_beginFollowerFrame = nullptr;
     rs_getFrameParametersFn* rs_getFrameParameters = nullptr;
     rs_getFrameImageDataFn* rs_getFrameImageData = nullptr;
-    rs_getFrameImageFn* rs_getFrameImage = nullptr;
+    rs_getFrameImage2Fn* rs_getFrameImage2 = nullptr;
     rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
-    rs_sendFrameFn* rs_sendFrame = nullptr;
-    rs_releaseImageFn* rs_releaseImage = nullptr;
+    rs_sendFrame2Fn* rs_sendFrame2 = nullptr;
+    rs_releaseImage2Fn* rs_releaseImage2 = nullptr;
     rs_logToD3Fn* rs_logToD3 = nullptr;
     rs_sendProfilingDataFn* rs_sendProfilingData = nullptr;
     rs_setNewStatusMessageFn* rs_setNewStatusMessage = nullptr;
