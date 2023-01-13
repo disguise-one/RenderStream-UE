@@ -174,7 +174,7 @@ bool RenderStreamLink::loadExplicit()
 
     LOAD_FN(rs_getFrameParameters);
     LOAD_FN(rs_getFrameImageData);
-    LOAD_FN(rs_getFrameImage);
+    LOAD_FN(rs_getFrameImage2);
     LOAD_FN(rs_getFrameText);
 
     LOAD_FN(rs_getSkeletonLayout);
@@ -182,9 +182,9 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_getSkeletonJointPoses);
 
     LOAD_FN(rs_getFrameCamera);
-    LOAD_FN(rs_sendFrame);
+    LOAD_FN(rs_sendFrame2);
 
-    LOAD_FN(rs_releaseImage);
+    LOAD_FN(rs_releaseImage2);
 
     LOAD_FN(rs_logToD3);
     LOAD_FN(rs_sendProfilingData);
