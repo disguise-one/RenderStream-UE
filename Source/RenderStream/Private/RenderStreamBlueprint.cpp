@@ -3,6 +3,7 @@
 
 #include "RenderStreamBlueprint.h"
 #include "RenderStream.h"
+#include "Animation/AnimBlueprint.h"
 
 FLiveLinkSubjectName URenderStreamBlueprint::GetRenderStreamLiveLinkSubject(const UAnimBlueprint* AnimBlueprint)
 {

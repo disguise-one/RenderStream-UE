@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <memory>
 
+#include "UObject/SoftObjectPtr.h"
+#include "Animation/Skeleton.h"
+
 struct ID3D11Device;
 struct ID3D12Device;
 struct ID3D12CommandQueue;

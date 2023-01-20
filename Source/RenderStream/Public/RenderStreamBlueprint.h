@@ -18,5 +18,5 @@ class RENDERSTREAM_API URenderStreamBlueprint : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
         
     UFUNCTION(BlueprintPure, Category = RenderStream, meta = (BlueprintThreadSafe, DisplayName = "Get RenderStream LiveLink Subject"))
-    static FLiveLinkSubjectName GetRenderStreamLiveLinkSubject(const UAnimBlueprint* AnimBlueprint);
+    static FLiveLinkSubjectName GetRenderStreamLiveLinkSubject(const class UAnimBlueprint* AnimBlueprint);
 };
