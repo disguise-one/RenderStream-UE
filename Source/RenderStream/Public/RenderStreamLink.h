@@ -392,6 +392,7 @@ public:
     {
         uint64_t layoutId;
         uint32_t layoutVersion;
+        char reservedBytes[8];
         Transform rootTransform;
         SkeletonJointPose* joints;
     } SkeletonPose;
