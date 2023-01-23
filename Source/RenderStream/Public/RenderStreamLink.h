@@ -6,6 +6,8 @@
 
 #include "UObject/SoftObjectPtr.h"
 #include "Animation/Skeleton.h"
+#include "GeneralProjectSettings.h"
+#include "Runtime/Launch/Resources/Version.h"
 
 struct ID3D11Device;
 struct ID3D12Device;
@@ -489,13 +491,12 @@ public:
                 free(scene.parameters);
             }
             free(schema.scenes.scenes);
-            reset();
         }
         void reset()
         {
-            schema.engineName = nullptr;
-            schema.engineVersion = nullptr;
-            schema.info = nullptr;
+            schema.engineName = _strdup(EPIC_PRODUCT_NAME);
+            schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
+            schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
             schema.channels.nChannels = 0;
             schema.channels.channels = nullptr;
             schema.scenes.nScenes = 0;
