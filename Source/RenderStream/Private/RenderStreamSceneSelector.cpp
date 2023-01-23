@@ -10,6 +10,7 @@
 #include "RSUCHelpers.inl"
 #include "RenderStreamSettings.h"
 #include "Engine/LevelStreaming.h"
+#include "RenderStreamSettings.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
