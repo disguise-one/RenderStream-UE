@@ -12,13 +12,7 @@ namespace d3ToUEHelpers
         const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
 
         FTransform v(YUpMatrix * d3Mat * YUpMatrixInv);
-
-        //Rotate - 90 degree rotation in quaternions (Yaw)
-        const float halfSqrt2 = 0.5f * sqrt(2.f);
-        FQuat nintyDegrees = FQuat(0.0f, -halfSqrt2, 0.0f, halfSqrt2);
-
-        v.SetRotation(v.GetRotation() * nintyDegrees);
-
+        
         //Scale - with updated axes
         FVector scale = d3Mat.GetScaleVector();
 
