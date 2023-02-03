@@ -451,7 +451,6 @@ public:
                 free(scene.parameters);
             }
             free(schema.scenes.scenes);
-            reset();
         }
         void reset()
         {
