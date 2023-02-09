@@ -1,5 +1,5 @@
 // Copyright 1998-2018 Epic Games, Inc. All Rights Reserved.
-
+make compilation failed
 #pragma once
 
 #include "Core/Public/Modules/ModuleInterface.h"
