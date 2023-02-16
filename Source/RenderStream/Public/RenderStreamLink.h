@@ -131,8 +131,8 @@ public:
         float cx, cy;
         float nearZ, farZ;
         float orthoWidth;  // If > 0, an orthographic camera should be used
-        float aperture; // If == 0, depth of field is not used
-        float focusDistance;  // If == 0, depth of field is not used
+        float aperture; // Apply if > 0
+        float focusDistance;  // Apply if > 0
         D3TrackingData d3Tracking;
     } CameraData;
 
