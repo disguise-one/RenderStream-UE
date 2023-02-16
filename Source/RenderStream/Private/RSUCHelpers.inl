@@ -166,11 +166,12 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
             data.dx11.resource = static_cast<ID3D11Resource*>(resource);
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
-            RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data, &Response);
+            RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
         }
         else if (toggle == "D3D12")
         {
@@ -179,14 +180,15 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
             data.dx12.resource = static_cast<ID3D12Resource*>(resource);
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
+                if (RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
             }
@@ -221,22 +223,20 @@ namespace RSUCHelpers
             FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(BufTexture->GetTexture2D());
             auto point2 = VulkanTexture->GetSizeXY();
 
-            RenderStreamLink::VulkanDataStructure imageData = {};
-            imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
-            imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
-            imageData.format = fmt;
-            imageData.width = uint32_t(point2.X);
-            imageData.height = uint32_t(point2.Y);
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
+            data.vk.memory = VulkanTexture->Surface.GetAllocationHandle();
+            data.vk.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+            data.vk.format = fmt;
+            data.vk.width = uint32_t(point2.X);
+            data.vk.height = uint32_t(point2.Y);
             // TODO: semaphores
-
-            RenderStreamLink::SenderFrameTypeData data = {};
-            data.vk.image = &imageData;
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                if (RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
+                if (RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
             }
