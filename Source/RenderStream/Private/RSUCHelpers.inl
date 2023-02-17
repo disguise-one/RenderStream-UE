@@ -152,11 +152,13 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
             data.dx11.resource = static_cast<ID3D11Resource*>(resource);
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
-            auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE, data, &Response);
+
+            auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
             if (output != RenderStreamLink::RS_ERROR_SUCCESS)
             {
                 UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
@@ -169,14 +171,15 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
             data.dx12.resource = static_cast<ID3D12Resource*>(resource);
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response);
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
+                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
                 if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                     UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
@@ -213,22 +216,20 @@ namespace RSUCHelpers
             FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(BufTexture);
             auto point2 = VulkanTexture->GetSizeXY();
 
-            RenderStreamLink::VulkanDataStructure imageData = {};
-            imageData.memory = VulkanTexture->GetAllocationHandle();
-            imageData.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
-            imageData.format = fmt;
-            imageData.width = uint32_t(point2.X);
-            imageData.height = uint32_t(point2.Y);
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
+            data.vk.memory = VulkanTexture->GetAllocationHandle();
+            data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
+            data.vk.format = fmt;
+            data.vk.width = uint32_t(point2.X);
+            data.vk.height = uint32_t(point2.Y);
             // TODO: semaphores
-
-            RenderStreamLink::SenderFrameTypeData data = {};
-            data.vk.image = &imageData;
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE, data, &Response);
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
+                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response)
                 if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                     UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
