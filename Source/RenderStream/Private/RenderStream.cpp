@@ -605,6 +605,15 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         CineCamera->Filmback.SensorWidth = cameraData.sensorX;
         CineCamera->Filmback.SensorHeight = cameraData.sensorY;
         CineCamera->SetCurrentFocalLength(cameraData.focalLength); // RecalcDerivedData
+
+        // Apply depth of field parameters
+        if (cameraData.aperture > 0)
+            CineCamera->CurrentAperture = cameraData.aperture;
+        if (cameraData.focusDistance > 0)
+        {
+            CineCamera->FocusSettings.FocusMethod = ECameraFocusMethod::Manual;
+            CineCamera->FocusSettings.ManualFocusDistance = cameraData.focusDistance * 100.0; // m to cm
+        }
     }
     else if (CameraComponent)
     {
