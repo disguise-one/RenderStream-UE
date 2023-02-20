@@ -229,7 +229,7 @@ namespace RSUCHelpers
             Response.cameraData = &FrameData;
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
-                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response)
+                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
                 if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                     UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
