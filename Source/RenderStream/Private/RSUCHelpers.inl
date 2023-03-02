@@ -187,7 +187,7 @@ namespace RSUCHelpers
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
                 if (RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
@@ -223,22 +223,22 @@ namespace RSUCHelpers
             FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(BufTexture->GetTexture2D());
             auto point2 = VulkanTexture->GetSizeXY();
 
-            RenderStreamLink::VulkanDataStructure imageData = {};
-            imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
-            imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
-            imageData.format = fmt;
-            imageData.width = uint32_t(point2.X);
-            imageData.height = uint32_t(point2.Y);
-            // TODO: semaphores
-
             RenderStreamLink::SenderFrame data = {};
             data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
-            data.vk.image = &imageData;
+            data.vk.memory = VulkanTexture->Surface.GetAllocationHandle();
+            data.vk.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+            data.vk.format = fmt;
+            data.vk.width = uint32_t(point2.X);
+            data.vk.height = uint32_t(point2.Y);
+            // TODO: semaphores
 
+(??)            RenderStreamLink::SenderFrameTypeData data = {};
+(??)            data.vk.image = &imageData;
+(??)
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
                 if (RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response) != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
                 }
