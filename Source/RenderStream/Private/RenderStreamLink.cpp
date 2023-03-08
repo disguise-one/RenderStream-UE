@@ -199,6 +199,9 @@ bool RenderStreamLink::loadExplicit()
 
 bool RenderStreamLink::unloadExplicit()
 {
+    if (m_dll == nullptr || !m_loaded)
+        return true;
+
     if (rs_shutdown)
         rs_shutdown();
 #ifdef WINDOWS
@@ -206,5 +209,6 @@ bool RenderStreamLink::unloadExplicit()
         FreeLibrary((HMODULE)m_dll);
     m_dll = nullptr;
 #endif
+    m_loaded = false;
     return m_dll == nullptr;
 }

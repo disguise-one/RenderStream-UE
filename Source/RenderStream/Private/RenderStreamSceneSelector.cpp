@@ -639,7 +639,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
                         data.dx12.resource = static_cast<ID3D12Resource*>(resource);
                         
-                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
+                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage2 %d"), iImage);
                         if (RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data) != RenderStreamLink::RS_ERROR_SUCCESS)
                         {
 
@@ -655,18 +655,15 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         FVulkanTexture2D* VulkanTexture = static_cast<FVulkanTexture2D*>(rtResource->TextureRHI->GetTexture2D());
                         auto point2 = VulkanTexture->GetSizeXY();
 
-                        RenderStreamLink::VulkanDataStructure imageData = {};
-                        imageData.memory = VulkanTexture->Surface.GetAllocationHandle();
-                        imageData.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
-                        imageData.format = frameData.format;
-                        imageData.width = uint32_t(point2.X);
-                        imageData.height = uint32_t(point2.Y);
+                        data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
+                        data.vk.memory = VulkanTexture->Surface.GetAllocationHandle();
+                        data.vk.size = VulkanTexture->Surface.GetAllocationOffset() + VulkanTexture->Surface.GetMemorySize();
+                        data.vk.format = frameData.format;
+                        data.vk.width = uint32_t(point2.X);
+                        data.vk.height = uint32_t(point2.Y);
                         // TODO: semaphores
 
-                        data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
-                        data.vk.image = &imageData;
-
-                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage %d"), iImage);
+                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage2 %d"), iImage);
                         if (RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data) != RenderStreamLink::RS_ERROR_SUCCESS)
                         {
 
