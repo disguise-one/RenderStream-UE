@@ -735,7 +735,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
         if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints);
             Err != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose size. Error: %d"), Err);
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose size for index %llu. Error: %d"), iPose, Err);
             return;
         }
 
@@ -744,7 +744,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
         if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints);
             Err  != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose with %d joints. Error: %d"), Err, nJoints);
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose %llu with %d joints. Error: %d"), iPose, Err, nJoints);
             return;
         }
 
@@ -764,7 +764,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
         int nJoints;
         if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout %llu size for skeletal pose %llu."), Pose.layoutId, iPose);
             return;
         }
 
@@ -772,7 +772,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
         rsLayout.joints = newLayout.joints.GetData();
         if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout."));
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout %llu for skeletal pose %llu."), Pose.layoutId, iPose);
             return;
         }
         
@@ -785,7 +785,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
 
         if (RenderStreamLink::instance().rs_getSkeletonJointNames(specHash, Pose.layoutId, nullptr, nameLengthPtrs.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint name lengths."));
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint name lengths for layout %llu and skeletal pose %llu."), Pose.layoutId, iPose);
             return;
         }
         
@@ -800,7 +800,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
 
         if (RenderStreamLink::instance().rs_getSkeletonJointNames(specHash, Pose.layoutId, jointNamesCStrings.GetData(), nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint name lengths."));
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint names for layout %llu and skeletal pose %llu."), Pose.layoutId, iPose);
             return;
         }
 
