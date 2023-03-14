@@ -481,7 +481,25 @@ bool FRenderStreamModule::PopulateStreamPool()
         const RenderStreamLink::StreamDescriptions* header = nBytes >= sizeof(RenderStreamLink::StreamDescriptions) ? reinterpret_cast<const RenderStreamLink::StreamDescriptions*>(descMem.data()) : nullptr;
         const size_t numStreams = header ? header->nStreams : 0;
         TArray<FStreamInfo> streamInfoArray;
-        
+
+        FIntPoint NextViewportTopLeft(0,0);
+        int32 ViewportRowHeight = 0;
+        auto WrapViewportIfNeeded = [&NextViewportTopLeft, &ViewportRowHeight](int32 Value)
+        {
+            if (constexpr int32 MaxResInDimension = 16000; Value >= MaxResInDimension)
+            {
+                NextViewportTopLeft.Y += ViewportRowHeight;
+                ViewportRowHeight = 0;
+                NextViewportTopLeft.X = 0;
+            }
+        };
+
+        auto TrackNextViewportTl = [&ViewportRowHeight, &NextViewportTopLeft, &WrapViewportIfNeeded](const FIntPoint& Resolution) {
+            ViewportRowHeight = FGenericPlatformMath::Max(ViewportRowHeight, Resolution.Y);
+            NextViewportTopLeft.X += Resolution.X;
+            WrapViewportIfNeeded(NextViewportTopLeft.X);
+        };
+
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
@@ -512,16 +530,21 @@ bool FRenderStreamModule::PopulateStreamPool()
                         UDisplayClusterConfigurationViewport* Viewport = NewObject<UDisplayClusterConfigurationViewport>(ClusterNode, *Name, RF_Transactional | RF_ArchetypeObject | RF_Public);
                         check(Viewport);
 
+                        WrapViewportIfNeeded(NextViewportTopLeft.X + Resolution.X);
+                        
                         // Base parameters
                         Viewport->RenderSettings.BufferRatio = 1;
                         Viewport->Camera = "";
-                        Viewport->Region = FDisplayClusterConfigurationRectangle(0, 0, Resolution.X, Resolution.Y);
+                        Viewport->Region = FDisplayClusterConfigurationRectangle(NextViewportTopLeft.X, NextViewportTopLeft.Y, Resolution.X, Resolution.Y);;
                         Viewport->GPUIndex = -1;
 
                         // Projection policy
                         Viewport->ProjectionPolicy.Type = "renderstream";
 
+                        UE_LOG(LogRenderStream, Log, TEXT("Creating viewport for stream %s at Resolution: %dx%d with region offset (x:%d, y:%d)"), *Name, Resolution.X, Resolution.Y, NextViewportTopLeft.X, NextViewportTopLeft.Y);
                         ClusterNode->Viewports.Add(Name, Viewport);
+
+                        TrackNextViewportTl(Resolution);
                     }
                 }
             }
@@ -529,18 +552,8 @@ bool FRenderStreamModule::PopulateStreamPool()
             {
                 UE_LOG(LogRenderStream, Log, TEXT("Updating stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 Stream->Update(Resolution, Channel, description.clipping, description.handle, description.format);
-                if (IDisplayCluster::IsAvailable())
-                {
-                    const FString LocalNodeId = IDisplayCluster::Get().GetConfigMgr()->GetLocalNodeId();
-                    const ADisplayClusterRootActor* RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
-                    const UDisplayClusterConfigurationData* ConfigurationData = RootActor->GetConfigData();
-                    const UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId);
 
-                    if (UDisplayClusterConfigurationViewport* Viewport = ClusterNode->GetViewport(Name); Viewport)
-                    {
-                        Viewport->Region = FDisplayClusterConfigurationRectangle(0, 0, Resolution.X, Resolution.Y);
-                    }
-                }
+                TrackNextViewportTl(Resolution);
             }
 
             ConfigureStream(Stream);
