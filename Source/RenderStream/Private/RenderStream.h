@@ -29,6 +29,9 @@ class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 class UGameInstance;
 
+bool IsInCluster();
+bool IsDX11();
+
 struct FRenderStreamViewportInfo
 {
     TWeakObjectPtr<ACameraActor> Template = nullptr;
