@@ -84,11 +84,11 @@ namespace
         auto dx11device = static_cast<ID3D11Device*>(GDynamicRHI->RHIGetNativeDevice());
         return dx11device;
     }
+}
 
-    bool IsInCluster()
-    {
-        return IDisplayCluster::IsAvailable() && IDisplayCluster::Get().GetOperationMode() == EDisplayClusterOperationMode::Cluster;
-    }
+bool IsInCluster()
+{
+    return IDisplayCluster::IsAvailable() && IDisplayCluster::Get().GetOperationMode() == EDisplayClusterOperationMode::Cluster;
 }
 
 bool IsDX11()
