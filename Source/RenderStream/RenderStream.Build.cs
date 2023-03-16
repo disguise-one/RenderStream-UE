@@ -21,7 +21,9 @@ public class RenderStream : ModuleRules
                 "Networking", 
                 "InputCore", 
                 "UMG",
-                "OpenColorIO"
+                "OpenColorIO", 
+                "LiveLinkInterface", 
+                "LiveLinkAnimationCore"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 
@@ -43,7 +45,9 @@ public class RenderStream : ModuleRules
                 "DisplayCluster",
                 "DisplayClusterConfiguration",
                 "HeadMountedDisplay",
-                "EngineSettings"
+                "EngineSettings",
+                "LiveLink",
+                "LiveLinkInterface"
             });
 
         PrivateIncludePaths.AddRange(
