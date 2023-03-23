@@ -732,7 +732,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
     {
         RenderStreamLink::SkeletonPose rsPose{};
         int nJoints;
-        if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints);
+        if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, nullptr, &nJoints);
             Err != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose size for index %llu. Error: %d"), iPose, Err);
@@ -762,7 +762,7 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
         RenderStreamLink::FSkeletalLayout newLayout{};
         RenderStreamLink::SkeletonLayout rsLayout{};
         int nJoints;
-        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout %llu size for skeletal pose %llu."), Pose.layoutId, iPose);
             return;
