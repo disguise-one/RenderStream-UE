@@ -1,6 +1,6 @@
 ﻿param(
-    [Boolean]$debug_force_remote_disk = $False, # Force useage of the builds-agent-share install of unreal
-    [string] $builds_agent_share_ip = "10.105.1.219", # to allow flexibitlity if builds agent share changes  
+    [Boolean]$debug_force_remote_disk = $False, # Force usage of the builds-agent-share install of unreal
+    [string] $builds_agent_share_ip = "10.105.1.219", # to allow flexibility if builds agent share changes  
     [string[]] [Parameter (Position = 2, ValueFromRemainingArguments )] $RemainingArgs
 )
 
@@ -8,7 +8,7 @@ $PsBoundParameters | Format-Table
 
 
 # figure out the unreal install location
-# if the the machine is a build agent or the debug param has been specified then mount the network drive
+# if the machine is a build agent or the debug param has been specified then mount the network drive
 # Otherwise use the local install 
 
 
@@ -77,9 +77,10 @@ connect-network_drive $builds_agent_share_ip
 
 $engine_version = select-UE_engine_from_json
 $build_tool_path = "C:\link_to_unreal\$engine_version"
-# This shouldn't be done, ideally we should use the service pipes to send information between script and let teamcity call them,
-# but the refrence to the mapped drive will be lost when the script ends, therefore its better to call the package step from
-# here  
+# This shouldn't be done, ideally we should use the service pipes to send
+# information between script and let teamcity call them. But the reference to
+# the mapped drive will be lost when the script ends, therefore it's better to
+# call the package step from here.
 Invoke-Expression ".\package_plugin.ps1 -unreal_engine_path $build_tool_path"
 
 if ($LASTEXITCODE -ne 0) {
