@@ -8,6 +8,7 @@
 #include "Engine/Blueprint.h"
 #include "LiveLinkTypes.h"
 #include "Roles/LiveLinkAnimationTypes.h"
+#include "Engine/Classes/Kismet/KismetMathLibrary.h"
 
 #pragma optimize("", off)
 
@@ -66,13 +67,14 @@ void MakeCurveMapFromFrame(const FCompactPose& InPose, const FLiveLinkBaseStatic
 void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose)
 {
     const FBoneContainer& BoneContainerRef = OutPose.GetBoneContainer();
+    const int32 MeshBoneCount = BoneContainerRef.GetNumBones();
     if (!Initialised)
     {
-        // MeshBone Count
-        const int32 MeshBoneCount = BoneContainerRef.GetNumBones();
-
         ReferenceWorldRotations.Init(FQuat::Identity, MeshBoneCount);
         ReferenceWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
+        ReferenceInitialOrientations.Init(FQuat::Identity, MeshBoneCount);
+        ReferenceInitialOrientationOffsets.Init(FQuat::Identity, MeshBoneCount);
+        BoneParentIndices.Init(INDEX_NONE, MeshBoneCount);
         const TArray<FTransform>& MeshBoneRefPose = BoneContainerRef.GetRefPoseArray();
         for (int32 Index = 0; Index < MeshBoneCount; Index++)
         {
@@ -146,8 +148,9 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
     TransformedBoneNames.Reserve(SourceBoneNames.Num());
     
     // Find remapped bone names and cache them for fast subsequent retrieval.
-    for (const FName& SrcBoneName : SourceBoneNames)
+    for (int i = 0; i < SourceBoneNames.Num(); i++)
     {
+        const FName& SrcBoneName = SourceBoneNames[i];
         FName* TargetBoneName = BoneNameMap.Find(SrcBoneName);
         FName NewName;
         if (TargetBoneName == nullptr)
@@ -162,12 +165,41 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             NewName = *TargetBoneName;
             TransformedBoneNames.Add(*TargetBoneName);
         }
+
+        const int32 MeshBoneIndexA = BoneContainerRef.GetPoseBoneIndexForBoneName(NewName);
+        const int32 ParentBoneIndex = SourceParentBoneNames[i];
+        if (MeshBoneIndexA != INDEX_NONE)
+        {
+            BoneParentIndices[MeshBoneIndexA] = ParentBoneIndex;
+        }
+
     }
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
         *GetName(), TransformedBoneNames.Num());
 
+    for (int32 Index = 0; Index < MeshBoneCount; Index++)
+    {
+        if (BoneParentIndices[Index] != INDEX_NONE)
+        {
+            FName ParentBoneName = TransformedBoneNames[BoneParentIndices[Index]];
+            const int32 ParentBoneIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(ParentBoneName);
+            if ((ParentBoneIndex != INDEX_NONE) && (ParentBoneIndex < MeshBoneCount))
+            {
+                FVector InitialOffset = ReferenceWorldPositions[Index] - ReferenceWorldPositions[ParentBoneIndex];
+                //FQuat InitialRotation = FQuat::FindBetweenVectors(FVector(1.f, 0.f, 0.f), InitialOffset);
+                float angle = UKismetMathLibrary::Atan2(InitialOffset.Z, InitialOffset.X);
+                FQuat InitialRotation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(angle), 0.f));
+                ReferenceInitialOrientations[Index] = InitialRotation;
+                FQuat ParentInitialRotation = ReferenceInitialOrientations[ParentBoneIndex];
+                FQuat OrientationOffset = ReferenceInitialOrientations[Index] * ParentInitialRotation.Inverse();
+                ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationOffset;
+            }
+        }
+    }
+
     TArray<FCompactPoseBoneIndex, TMemStackAllocator<>> ModifiedPoses;
     ModifiedPoses.Reserve(TransformedBoneNames.Num());
+
     // Iterate over remapped bone names, find the index of that bone on the skeleton, and apply the Live Link pose data.
     for (int32 i = 0; i < TransformedBoneNames.Num(); i++)
     {
@@ -190,7 +222,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                     OutPose[CPBoneIndex].SetRotation(BoneTransform.GetRotation() * ReferenceWorldRotations[MeshBoneIndex]);
                     ModifiedPoses.Add(CPBoneIndex);
                 }
-                else
+                else// if (GetBoneNameEquivalent_Internal(*RetargetSourceBoneName) == EquivalentLUpperArm || GetBoneNameEquivalent_Internal(*RetargetSourceBoneName) == EquivalentLLowerArm)
                 {
                     if (CPBoneIndex != INDEX_NONE)
                     {
@@ -212,13 +244,13 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                                     TargetRotationInRealParent = RealParentRotationInLogicParent.Inverse() * TargetRotationInLogicParent;
                                 }
 
-                                OutPose[CPBoneIndex].SetRotation(TargetRotationInRealParent);
+                                OutPose[CPBoneIndex].SetRotation(ReferenceInitialOrientationOffsets[MeshBoneIndex].Inverse()); //TargetRotationInRealParent);
                             }
-                            else
-                            {
-                                FQuat TargetRotationInRealParent = ReferenceWorldRotations[RealParentMeshIndex].Inverse() * RotationInCS;
-                                OutPose[CPBoneIndex].SetRotation(TargetRotationInRealParent);
-                            }
+                            //else
+                            //{
+                            //    FQuat TargetRotationInRealParent = ReferenceWorldRotations[RealParentMeshIndex].Inverse() * RotationInCS;
+                            //    OutPose[CPBoneIndex].SetRotation(ReferenceInitialOrientations[MeshBoneIndex].Inverse()); //TargetRotationInRealParent);
+                            //}
                             ModifiedPoses.Add(CPBoneIndex);
                         }
                     }

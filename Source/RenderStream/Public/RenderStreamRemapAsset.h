@@ -90,5 +90,8 @@ private:
     
     TArray<FQuat> ReferenceWorldRotations;
     TArray<FVector> ReferenceWorldPositions;
+    TArray<FQuat> ReferenceInitialOrientations;
+    TArray<FQuat> ReferenceInitialOrientationOffsets;
+    TArray<int32> BoneParentIndices;
     bool Initialised;
 };
