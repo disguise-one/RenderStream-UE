@@ -33,8 +33,12 @@ public:
     virtual TSubclassOf< ULiveLinkSourceSettings > GetSettingsClass() const override { return ULiveLinkSourceSettings::StaticClass(); }
     virtual void OnSettingsChanged(ULiveLinkSourceSettings* Settings, const FPropertyChangedEvent& PropertyChangedEvent) override;
 
+    const TSharedPtr<TArray<FTransform>, ESPMode::ThreadSafe>& GetInitialPose() const { return InitialPose; }
+
 private:
     ILiveLinkClient* Client;
+
+    TSharedPtr<TArray<FTransform>, ESPMode::ThreadSafe> InitialPose;
 
     // Our identifier in LiveLink
     FGuid SourceGuid;

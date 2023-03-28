@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "LiveLinkRetargetAsset.h"
 #include "LiveLinkTypes.h"
+#include "RenderStreamRemapAsset.h"
+#include "RenderStreamLink.h"
 
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
 
@@ -19,14 +21,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Input)
         FPoseLink BasePose;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SourceData, meta = (PinShownByDefault))
-        FLiveLinkSubjectName LiveLinkSubjectName;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, NoClear, Category = Retarget, meta = (NeverAsPin))
-        TSubclassOf<ULiveLinkRetargetAsset> RetargetAsset;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, NoClear, Category = Retarget, meta = (PinShownByDefault))
+        TSubclassOf<URenderStreamRemapAsset> RetargetAsset;
 
     UPROPERTY(transient)
-        TObjectPtr<ULiveLinkRetargetAsset> CurrentRetargetAsset;
+        TObjectPtr<URenderStreamRemapAsset> CurrentRetargetAsset;
 
 public:
     FAnimNode_RenderStreamSkeletonSource();
@@ -44,12 +43,19 @@ public:
 protected:
     virtual void OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance) override;
 
+    void ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose,
+        FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame);
+
+    FName GetSkeletonParamName();
+
 private:
 
     ILiveLinkClient* LiveLinkClient_AnyThread;
 
     // Delta time from update so that it can be passed to retargeter
     float CachedDeltaTime;
+
+    TSharedPtr<TArray<FTransform>, ESPMode::ThreadSafe> InitialPose;
 
 };
 

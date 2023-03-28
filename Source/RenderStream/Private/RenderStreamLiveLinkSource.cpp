@@ -34,6 +34,33 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
 
     int32 RootIdx = INDEX_NONE;
 
+    auto ToUnrealTransform = [](const FVector& S, const FQuat& R, const FVector& T, const FMatrix& YUpMatrix) {
+        const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
+
+        FMatrix D3Mat = R.ToMatrix();
+        D3Mat.SetOrigin(T);
+        D3Mat.ScaleTranslation(S);
+
+        return FTransform(YUpMatrix * D3Mat * YUpMatrixInv);
+    };
+
+    const FVector RootScale(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+
+    static const FMatrix YUpMats[] = {
+        // Y up matrix for root pose transform and root bone transform
+        FMatrix(FVector(0.0f, 0.0f, 1.0f)
+            , FVector(1.0f, 0.0f, 0.0f)
+            , FVector(0.0f, 1.0f, 0.0f)
+            , FVector(0.0f, 0.0f, 0.0f)
+        ),
+        // Y up matrix for the relative transforms of the rest of the bones 
+        FMatrix(FVector(-1.0f, 0.0f, 0.0f)
+            , FVector(0.0f, 0.0f, 1.0f)
+            , FVector(0.0f, -1.0f, 0.0f)
+            , FVector(0.0f, 0.0f, 0.0f)
+        )
+    };
+
     const FLiveLinkSubjectKey SubjectKey{ SourceGuid, SubjectName };
     { // Static data
         FLiveLinkStaticDataStruct StaticDataStruct = FLiveLinkStaticDataStruct(FLiveLinkSkeletonStaticData::StaticStruct());
@@ -41,6 +68,8 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
 
         StaticSkeleton.BoneNames.SetNum(Layout.joints.Num());
         StaticSkeleton.BoneParents.SetNum(Layout.joints.Num());
+        InitialPose = MakeShared<TArray<FTransform>, ESPMode::ThreadSafe>();
+        InitialPose->SetNum(Layout.joints.Num());
         for (int32 i = 0; i < Layout.joints.Num(); ++i)
         {
             const RenderStreamLink::SkeletonJointDesc& Joint = Layout.joints[i];
@@ -50,6 +79,12 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
             const int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
             StaticSkeleton.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
 
+            (*InitialPose)[i] = ToUnrealTransform(RootScale
+                , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
+                , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
+                , YUpMats[0]
+            );
+
             if (idx == INDEX_NONE)
                 RootIdx = i;
         }
@@ -58,31 +93,6 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
     }
 
     { // Frame Data
-        static const FMatrix YUpMats[] = {
-            // Y up matrix for root pose transform and root bone transform
-            FMatrix(FVector(0.0f, 0.0f, 1.0f)
-                , FVector(1.0f, 0.0f, 0.0f)
-                , FVector(0.0f, 1.0f, 0.0f)
-                , FVector(0.0f, 0.0f, 0.0f)
-            ),
-            // Y up matrix for the relative transforms of the rest of the bones 
-            FMatrix(FVector(-1.0f, 0.0f, 0.0f)
-                , FVector(0.0f, 0.0f, 1.0f)
-                , FVector(0.0f, -1.0f, 0.0f)
-                , FVector(0.0f, 0.0f, 0.0f)
-            )
-        };
-
-        auto ToUnrealTransform = [](const FVector& S, const FQuat& R, const FVector& T, const FMatrix& YUpMatrix){
-            const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
-
-            FMatrix D3Mat = R.ToMatrix();
-            D3Mat.SetOrigin(T);
-            D3Mat.ScaleTranslation(S);
-
-            return FTransform(YUpMatrix * D3Mat * YUpMatrixInv);
-        };
-
         FLiveLinkFrameDataStruct FrameDataStruct = FLiveLinkFrameDataStruct(FLiveLinkAnimationFrameData::StaticStruct());
         FLiveLinkAnimationFrameData& FrameData = *FrameDataStruct.Cast<FLiveLinkAnimationFrameData>();
         FrameData.Transforms.SetNum(Pose.joints.Num());
@@ -93,14 +103,13 @@ void FRenderStreamLiveLinkSource::PushFrameAnimData(const FName& SubjectName, co
 
             const int32 idx = Layout.joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
             const int YUpMatIdx = idx == RootIdx ? 0 : 1;
-            FrameData.Transforms[idx] = ToUnrealTransform(FVector(1.)
+            FrameData.Transforms[idx] = ToUnrealTransform(RootScale
                 , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
                 , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
                 , YUpMats[YUpMatIdx]
             );
         }
         // get correct scale and parent transform for root joint
-        const FVector RootScale(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
         const FTransform PoseRootTransform = ToUnrealTransform(RootScale, FQuat(Pose.rootOrientation), FVector(Pose.rootPosition), YUpMats[0]);
         FTransform& RootBoneTransform = FrameData.Transforms[RootIdx];
         // combined rotations, including 90 degree yaw

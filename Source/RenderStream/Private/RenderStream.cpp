@@ -1035,35 +1035,24 @@ FRenderStreamViewportInfo& FRenderStreamModule::GetViewportInfo(FString const& V
 
 void FRenderStreamModule::PushAnimDataToSource(const RenderStreamLink::FAnimDataKey& Key, const FString& SubjectName, const RenderStreamLink::FSkeletalLayout& Layout, const RenderStreamLink::FSkeletalPose& Pose)
 {
-    auto Result = AnimSources.Find(Key);
-    if (!Result)
-    {
-        IModularFeatures& ModularFeatures = IModularFeatures::Get();
-
-        if (!ModularFeatures.IsModularFeatureAvailable(ILiveLinkClient::ModularFeatureName))
-        {
-            UE_LOG(LogRenderStream, Error, TEXT("LiveLink is not available."));
-            return;
-        }
-
-        ILiveLinkClient* LiveLinkClient = &ModularFeatures.GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
-        TSharedPtr<FRenderStreamLiveLinkSource> NewSource = MakeShareable(new FRenderStreamLiveLinkSource());
-        LiveLinkClient->AddSource(NewSource);
-        Result = &AnimSources.Emplace(Key, MakeTuple(FName(SubjectName), NewSource));
-    }
-
-    const FName& SubjectFName = Result->Key;
-    const TSharedPtr<FRenderStreamLiveLinkSource>& Source = Result->Value;
-
-    Source->PushFrameAnimData(SubjectFName, Layout, Pose);
+    SkeletalParamNames.Emplace(Key, SubjectName);
+    SkeletalLayouts.Emplace(SubjectName, Layout);
+    SkeletalPoses.Emplace(SubjectName, Pose);
 }
 
-const FName* FRenderStreamModule::GetSubjectName(const RenderStreamLink::FAnimDataKey& Key) const
+const FName* FRenderStreamModule::GetSkeletalParamName(const RenderStreamLink::FAnimDataKey& Key) const
 {
-    const auto Result = AnimSources.Find(Key);
-    if (Result)
-        return &Result->Key;
-    return nullptr;
+    return SkeletalParamNames.Find(Key);
+}
+
+const RenderStreamLink::FSkeletalLayout* FRenderStreamModule::GetSkeletalLayout(const FName& SubjectName) const
+{
+    return SkeletalLayouts.Find(SubjectName);
+}
+
+const RenderStreamLink::FSkeletalPose* FRenderStreamModule::GetSkeletalPose(const FName& SubjectName) const
+{
+    return SkeletalPoses.Find(SubjectName);
 }
 
 /*static*/ FRenderStreamModule* FRenderStreamModule::Get()

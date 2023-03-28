@@ -11,7 +11,7 @@
 #include "Roles/LiveLinkAnimationTypes.h"
 
 FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
-    : RetargetAsset(ULiveLinkRemapAsset::StaticClass())  // TODO Make RenderStream if needed
+    : RetargetAsset(URenderStreamRemapAsset::StaticClass())
     , CurrentRetargetAsset(nullptr)
     , LiveLinkClient_AnyThread(nullptr)
     , CachedDeltaTime(0.0f)
@@ -44,13 +44,13 @@ void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnim
     UClass* RetargetAssetPtr = RetargetAsset.Get();
     if (!RetargetAssetPtr || RetargetAssetPtr->HasAnyClassFlags(CLASS_Abstract))
     {
-        RetargetAssetPtr = ULiveLinkRemapAsset::StaticClass();
+        RetargetAssetPtr = URenderStreamRemapAsset::StaticClass();
         RetargetAsset = RetargetAssetPtr;
     }
 
     if (!CurrentRetargetAsset || RetargetAssetPtr != CurrentRetargetAsset->GetClass())
     {
-        CurrentRetargetAsset = NewObject<ULiveLinkRetargetAsset>(const_cast<UAnimInstance*>(InAnimInstance), RetargetAssetPtr);
+        CurrentRetargetAsset = NewObject<URenderStreamRemapAsset>(const_cast<UAnimInstance*>(InAnimInstance), RetargetAssetPtr);
         CurrentRetargetAsset->Initialize();
     }
 }
@@ -64,53 +64,39 @@ void FAnimNode_RenderStreamSkeletonSource::Update_AnyThread(const FAnimationUpda
     // Accumulate Delta time from update
     CachedDeltaTime += Context.GetDeltaTime();
 
-    TRACE_ANIM_NODE_VALUE(Context, TEXT("SubjectName"), LiveLinkSubjectName.Name);
+    TRACE_ANIM_NODE_VALUE(Context, TEXT("SkeletonParamName"), GetSkeletonParamName());
 }
 
 void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Output)
 {
     BasePose.Evaluate(Output);
 
-    if (!LiveLinkClient_AnyThread || !CurrentRetargetAsset)
+    const FRenderStreamModule* Module = FRenderStreamModule::Get();
+
+    if (!CurrentRetargetAsset || !Module)
     {
         return;
     }
 
+    FName ParamName = GetSkeletonParamName();
+    const RenderStreamLink::FSkeletalLayout* Layout = Module->GetSkeletalLayout(ParamName);
+    const RenderStreamLink::FSkeletalPose* Pose = Module->GetSkeletalPose(ParamName);
+
+    FLiveLinkSkeletonStaticData LiveLinkStatic;
+    FLiveLinkAnimationFrameData LiveLinkFrame;
+
+    if (!Layout || !Pose)
+        return;
+
+    ProcessSkeletonData(Layout, Pose, LiveLinkStatic, LiveLinkFrame);
+
     FLiveLinkSubjectFrameData SubjectFrameData;
 
-    TSubclassOf<ULiveLinkRole> SubjectRole = LiveLinkClient_AnyThread->GetSubjectRole_AnyThread(LiveLinkSubjectName);
-    if (SubjectRole)
-    {
-        if (LiveLinkClient_AnyThread->DoesSubjectSupportsRole_AnyThread(LiveLinkSubjectName, ULiveLinkAnimationRole::StaticClass()))
-        {
-            //Process animation data if the subject is from that type
-            if (LiveLinkClient_AnyThread->EvaluateFrame_AnyThread(LiveLinkSubjectName, ULiveLinkAnimationRole::StaticClass(), SubjectFrameData))
-            {
-                FLiveLinkSkeletonStaticData* SkeletonData = SubjectFrameData.StaticData.Cast<FLiveLinkSkeletonStaticData>();
-                FLiveLinkAnimationFrameData* FrameData = SubjectFrameData.FrameData.Cast<FLiveLinkAnimationFrameData>();
-                check(SkeletonData);
-                check(FrameData);
-
-                CurrentRetargetAsset->BuildPoseFromAnimationData(CachedDeltaTime, SkeletonData, FrameData, Output.Pose);
-                CurrentRetargetAsset->BuildPoseAndCurveFromBaseData(CachedDeltaTime, SkeletonData, FrameData, Output.Pose, Output.Curve);
-                CachedDeltaTime = 0.f; // Reset so that if we evaluate again we don't "create" time inside of the retargeter
-            }
-        }
-        else if (LiveLinkClient_AnyThread->DoesSubjectSupportsRole_AnyThread(LiveLinkSubjectName, ULiveLinkBasicRole::StaticClass()))
-        {
-            //Otherwise, fetch basic data that contains property / curve data
-            if (LiveLinkClient_AnyThread->EvaluateFrame_AnyThread(LiveLinkSubjectName, ULiveLinkBasicRole::StaticClass(), SubjectFrameData))
-            {
-                FLiveLinkBaseStaticData* BaseStaticData = SubjectFrameData.StaticData.Cast<FLiveLinkBaseStaticData>();
-                FLiveLinkBaseFrameData* BaseFrameData = SubjectFrameData.FrameData.Cast<FLiveLinkBaseFrameData>();
-                check(BaseStaticData);
-                check(BaseFrameData);
-
-                CurrentRetargetAsset->BuildPoseAndCurveFromBaseData(CachedDeltaTime, BaseStaticData, BaseFrameData, Output.Pose, Output.Curve);
-                CachedDeltaTime = 0.f; // Reset so that if we evaluate again we don't "create" time inside of the retargeter
-            }
-        }
-    }
+    check(CurrentRetargetAsset);
+    CurrentRetargetAsset->BuildPoseFromAnimationData(CachedDeltaTime, &LiveLinkStatic, &LiveLinkFrame, Output.Pose);
+    CurrentRetargetAsset->BuildPoseAndCurveFromBaseData(CachedDeltaTime, &LiveLinkStatic, &LiveLinkFrame, Output.Pose, Output.Curve);
+    CachedDeltaTime = 0.f; // Reset so that if we evaluate again we don't "create" time inside of the retargeter
+            
 }
 
 void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimationCacheBonesContext& Context)
@@ -121,8 +107,113 @@ void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimation
 
 void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& DebugData)
 {
-    FString DebugLine = FString::Printf(TEXT("LiveLink - SubjectName: %s"), *LiveLinkSubjectName.ToString());
+    FString DebugLine = FString::Printf(TEXT("RenderStreamSkeletonSource - SkeletonParamName: %s"), *GetSkeletonParamName().ToString());
 
     DebugData.AddDebugItem(DebugLine);
     BasePose.GatherDebugData(DebugData);
+}
+
+
+void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose, 
+    FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame)
+{
+    if (!Layout || !Pose)
+        return;
+
+    int32 RootIdx = INDEX_NONE;
+
+    auto ToUnrealTransform = [](const FVector& S, const FQuat& R, const FVector& T, const FMatrix& YUpMatrix) {
+        const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
+
+        FMatrix D3Mat = R.ToMatrix();
+        D3Mat.SetOrigin(T);
+        D3Mat.ScaleTranslation(S);
+
+        return FTransform(YUpMatrix * D3Mat * YUpMatrixInv);
+    };
+
+    const FVector RootScale(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+
+    static const FMatrix YUpMats[] = {
+        // Y up matrix for root pose transform and root bone transform
+        FMatrix(FVector(0.0f, 0.0f, 1.0f)
+            , FVector(1.0f, 0.0f, 0.0f)
+            , FVector(0.0f, 1.0f, 0.0f)
+            , FVector(0.0f, 0.0f, 0.0f)
+        ),
+        // Y up matrix for the relative transforms of the rest of the bones 
+        FMatrix(FVector(-1.0f, 0.0f, 0.0f)
+            , FVector(0.0f, 0.0f, 1.0f)
+            , FVector(0.0f, -1.0f, 0.0f)
+            , FVector(0.0f, 0.0f, 0.0f)
+        )
+    };
+
+    { // Static data
+        LiveLinkStatic.BoneNames.SetNum(Layout->joints.Num());
+        LiveLinkStatic.BoneParents.SetNum(Layout->joints.Num());
+        InitialPose = MakeShared<TArray<FTransform>, ESPMode::ThreadSafe>();
+        InitialPose->SetNum(Layout->joints.Num());
+        for (int32 i = 0; i < Layout->joints.Num(); ++i)
+        {
+            const RenderStreamLink::SkeletonJointDesc& Joint = Layout->joints[i];
+            const FString& Name = Layout->jointNames[i];
+
+            LiveLinkStatic.BoneNames[i] = FName(Name);
+            const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
+            LiveLinkStatic.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
+
+            //(*InitialPose)[i] = ToUnrealTransform(RootScale
+            //    , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
+            //    , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
+            //    , YUpMats[0]
+            //);
+
+            if (idx == INDEX_NONE)
+                RootIdx = i;
+        }
+    }
+
+    { // Frame Data
+        LiveLinkFrame.Transforms.SetNum(Pose->joints.Num());
+        // calculate all transforms, for root joint and all others
+        for (int32 i = 0; i < Pose->joints.Num(); ++i)
+        {
+            const RenderStreamLink::SkeletonJointPose& Joint = Pose->joints[i];
+
+            const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
+            const int YUpMatIdx = idx == RootIdx ? 0 : 1;
+            LiveLinkFrame.Transforms[idx] = ToUnrealTransform(RootScale
+                , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
+                , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
+                , YUpMats[YUpMatIdx]
+            );
+        }
+        // get correct scale and parent transform for root joint
+        const FTransform PoseRootTransform = ToUnrealTransform(RootScale, FQuat(Pose->rootOrientation), FVector(Pose->rootPosition), YUpMats[0]);
+        FTransform& RootBoneTransform = LiveLinkFrame.Transforms[RootIdx];
+        // combined rotations, including 90 degree yaw
+        FTransform FinalTransform = FTransform(PoseRootTransform.GetRotation() * RootBoneTransform.GetRotation());
+        FinalTransform.ConcatenateRotation(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
+        // combined translation, unaffected by rotations
+        FinalTransform.SetTranslation(PoseRootTransform.GetTranslation() + RootBoneTransform.GetTranslation());
+        // update root joint transform
+        RootBoneTransform = FinalTransform;
+    }
+}
+
+FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()
+{
+    const UAnimBlueprintGeneratedClass* BPClass = dynamic_cast<const UAnimBlueprintGeneratedClass*>(GetAnimClassInterface());
+
+    if (BPClass)
+    {
+        if (const FRenderStreamModule* Module = FRenderStreamModule::Get(); Module)
+        {
+            const FName* SubjectName = Module->GetSkeletalParamName(FSoftObjectPath(BPClass->TargetSkeleton));
+            if (SubjectName)
+                return *SubjectName;
+        }
+    }
+    return FName();
 }
