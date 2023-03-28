@@ -177,6 +177,9 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
         *GetName(), TransformedBoneNames.Num());
 
+    TArray<int32> NumberOfChildren;
+    NumberOfChildren.Init(0, MeshBoneCount);
+
     for (int32 Index = 0; Index < MeshBoneCount; Index++)
     {
         if (BoneParentIndices[Index] != INDEX_NONE)
@@ -192,7 +195,14 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                 ReferenceInitialOrientations[Index] = InitialRotation;
                 FQuat ParentInitialRotation = ReferenceInitialOrientations[ParentBoneIndex];
                 FQuat OrientationOffset = ReferenceInitialOrientations[Index] * ParentInitialRotation.Inverse();
-                ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationOffset;
+
+                // Don't appy offset if parent has > 1 children
+                // We could maybe find the average of all child offsets, and calculate orientation from that at the end
+                NumberOfChildren[ParentBoneIndex] += 1;
+                if (NumberOfChildren[ParentBoneIndex] <= 1)
+                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationOffset;
+                else
+                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = FQuat::Identity;
             }
         }
     }
