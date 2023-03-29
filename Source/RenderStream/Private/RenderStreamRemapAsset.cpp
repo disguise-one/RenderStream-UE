@@ -147,6 +147,9 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
 
     TArray<FName, TMemStackAllocator<>> TransformedBoneNames;
     TransformedBoneNames.Reserve(SourceBoneNames.Num());
+
+    TArray<int32> NumberOfChildren;
+    NumberOfChildren.Init(0, SourceBoneNames.Num());
     
     // Find remapped bone names and cache them for fast subsequent retrieval.
     for (int i = 0; i < SourceBoneNames.Num(); i++)
@@ -174,13 +177,14 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             BoneParentIndices[MeshBoneIndexA] = ParentBoneIndex;
             ReferenceToStreamedIndices[MeshBoneIndexA] = i;
         }
+        if (ParentBoneIndex != INDEX_NONE)
+        {
+            NumberOfChildren[ParentBoneIndex] += 1;
+        }
 
     }
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
         *GetName(), TransformedBoneNames.Num());
-
-    TArray<int32> NumberOfChildren;
-    NumberOfChildren.Init(0, MeshBoneCount);
 
     TArray<FQuat> ReferenceInitialOrientationsStreamed;
     ReferenceInitialOrientationsStreamed.Init(FQuat::Identity, MeshBoneCount);
@@ -191,47 +195,48 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
         {
             FName ParentBoneName = TransformedBoneNames[BoneParentIndices[Index]];
             const int32 ParentBoneIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(ParentBoneName);
+            int32 StreamedIndex = ReferenceToStreamedIndices[Index];
+            int32 StreamedParentIndex = ReferenceToStreamedIndices[ParentBoneIndex];
+
             if ((ParentBoneIndex != INDEX_NONE) && (ParentBoneIndex < MeshBoneCount))
             {
-                FVector InitialOffset = ReferenceWorldPositions[Index] - ReferenceWorldPositions[ParentBoneIndex];
-                //FQuat InitialRotation = FQuat::FindBetweenVectors(FVector(1.f, 0.f, 0.f), InitialOffset);
-                float angle = UKismetMathLibrary::Atan2(InitialOffset.Z, InitialOffset.X);
-                FQuat InitialRotation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(angle), 0.f));
-                ReferenceInitialOrientations[Index] = InitialRotation;
-                FQuat ParentInitialRotation = ReferenceInitialOrientations[ParentBoneIndex];
-                FQuat OrientationOffset = ReferenceInitialOrientations[Index] * ParentInitialRotation.Inverse();
-
-                int32 StreamedIndex = ReferenceToStreamedIndices[Index];
-                FVector InitialOffsetStreamed = InitialPose[StreamedIndex].GetTranslation();
-
-                FQuat InitialRotationStreamed;
-                if (InitialOffsetStreamed == FVector(0.f, 0.f, 0.f))
-                {
-                    InitialRotationStreamed = ReferenceInitialOrientationsStreamed[ParentBoneIndex];
-                }
-                else
-                {
-                    float angleStreamed = UKismetMathLibrary::Atan2(InitialOffsetStreamed.Z, InitialOffsetStreamed.X);
-                    InitialRotationStreamed = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(angleStreamed), 0.f));
-                }
-
-                ReferenceInitialOrientationsStreamed[Index] = InitialRotationStreamed;
-                FQuat ParentInitialRotationStreamed = ReferenceInitialOrientationsStreamed[ParentBoneIndex];
-                FQuat OrientationOffsetStreamed = ReferenceInitialOrientationsStreamed[Index] * ParentInitialRotationStreamed.Inverse();
-
-                FQuat OrientationOffsetDifference;
-                //if (InitialOffset == FVector(0.f, 0.f, 0.f) || InitialOffsetStreamed == FVector(0.f, 0.f, 0.f))
-                //    OrientationOffsetDifference = FQuat::Identity;
-                //else
-                    OrientationOffsetDifference = OrientationOffsetStreamed * OrientationOffset.Inverse();
-
                 // Don't appy offset if parent has > 1 children
                 // We could maybe find the average of all child offsets, and calculate orientation from that at the end
-                NumberOfChildren[ParentBoneIndex] += 1;
-                if (NumberOfChildren[ParentBoneIndex] <= 1)
-                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationOffsetDifference;
+                if (NumberOfChildren[StreamedParentIndex] > 1)
+                    ReferenceInitialOrientations[Index] = ReferenceInitialOrientations[ParentBoneIndex];
                 else
-                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = FQuat::Identity;
+                {
+
+                    FVector InitialOffset = ReferenceWorldPositions[Index] - ReferenceWorldPositions[ParentBoneIndex];
+                    FQuat InitialRotation = FQuat::FindBetweenVectors(FVector(1.f, 0.f, 0.f), InitialOffset);
+                    //float angle = UKismetMathLibrary::Atan2(InitialOffset.Z, InitialOffset.X);
+                    //FQuat InitialRotation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(angle), 0.f));
+
+                    FVector InitialOffsetStreamed = InitialPose[StreamedIndex].GetTranslation();
+
+                    FQuat OrientationToApply = FQuat::Identity;
+
+                    FQuat InitialRotationStreamed;
+                    if (InitialOffsetStreamed == FVector(0.f, 0.f, 0.f))
+                    {
+                        InitialRotationStreamed = ReferenceInitialOrientationsStreamed[ParentBoneIndex];
+                        ReferenceInitialOrientations[Index] = ReferenceInitialOrientations[ParentBoneIndex];
+                    }
+                    else
+                    {
+                        InitialRotationStreamed = FQuat::FindBetweenVectors(FVector(1.f, 0.f, 0.f), InitialOffsetStreamed);
+                        //float angleStreamed = UKismetMathLibrary::Atan2(InitialOffsetStreamed.Z, InitialOffsetStreamed.X);
+                        //InitialRotationStreamed = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(angleStreamed), 0.f));
+                        FQuat OrientationDifference = InitialRotationStreamed * InitialRotation.Inverse();
+                        FQuat OrientationAlreadyApplied = ReferenceInitialOrientations[ParentBoneIndex];
+                        OrientationToApply = OrientationDifference * OrientationAlreadyApplied.Inverse();
+                        ReferenceInitialOrientations[Index] = OrientationDifference;
+                    }
+
+                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationToApply;
+
+
+                }
             }
         }
     }

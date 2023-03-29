@@ -146,7 +146,7 @@ void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStrea
         // Y up matrix for the relative transforms of the rest of the bones
         // Skeleton pose is defined in Unreal with X sideways
         FMatrix(FVector(1.0f, 0.0f, 0.0f)
-            , FVector(0.0f, 0.0f, 1.0f)
+            , FVector(0.0f, 0.0f, -1.0f)
             , FVector(0.0f, 1.0f, 0.0f)
             , FVector(0.0f, 0.0f, 0.0f)
         )
