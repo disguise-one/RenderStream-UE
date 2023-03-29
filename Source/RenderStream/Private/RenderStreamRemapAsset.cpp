@@ -75,6 +75,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
         ReferenceInitialOrientations.Init(FQuat::Identity, MeshBoneCount);
         ReferenceInitialOrientationOffsets.Init(FQuat::Identity, MeshBoneCount);
         BoneParentIndices.Init(INDEX_NONE, MeshBoneCount);
+        ReferenceToStreamedIndices.Init(INDEX_NONE, MeshBoneCount);
         const TArray<FTransform>& MeshBoneRefPose = BoneContainerRef.GetRefPoseArray();
         for (int32 Index = 0; Index < MeshBoneCount; Index++)
         {
@@ -85,7 +86,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             if ((ParentIndex != INDEX_NONE) && (ParentIndex < MeshBoneCount))
             {
                 Rotation = ReferenceWorldRotations[ParentIndex] * Rotation;
-                Position = ReferenceWorldRotations[ParentIndex] * Position + ReferenceWorldPositions[ParentIndex];
+                Position = /*ReferenceWorldRotations[ParentIndex] **/ Position + ReferenceWorldPositions[ParentIndex];
             }
             else
             {
@@ -119,7 +120,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             if ((CPParentBoneIndex != INDEX_NONE) && (CPParentBoneIndex < BoneCount))
             {
                 Rotation = CompactRefPoseRotation[CPParentBoneIndex.GetInt()] * Rotation;
-                Position = CompactRefPoseRotation[CPParentBoneIndex.GetInt()] * Position + CompactRefPoseLocation[CPParentBoneIndex.GetInt()];
+                Position = /*CompactRefPoseRotation[CPParentBoneIndex.GetInt()] **/ Position + CompactRefPoseLocation[CPParentBoneIndex.GetInt()];
             }
             else
             {
@@ -171,6 +172,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
         if (MeshBoneIndexA != INDEX_NONE)
         {
             BoneParentIndices[MeshBoneIndexA] = ParentBoneIndex;
+            ReferenceToStreamedIndices[MeshBoneIndexA] = i;
         }
 
     }
@@ -179,6 +181,9 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
 
     TArray<int32> NumberOfChildren;
     NumberOfChildren.Init(0, MeshBoneCount);
+
+    TArray<FQuat> ReferenceInitialOrientationsStreamed;
+    ReferenceInitialOrientationsStreamed.Init(FQuat::Identity, MeshBoneCount);
 
     for (int32 Index = 0; Index < MeshBoneCount; Index++)
     {
@@ -196,11 +201,35 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                 FQuat ParentInitialRotation = ReferenceInitialOrientations[ParentBoneIndex];
                 FQuat OrientationOffset = ReferenceInitialOrientations[Index] * ParentInitialRotation.Inverse();
 
+                int32 StreamedIndex = ReferenceToStreamedIndices[Index];
+                FVector InitialOffsetStreamed = InitialPose[StreamedIndex].GetTranslation();
+
+                FQuat InitialRotationStreamed;
+                if (InitialOffsetStreamed == FVector(0.f, 0.f, 0.f))
+                {
+                    InitialRotationStreamed = ReferenceInitialOrientationsStreamed[ParentBoneIndex];
+                }
+                else
+                {
+                    float angleStreamed = UKismetMathLibrary::Atan2(InitialOffsetStreamed.Z, InitialOffsetStreamed.X);
+                    InitialRotationStreamed = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(angleStreamed), 0.f));
+                }
+
+                ReferenceInitialOrientationsStreamed[Index] = InitialRotationStreamed;
+                FQuat ParentInitialRotationStreamed = ReferenceInitialOrientationsStreamed[ParentBoneIndex];
+                FQuat OrientationOffsetStreamed = ReferenceInitialOrientationsStreamed[Index] * ParentInitialRotationStreamed.Inverse();
+
+                FQuat OrientationOffsetDifference;
+                //if (InitialOffset == FVector(0.f, 0.f, 0.f) || InitialOffsetStreamed == FVector(0.f, 0.f, 0.f))
+                //    OrientationOffsetDifference = FQuat::Identity;
+                //else
+                    OrientationOffsetDifference = OrientationOffsetStreamed * OrientationOffset.Inverse();
+
                 // Don't appy offset if parent has > 1 children
                 // We could maybe find the average of all child offsets, and calculate orientation from that at the end
                 NumberOfChildren[ParentBoneIndex] += 1;
                 if (NumberOfChildren[ParentBoneIndex] <= 1)
-                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationOffset;
+                    ReferenceInitialOrientationOffsets[ParentBoneIndex] = OrientationOffsetDifference;
                 else
                     ReferenceInitialOrientationOffsets[ParentBoneIndex] = FQuat::Identity;
             }
@@ -254,7 +283,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
                                     TargetRotationInRealParent = RealParentRotationInLogicParent.Inverse() * TargetRotationInLogicParent;
                                 }
 
-                                OutPose[CPBoneIndex].SetRotation(ReferenceInitialOrientationOffsets[MeshBoneIndex].Inverse()); //TargetRotationInRealParent);
+                                OutPose[CPBoneIndex].SetRotation(ReferenceInitialOrientationOffsets[MeshBoneIndex]); //TargetRotationInRealParent);
                             }
                             //else
                             //{

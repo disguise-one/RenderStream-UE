@@ -44,7 +44,7 @@ protected:
     virtual void OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance) override;
 
     void ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose,
-        FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame);
+        FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame, TArray<FTransform>& InitialPose);
 
     FName GetSkeletonParamName();
 
@@ -54,8 +54,6 @@ private:
 
     // Delta time from update so that it can be passed to retargeter
     float CachedDeltaTime;
-
-    TSharedPtr<TArray<FTransform>, ESPMode::ThreadSafe> InitialPose;
 
 };
 

@@ -84,15 +84,17 @@ void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Outp
 
     FLiveLinkSkeletonStaticData LiveLinkStatic;
     FLiveLinkAnimationFrameData LiveLinkFrame;
+    TArray<FTransform> InitialPose;
 
     if (!Layout || !Pose)
         return;
 
-    ProcessSkeletonData(Layout, Pose, LiveLinkStatic, LiveLinkFrame);
+    ProcessSkeletonData(Layout, Pose, LiveLinkStatic, LiveLinkFrame, InitialPose);
 
     FLiveLinkSubjectFrameData SubjectFrameData;
 
     check(CurrentRetargetAsset);
+    CurrentRetargetAsset->SetInitialPose(InitialPose);
     CurrentRetargetAsset->BuildPoseFromAnimationData(CachedDeltaTime, &LiveLinkStatic, &LiveLinkFrame, Output.Pose);
     CurrentRetargetAsset->BuildPoseAndCurveFromBaseData(CachedDeltaTime, &LiveLinkStatic, &LiveLinkFrame, Output.Pose, Output.Curve);
     CachedDeltaTime = 0.f; // Reset so that if we evaluate again we don't "create" time inside of the retargeter
@@ -115,7 +117,7 @@ void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& Debug
 
 
 void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose, 
-    FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame)
+    FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame, TArray<FTransform>& InitialPose)
 {
     if (!Layout || !Pose)
         return;
@@ -141,10 +143,11 @@ void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStrea
             , FVector(0.0f, 1.0f, 0.0f)
             , FVector(0.0f, 0.0f, 0.0f)
         ),
-        // Y up matrix for the relative transforms of the rest of the bones 
-        FMatrix(FVector(-1.0f, 0.0f, 0.0f)
+        // Y up matrix for the relative transforms of the rest of the bones
+        // Skeleton pose is defined in Unreal with X sideways
+        FMatrix(FVector(1.0f, 0.0f, 0.0f)
             , FVector(0.0f, 0.0f, 1.0f)
-            , FVector(0.0f, -1.0f, 0.0f)
+            , FVector(0.0f, 1.0f, 0.0f)
             , FVector(0.0f, 0.0f, 0.0f)
         )
     };
@@ -152,8 +155,7 @@ void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStrea
     { // Static data
         LiveLinkStatic.BoneNames.SetNum(Layout->joints.Num());
         LiveLinkStatic.BoneParents.SetNum(Layout->joints.Num());
-        InitialPose = MakeShared<TArray<FTransform>, ESPMode::ThreadSafe>();
-        InitialPose->SetNum(Layout->joints.Num());
+        InitialPose.SetNum(Layout->joints.Num());
         for (int32 i = 0; i < Layout->joints.Num(); ++i)
         {
             const RenderStreamLink::SkeletonJointDesc& Joint = Layout->joints[i];
@@ -163,11 +165,11 @@ void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStrea
             const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
             LiveLinkStatic.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
 
-            //(*InitialPose)[i] = ToUnrealTransform(RootScale
-            //    , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
-            //    , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
-            //    , YUpMats[0]
-            //);
+            InitialPose[i] = ToUnrealTransform(RootScale
+                , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
+                , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
+                , YUpMats[1]
+            );
 
             if (idx == INDEX_NONE)
                 RootIdx = i;

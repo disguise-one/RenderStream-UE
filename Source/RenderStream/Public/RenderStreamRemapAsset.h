@@ -53,6 +53,8 @@ class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
     virtual void BuildPoseAndCurveFromBaseData(float DeltaTime, const FLiveLinkBaseStaticData* InBaseStaticData, const FLiveLinkBaseFrameData* InBaseFrameData, FCompactPose& OutPose, FBlendedCurve& OutCurve) override;
     //~ End ULiveLinkRetargetAsset interface
 
+    void SetInitialPose(const TArray<FTransform>& Pose) { InitialPose = Pose; }
+
     UFUNCTION(BlueprintCallable, Category = "Live Link Remap")
     TEnumAsByte<RenderStreamBoneNameEquivalents> GetBoneNameEquivalent(const FName& SourceBoneName) const;
 
@@ -93,5 +95,7 @@ private:
     TArray<FQuat> ReferenceInitialOrientations;
     TArray<FQuat> ReferenceInitialOrientationOffsets;
     TArray<int32> BoneParentIndices;
+    TArray<FTransform> InitialPose;
+    TArray<int32> ReferenceToStreamedIndices;
     bool Initialised;
 };
