@@ -77,6 +77,8 @@ private:
 
     void OnBlueprintClassCompiled(UBlueprint* TargetBlueprint);
 
+    void InitialiseAnimationData(const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, const FCompactPose& OutPose);
+
     // Name mapping between source bone name and transformed bone name
     // (returned from GetRemappedBoneName)
     TMap<FName, FName> BoneNameMap;
@@ -89,12 +91,10 @@ private:
     /** Blueprint.OnCompiled delegate handle */
     FDelegateHandle OnBlueprintCompiledDelegate;
 #endif
-    
-    TArray<FQuat> MeshBoneWorldRotations;
-    TArray<FVector> MeshBoneWorldPositions;
-    TArray<FQuat> WorldInitialOrientationDifferences;
-    TArray<FQuat> LocalInitialOrientationDifferences;
+
     TArray<FTransform> InitialPose;
+    TArray<FQuat> LocalInitialOrientationDifferences;
+    TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
     
     bool Initialised;
 };

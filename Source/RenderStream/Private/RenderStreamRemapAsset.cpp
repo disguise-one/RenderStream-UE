@@ -64,70 +64,26 @@ void MakeCurveMapFromFrame(const FCompactPose& InPose, const FLiveLinkBaseStatic
     }
 }
 
-void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose)
+void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, const FCompactPose& OutPose)
 {
     const FBoneContainer& BoneContainerRef = OutPose.GetBoneContainer();
     const int32 MeshBoneCount = OutPose.GetNumBones();
-
-    if (!Initialised)
-    {
-        MeshBoneWorldRotations.Init(FQuat::Identity, MeshBoneCount);
-        MeshBoneWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
-        WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
-        LocalInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
-        
-        const TArray<FTransform>& MeshBoneRefPose = BoneContainerRef.GetRefPoseArray();
-
-        // Loop over mesh joints (from OutPose input) and calculate world positions and rotations
-        for (int32 MeshIndex = 0; MeshIndex < MeshBoneCount; ++MeshIndex)
-        {
-            FCompactPoseBoneIndex CPIndex(MeshIndex);
-
-            FQuat Rotation = OutPose[CPIndex].GetRotation();
-            FVector Position = OutPose[CPIndex].GetLocation();
-
-            FCompactPoseBoneIndex CPParentBoneIndex = OutPose.GetParentBoneIndex(CPIndex);
-            if ((CPParentBoneIndex != INDEX_NONE) && (CPParentBoneIndex < MeshBoneCount))
-            {
-                Rotation = MeshBoneWorldRotations[CPParentBoneIndex.GetInt()] * Rotation;
-                Position = Position + MeshBoneWorldPositions[CPParentBoneIndex.GetInt()];  // Find world positions with no rotations applied
-            }
-            else
-            {
-                FTransform T0 = FTransform(Rotation, Position); // * GlobalDeltaTransform;
-                Rotation = T0.GetRotation();
-                Position = T0.GetLocation();
-            }
-
-            int LocalMeshBoneIndex = BoneContainerRef.MakeMeshPoseIndex(CPIndex).GetInt();
-            MeshBoneWorldRotations[LocalMeshBoneIndex] = Rotation;
-            MeshBoneWorldPositions[LocalMeshBoneIndex] = Position;
-        }
-
-        UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
-            *GetName(), MeshBoneCount);
-        Initialised = true;
-    }
 
     const TArray<FName>& SourceBoneNames = InSkeletonData->GetBoneNames();
     const TArray<int32>& SourceParentIndices = InSkeletonData->GetBoneParents();
     const int32 SourceBoneCount = SourceBoneNames.Num();
 
-    TArray<FName, TMemStackAllocator<>> SourceIndexToMeshBoneName;
-    SourceIndexToMeshBoneName.Reserve(SourceBoneCount);
+    SourceToMeshIndex.Init(FCompactPoseBoneIndex(INDEX_NONE), SourceBoneCount);
+    TArray<int32> SourceNumberOfChildren; SourceNumberOfChildren.Init(0, SourceBoneCount);
+    TArray<int32> MeshToSourceIndex; MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
 
-    TArray<int32> SourceNumberOfChildren;
-    SourceNumberOfChildren.Init(0, SourceBoneCount);
-
-    TArray<int32> MeshToSourceIndex;
-    MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
-    
     // Loop through source bone names and find mapping to mesh bones
     // Find remapped bone names and cache them for fast subsequent retrieval.
-    for (int i = 0; i < SourceBoneCount; i++)
+    // NB source bones may not be in hierarchy order
+    for (int SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
     {
         // Find equivalent mesh bone name for current source bone
-        const FName& SourceBoneName = SourceBoneNames[i];
+        const FName& SourceBoneName = SourceBoneNames[SourceIndex];
         FName* MeshBoneNamePtr = BoneNameMap.Find(SourceBoneName);
         FName MeshBoneName;
         if (MeshBoneNamePtr == nullptr)
@@ -140,15 +96,15 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
         {
             MeshBoneName = *MeshBoneNamePtr;
         }
-        SourceIndexToMeshBoneName.Add(MeshBoneName);
 
-        const int32 MeshBoneIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
-        const FCompactPoseBoneIndex CPBoneIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(MeshBoneIndex));
+        const int32 ReferenceMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
+        const FCompactPoseBoneIndex MeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceMeshIndex));
+        const int32 SourceParentBoneIndex = SourceParentIndices[SourceIndex];
 
-        const int32 SourceParentBoneIndex = SourceParentIndices[i];
-        if (CPBoneIndex != INDEX_NONE)
+        if (MeshIndex != INDEX_NONE)
         {
-            MeshToSourceIndex[CPBoneIndex.GetInt()] = i;
+            MeshToSourceIndex[MeshIndex.GetInt()] = SourceIndex;
+            SourceToMeshIndex[SourceIndex] = MeshIndex;
         }
         if (SourceParentBoneIndex != INDEX_NONE)
         {
@@ -159,9 +115,32 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
         *GetName(), SourceBoneCount);
 
-    // Loop over mesh bones and find difference in starting orientation between mesh pose and static data
-    for (int32 MeshIndex = 0; MeshIndex < MeshBoneCount; MeshIndex++)
+    TArray<FQuat> MeshBoneWorldRotations; MeshBoneWorldRotations.Init(FQuat::Identity, MeshBoneCount);
+    TArray<FVector> MeshBoneWorldPositions; MeshBoneWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
+    TArray<FQuat> WorldInitialOrientationDifferences; WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
+    LocalInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
+
+    // Loop over mesh bones (from OutPose input)
+    // Mesh bones should be in hierarchy order
+    for (int32 MeshIndex = 0; MeshIndex < MeshBoneCount; ++MeshIndex)
     {
+        const FCompactPoseBoneIndex CPMeshIndex(MeshIndex);
+
+        // Calculate world positions and rotations
+        FQuat Rotation = OutPose[CPMeshIndex].GetRotation();
+        FVector Position = OutPose[CPMeshIndex].GetLocation();
+
+        const FCompactPoseBoneIndex MeshParentIndex = OutPose.GetParentBoneIndex(CPMeshIndex);
+        if ((MeshParentIndex != INDEX_NONE) && (MeshParentIndex < MeshBoneCount))
+        {
+            Rotation = MeshBoneWorldRotations[MeshParentIndex.GetInt()] * Rotation;
+            Position = Position + MeshBoneWorldPositions[MeshParentIndex.GetInt()];  // Find world positions with no rotations applied
+        }
+
+        MeshBoneWorldRotations[MeshIndex] = Rotation;
+        MeshBoneWorldPositions[MeshIndex] = Position;
+
+        // Find difference in starting orientation between mesh pose and static source data
         const int32 SourceIndex = MeshToSourceIndex[MeshIndex];
         if (SourceIndex == INDEX_NONE)
             continue;
@@ -170,9 +149,7 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
         if (SourceParentIndex == INDEX_NONE)
             continue;
 
-        const FName ParentBoneName = SourceIndexToMeshBoneName[SourceParentIndex];
-        const int32 ReferenceParentMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(ParentBoneName);
-        const int32 ParentMeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceParentMeshIndex)).GetInt();
+        const int32 ParentMeshIndex = SourceToMeshIndex[SourceParentIndex].GetInt();
 
         if ((ParentMeshIndex == INDEX_NONE) || (ParentMeshIndex >= MeshBoneCount))
             continue;
@@ -207,13 +184,26 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
         }
     }
 
+    UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
+        *GetName(), MeshBoneCount);
+}
+
+void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose)
+{
+    const TArray<FName>& SourceBoneNames = InSkeletonData->GetBoneNames();
+    const int32 SourceBoneCount = SourceBoneNames.Num();
+
+    // Initialise data if required
+    if (!Initialised)
+    {
+        InitialiseAnimationData(InSkeletonData, InFrameData, OutPose);
+        Initialised = true;
+    }
+
     // Loop over source pose data and apply to mesh bones
     for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
     {
-        // TODO Cache SourceToMeshIndex (instead of bone names?)
-        const FName MeshBoneName = SourceIndexToMeshBoneName[SourceIndex];
-        const int32 ReferenceMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
-        const FCompactPoseBoneIndex MeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceMeshIndex));
+        const FCompactPoseBoneIndex MeshIndex = SourceToMeshIndex[SourceIndex];
 
         if (MeshIndex != INDEX_NONE)
         {
