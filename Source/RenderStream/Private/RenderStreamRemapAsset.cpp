@@ -117,8 +117,10 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
 
     TArray<FQuat> MeshBoneWorldRotations; MeshBoneWorldRotations.Init(FQuat::Identity, MeshBoneCount);
     TArray<FVector> MeshBoneWorldPositions; MeshBoneWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
-    TArray<FQuat> WorldInitialOrientationDifferences; WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
+    WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
+    WorldInitialOrientationDifferences2.Init(FQuat::Identity, MeshBoneCount);
     LocalInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
+    InitialPoseOrientations.Init(FQuat::Identity, MeshBoneCount);
 
     // Loop over mesh bones (from OutPose input)
     // Mesh bones should be in hierarchy order
@@ -168,6 +170,11 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
         float MeshAngle = UKismetMathLibrary::Atan2(MeshInitialOffset.Z, MeshInitialOffset.X);
         const FQuat MeshInitialRotation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(MeshAngle), 0.f));
 
+        // Find initial rotation
+        const FName& SourceBoneName = SourceBoneNames[SourceIndex];
+        const FQuat InitialRotation = InitialPose[SourceIndex].GetRotation();
+        InitialPoseOrientations[MeshIndex] = InitialRotation;
+
         // Find difference in initial orientation between mesh and source pose
         const FVector SourceInitialOffset = InitialPose[SourceIndex].GetTranslation();
         if (SourceInitialOffset == FVector(0.f, 0.f, 0.f))
@@ -180,8 +187,10 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
             float SourceAngle = UKismetMathLibrary::Atan2(SourceInitialOffset.Z, SourceInitialOffset.X);
             const FQuat SourceInitialRotation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(SourceAngle), 0.f));
             WorldInitialOrientationDifferences[MeshIndex] = SourceInitialRotation * MeshInitialRotation.Inverse();
-            LocalInitialOrientationDifferences[ParentMeshIndex] = WorldInitialOrientationDifferences[MeshIndex] * WorldInitialOrientationDifferences[ParentMeshIndex].Inverse();
+            LocalInitialOrientationDifferences[ParentMeshIndex] = //LocalInitialOrientationDifferences[ParentMeshIndex] *
+                WorldInitialOrientationDifferences[MeshIndex] * WorldInitialOrientationDifferences[ParentMeshIndex].Inverse();
         }
+        WorldInitialOrientationDifferences2[ParentMeshIndex] = WorldInitialOrientationDifferences[MeshIndex];
     }
 
     UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
@@ -218,7 +227,12 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             }
             else
             {
-                OutPose[MeshIndex].SetRotation(SourceBoneTransform.GetRotation() * LocalInitialOrientationDifferences[MeshIndex.GetInt()]);
+                OutPose[MeshIndex].SetRotation(
+                    InitialPoseOrientations[MeshIndex.GetInt()] *
+                    LocalInitialOrientationDifferences[MeshIndex.GetInt()] *
+                    WorldInitialOrientationDifferences2[MeshIndex.GetInt()].Inverse() *
+                    SourceBoneTransform.GetRotation() * 
+                    WorldInitialOrientationDifferences2[MeshIndex.GetInt()]);
             }
         }
     }

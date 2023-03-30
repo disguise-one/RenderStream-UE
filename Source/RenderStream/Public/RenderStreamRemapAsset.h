@@ -93,7 +93,10 @@ private:
 #endif
 
     TArray<FTransform> InitialPose;
+    TArray<FQuat> WorldInitialOrientationDifferences;
+    TArray<FQuat> WorldInitialOrientationDifferences2;
     TArray<FQuat> LocalInitialOrientationDifferences;
+    TArray<FQuat> InitialPoseOrientations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
     
     bool Initialised;
