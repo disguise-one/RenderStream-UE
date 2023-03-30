@@ -90,12 +90,11 @@ private:
     FDelegateHandle OnBlueprintCompiledDelegate;
 #endif
     
-    TArray<FQuat> ReferenceWorldRotations;
-    TArray<FVector> ReferenceWorldPositions;
-    TArray<FQuat> ReferenceInitialOrientations;
-    TArray<FQuat> ReferenceInitialOrientationOffsets;
-    TArray<int32> BoneParentIndices;
+    TArray<FQuat> MeshBoneWorldRotations;
+    TArray<FVector> MeshBoneWorldPositions;
+    TArray<FQuat> WorldInitialOrientationDifferences;
+    TArray<FQuat> LocalInitialOrientationDifferences;
     TArray<FTransform> InitialPose;
-    TArray<int32> ReferenceToStreamedIndices;
+    
     bool Initialised;
 };
