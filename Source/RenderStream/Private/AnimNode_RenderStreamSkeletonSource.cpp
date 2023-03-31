@@ -115,6 +115,16 @@ void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& Debug
     BasePose.GatherDebugData(DebugData);
 }
 
+FTransform ToUnrealTransform(const FVector& d3Pos, const FQuat& d3Rot)
+{
+    // Standard d3 to Unreal coordinate system transform
+    const FVector pos(
+        FUnitConversion::Convert(d3Pos.Z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(d3Pos.X, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(d3Pos.Y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+    const FQuat rotation(d3Rot.Z, d3Rot.X, d3Rot.Y, d3Rot.W);
+    return FTransform(rotation, pos);
+}
 
 void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose, 
     FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame, TArray<FTransform>& InitialPose)
@@ -122,119 +132,52 @@ void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStrea
     if (!Layout || !Pose)
         return;
 
+    // Unreal skeletons are defined with X sideways, rather than Y, so need to apply a 90 degree yaw
+    const FTransform ToSkeletonSpace(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
+
     int32 RootIdx = INDEX_NONE;
 
-    auto ToUnrealTransform = [](const FVector& S, const FQuat& R, const FVector& T, const FMatrix& YUpMatrix) {
-        const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
+    // Static data
+    LiveLinkStatic.BoneNames.SetNum(Layout->joints.Num());
+    LiveLinkStatic.BoneParents.SetNum(Layout->joints.Num());
+    InitialPose.SetNum(Layout->joints.Num());
 
-        FMatrix D3Mat = R.ToMatrix();
-        D3Mat.SetOrigin(T);
-        D3Mat.ScaleTranslation(S);
+    for (int32 i = 0; i < Layout->joints.Num(); ++i)
+    {
+        const RenderStreamLink::SkeletonJointDesc& Joint = Layout->joints[i];
+        const FString& Name = Layout->jointNames[i];
 
-        return FTransform(YUpMatrix * D3Mat * YUpMatrixInv);
-    };
+        // Set bone names and parent indices
+        LiveLinkStatic.BoneNames[i] = FName(Name);
+        const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
+        LiveLinkStatic.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
+        if (idx == INDEX_NONE)
+            RootIdx = i;
 
-    const FVector RootScale(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
-
-    static const FMatrix YUpMats[] = {
-        // Y up matrix for root pose transform and root bone transform
-        FMatrix(FVector(0.0f, 0.0f, 1.0f)
-            , FVector(1.0f, 0.0f, 0.0f)
-            , FVector(0.0f, 1.0f, 0.0f)
-            , FVector(0.0f, 0.0f, 0.0f)
-        ),
-        // Y up matrix for the relative transforms of the rest of the bones
-        // Skeleton pose is defined in Unreal with X sideways
-        FMatrix(FVector(1.0f, 0.0f, 0.0f)
-            , FVector(0.0f, 0.0f, -1.0f)
-            , FVector(0.0f, 1.0f, 0.0f)
-            , FVector(0.0f, 0.0f, 0.0f)
-        )
-    };
-
-    { // Static data
-        LiveLinkStatic.BoneNames.SetNum(Layout->joints.Num());
-        LiveLinkStatic.BoneParents.SetNum(Layout->joints.Num());
-        InitialPose.SetNum(Layout->joints.Num());
-        for (int32 i = 0; i < Layout->joints.Num(); ++i)
-        {
-            const RenderStreamLink::SkeletonJointDesc& Joint = Layout->joints[i];
-            const FString& Name = Layout->jointNames[i];
-
-            LiveLinkStatic.BoneNames[i] = FName(Name);
-            const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
-            LiveLinkStatic.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
-
-            FVector pos;
-            pos.X = FUnitConversion::Convert(float(Joint.transform.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
-            pos.Y = FUnitConversion::Convert(float(Joint.transform.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
-            pos.Z = FUnitConversion::Convert(float(Joint.transform.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
-
-
-            const int YUpMatIdx = 1;
-            FTransform RotTransform = ToUnrealTransform(RootScale
-                , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
-                , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
-                , YUpMats[YUpMatIdx]
-            );
-            FQuat rotation = RotTransform.GetRotation();
-            
-            //FQuat rotation(Joint.transform.rz, Joint.transform.rx, Joint.transform.ry, Joint.transform.rw);
-
-            InitialPose[i] = FTransform(rotation, pos);// *FQuat::MakeFromRotator(FRotator(0, 90, 0));
-
-            if (idx == INDEX_NONE)
-                RootIdx = i;
-        }
+        // Set initial pose
+        const FTransform JointPoseUE = ToUnrealTransform(FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z),
+            FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw));
+        InitialPose[i] = ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
     }
 
-    { // Frame Data
-        LiveLinkFrame.Transforms.SetNum(Pose->joints.Num());
-        // calculate all transforms, for root joint and all others
-        for (int32 i = 0; i < Pose->joints.Num(); ++i)
-        {
-            const RenderStreamLink::SkeletonJointPose& Joint = Pose->joints[i];
+    // Frame Data
+    LiveLinkFrame.Transforms.SetNum(Pose->joints.Num());
 
-            const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
+    for (int32 i = 0; i < Pose->joints.Num(); ++i)
+    {
+        // Set live pose for each joint
+        const RenderStreamLink::SkeletonJointPose& Joint = Pose->joints[i];
+        const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
 
-      /*      FVector pos;
-            pos.X = FUnitConversion::Convert(float(Joint.transform.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
-            pos.Y = FUnitConversion::Convert(float(Joint.transform.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
-            pos.Z = FUnitConversion::Convert(float(Joint.transform.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
-
-            FQuat rotation(Joint.transform.rz, Joint.transform.ry, Joint.transform.rx, Joint.transform.rw);
-
-            LiveLinkFrame.Transforms[idx] = FTransform(rotation, pos);*/
-
-            
-            const int YUpMatIdx = 1;
-            LiveLinkFrame.Transforms[idx] = ToUnrealTransform(RootScale
-                , FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw)
-                , FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z)
-                , YUpMats[YUpMatIdx]
-            );
-        }
-
-        FVector pos;
-        pos.X = FUnitConversion::Convert(float(Pose->rootPosition.Z), EUnit::Meters, FRenderStreamModule::distanceUnit());
-        pos.Y = FUnitConversion::Convert(float(Pose->rootPosition.X), EUnit::Meters, FRenderStreamModule::distanceUnit());
-        pos.Z = FUnitConversion::Convert(float(Pose->rootPosition.Y), EUnit::Meters, FRenderStreamModule::distanceUnit());
-
-        FQuat rotation(Pose->rootOrientation.Z, Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.W);
-
-        LiveLinkFrame.Transforms[RootIdx] = FTransform(rotation * FQuat::MakeFromRotator(FRotator(0, 90, 0)), pos);
-
-        //// get correct scale and parent transform for root joint
-        //const FTransform PoseRootTransform = ToUnrealTransform(RootScale, FQuat(Pose->rootOrientation), FVector(Pose->rootPosition), YUpMats[0]);
-        //FTransform& RootBoneTransform = LiveLinkFrame.Transforms[RootIdx];
-        //// combined rotations, including 90 degree yaw
-        //FTransform FinalTransform = FTransform(PoseRootTransform.GetRotation() * RootBoneTransform.GetRotation());
-        //FinalTransform.ConcatenateRotation(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
-        //// combined translation, unaffected by rotations
-        //FinalTransform.SetTranslation(PoseRootTransform.GetTranslation() + RootBoneTransform.GetTranslation());
-        //// update root joint transform
-        //RootBoneTransform = FinalTransform;
+        const FTransform JointPoseUE = ToUnrealTransform(FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z),
+            FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw));
+        LiveLinkFrame.Transforms[idx] = ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
     }
+
+    // Root pose
+    const FTransform RootPoseUE = ToUnrealTransform(FVector(Pose->rootPosition.X, Pose->rootPosition.Y, Pose->rootPosition.Z),
+        FQuat(Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.Z, Pose->rootOrientation.W));
+    LiveLinkFrame.Transforms[RootIdx] = ToSkeletonSpace * RootPoseUE;
 }
 
 FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()
