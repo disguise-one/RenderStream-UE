@@ -422,7 +422,7 @@ void GenerateScene(
     const URenderStreamChannelCacheAsset* Cache,
     const URenderStreamChannelCacheAsset* Persistent)
 {
-    FString sceneName = Cache->Level.GetAssetPath().GetAssetName().ToString();
+    FString sceneName = Cache->GetName();
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
     TArray<const URenderStreamChannelCacheAsset*> Levels;
