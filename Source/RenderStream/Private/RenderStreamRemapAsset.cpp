@@ -130,6 +130,7 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
 
     // Temporary vectors used to initialise the persistent vectors above
     TArray<FVector> MeshBoneWorldPositions; MeshBoneWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
+    TArray<FQuat> MeshBoneWorldRotations; MeshBoneWorldRotations.Init(FQuat::Identity, MeshBoneCount);
     TArray<FQuat> WorldInitialOrientationDifferences;  WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
 
     // Loop over mesh bones (from OutPose input)
@@ -140,14 +141,17 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
 
         // Calculate world positions of bones in initial mesh pose
         FVector Position = OutPose[CPMeshIndex].GetLocation();
+        FQuat Rotation = OutPose[CPMeshIndex].GetRotation();
 
         const FCompactPoseBoneIndex MeshParentIndex = OutPose.GetParentBoneIndex(CPMeshIndex);
         if ((MeshParentIndex != INDEX_NONE) && (MeshParentIndex < MeshBoneCount))
         {
             Position = Position + MeshBoneWorldPositions[MeshParentIndex.GetInt()];  // Find world positions with no rotations applied
+            Rotation = Rotation * MeshBoneWorldRotations[MeshParentIndex.GetInt()];
         }
 
         MeshBoneWorldPositions[MeshIndex] = Position;
+        MeshBoneWorldRotations[MeshIndex] = Rotation;
 
         // Find difference in starting orientation between mesh pose and static source data
         const int32 SourceIndex = MeshToSourceIndex[MeshIndex];
@@ -176,12 +180,18 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
         const FQuat InitialRotation = InitialPose[SourceIndex].GetRotation();
         SourceInitialPoseRotations[MeshIndex] = InitialRotation;
 
+        // Find root bone transform
+        if (GetBoneNameEquivalent_Internal(SourceBoneName) == EquivalentPelvis)
+        {
+            RootBoneTransform.SetLocation(Position);
+            RootBoneTransform.SetRotation(Rotation);
+        }
+
         // Find offset between mesh joint and the SOURCE pose's parent (in case source contains fewer bones than mesh)
         // And use this to calculate the initial orientation of the mesh pose bone
         const FVector MeshInitialOffset = MeshBoneWorldPositions[MeshIndex] - MeshBoneWorldPositions[ParentMeshIndex];
-        //FQuat InitialRotation = FQuat::FindBetweenVectors(FVector(1.f, 0.f, 0.f), InitialOffset);
-        float MeshAngle = UKismetMathLibrary::Atan2(MeshInitialOffset.Z, MeshInitialOffset.X);
-        const FQuat MeshInitialOrientation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(MeshAngle), 0.f));
+        float MeshRollAngle = UKismetMathLibrary::Atan2(MeshInitialOffset.Z, MeshInitialOffset.X);
+        const FQuat MeshInitialOrientation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(MeshRollAngle), 0.f));
 
         // Find difference in initial orientation between mesh and source pose
         const FVector SourceInitialOffset = InitialPose[SourceIndex].GetTranslation();
@@ -192,9 +202,8 @@ void URenderStreamRemapAsset::InitialiseAnimationData(const FLiveLinkSkeletonSta
         else
         {
             // Calculate the initial orientation of the bone in the source pose
-            //InitialRotationStreamed = FQuat::FindBetweenVectors(FVector(1.f, 0.f, 0.f), InitialOffsetStreamed);
-            float SourceAngle = UKismetMathLibrary::Atan2(SourceInitialOffset.Z, SourceInitialOffset.X);
-            const FQuat SourceInitialOrientation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(SourceAngle), 0.f));
+            float SourceRollAngle = UKismetMathLibrary::Atan2(SourceInitialOffset.Z, SourceInitialOffset.X);
+            const FQuat SourceInitialOrientation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(SourceRollAngle), 0.f));
 
             // Calculate orientation differences between the source and mesh poses
             // World orientation difference is the global difference in orientations of the bones
@@ -231,11 +240,13 @@ void URenderStreamRemapAsset::BuildPoseFromAnimationData(float DeltaTime, const 
             const FName& SourceBoneName = SourceBoneNames[SourceIndex];
             const FTransform& SourceBoneTransform = InFrameData->Transforms[SourceIndex];
 
-            // Only use position + rotation data for root. For all other bones, set rotation only.
+            // Root position and rotation are set in the actor transform.
+            // Apply the inverse of the root bone transform here to ensure the root stays at zero
             if (GetBoneNameEquivalent_Internal(SourceBoneName) == EquivalentPelvis)
             {
-                OutPose[MeshIndex].SetLocation(SourceBoneTransform.GetTranslation());
-                OutPose[MeshIndex].SetRotation(SourceBoneTransform.GetRotation());
+                FTransform RootInverseTransform = RootBoneTransform.Inverse();
+                OutPose[MeshIndex].SetLocation(RootInverseTransform.GetTranslation());
+                OutPose[MeshIndex].SetRotation(RootInverseTransform.GetRotation());
             }
             else
             {

@@ -10,6 +10,9 @@
 #include "Roles/LiveLinkAnimationRole.h"
 #include "Roles/LiveLinkAnimationTypes.h"
 
+#include "Kismet/GameplayStatics.h"
+#include "Animation/SkeletalMeshActor.h"
+
 FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
     : RetargetAsset(URenderStreamRemapAsset::StaticClass())
     , CurrentRetargetAsset(nullptr)
@@ -20,14 +23,80 @@ FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
 
 void FAnimNode_RenderStreamSkeletonSource::OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance)
 {
+    // Doesn't seem to be called
+
     CurrentRetargetAsset = nullptr;
 
     Super::OnInitializeAnimInstance(InProxy, InAnimInstance);
 }
 
+void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& ParamName)
+{
+    // Find and cache any skeleton actors using this animation node
+    SkeletonActors.clear();
+    USkeleton* ThisSkeleton = nullptr;
+    const UAnimBlueprintGeneratedClass* BPClass = dynamic_cast<const UAnimBlueprintGeneratedClass*>(GetAnimClassInterface());
+    FString SkeletonName = ParamName.ToString();
+
+    if (!BPClass)
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. Couldn't find blueprint class"), *SkeletonName);
+        return;
+    }
+
+    ThisSkeleton = BPClass->TargetSkeleton;
+    if (!ThisSkeleton)
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. Blueprint class has no target skeleton"), *SkeletonName);
+        return;
+    }
+
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(GWorld, ASkeletalMeshActor::StaticClass(), FoundActors);
+
+    if (FoundActors.IsEmpty())
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No skeletal mesh actors found"), *SkeletonName);
+        return;
+    }
+
+    for (AActor* Actor : FoundActors)
+    {
+        if (ASkeletalMeshActor* SkeletalMeshActor = Cast<ASkeletalMeshActor>(Actor))
+        {
+            USkeletalMesh* SkeletalMesh = SkeletalMeshActor->ReplicatedMesh;
+            if (SkeletalMesh)
+            {
+                USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+                if (Skeleton == ThisSkeleton)
+                {
+                    SkeletonActors.push_back(TWeakObjectPtr<ASkeletalMeshActor>(SkeletalMeshActor));
+                }
+            }
+        }
+    }
+
+    if (SkeletonActors.empty())
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No corresponding skeletal mesh actors found"), *SkeletonName);
+    }
+}
+
 void FAnimNode_RenderStreamSkeletonSource::Initialize_AnyThread(const FAnimationInitializeContext& Context)
 {
     BasePose.Initialize(Context);
+}
+
+
+FTransform ToUnrealTransform(const FVector& d3Pos, const FQuat& d3Rot)
+{
+    // Standard d3 to Unreal coordinate system transform
+    const FVector pos(
+        FUnitConversion::Convert(d3Pos.Z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(d3Pos.X, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(d3Pos.Y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+    const FQuat rotation(d3Rot.Z, d3Rot.X, d3Rot.Y, d3Rot.W);
+    return FTransform(rotation, pos);
 }
 
 void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnimInstance)
@@ -52,6 +121,53 @@ void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnim
     {
         CurrentRetargetAsset = NewObject<URenderStreamRemapAsset>(const_cast<UAnimInstance*>(InAnimInstance), RetargetAssetPtr);
         CurrentRetargetAsset->Initialize();
+    }
+
+    // Get the name of the exposed parameter
+    const FName ParamName = GetSkeletonParamName();
+    if (ParamName == FName())
+        return;
+
+    // Find and cache skeleton actors using this animnode
+    if (!SkeletonActorsCached)
+    {
+        CacheSkeletonActors(ParamName);
+        SkeletonActorsCached = true;
+    }
+
+    // Apply the root pose to the skeleton actors
+    ApplyRootPose(ParamName);
+}
+
+void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
+{
+    const FRenderStreamModule* Module = FRenderStreamModule::Get();
+
+    if (!Module)
+        return;
+    
+    const RenderStreamLink::FSkeletalPose* Pose = Module->GetSkeletalPose(ParamName);
+
+    if (!Pose)
+        return;
+
+    // Transform root pose to UE coordinate system
+    const FTransform RootPoseUE = ToUnrealTransform(FVector(Pose->rootPosition.X, Pose->rootPosition.Y, Pose->rootPosition.Z),
+        FQuat(Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.Z, Pose->rootOrientation.W));
+
+    // Apply pose to any cached skeleton actors
+    for (const TWeakObjectPtr<ASkeletalMeshActor> SkeletonActor : SkeletonActors)
+    {
+        if (SkeletonActor.IsValid())
+        {
+            USceneComponent* SceneComponent = SkeletonActor->K2_GetRootComponent();
+            if (SceneComponent)
+            {
+                const FQuat RotationOffset = FQuat::MakeFromRotator(FRotator(0, 90, 0)) * RootPoseUE.GetRotation();  // Apply 90 degree yaw to account for skeleton default orientation
+                SceneComponent->SetRelativeRotation(RotationOffset);
+                SceneComponent->SetRelativeLocation(RootPoseUE.GetLocation());
+            }
+        }
     }
 }
 
@@ -115,17 +231,6 @@ void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& Debug
     BasePose.GatherDebugData(DebugData);
 }
 
-FTransform ToUnrealTransform(const FVector& d3Pos, const FQuat& d3Rot)
-{
-    // Standard d3 to Unreal coordinate system transform
-    const FVector pos(
-        FUnitConversion::Convert(d3Pos.Z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(d3Pos.X, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(d3Pos.Y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
-    const FQuat rotation(d3Rot.Z, d3Rot.X, d3Rot.Y, d3Rot.W);
-    return FTransform(rotation, pos);
-}
-
 void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose, 
     FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame, TArray<FTransform>& InitialPose)
 {
@@ -173,11 +278,6 @@ void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStrea
             FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw));
         LiveLinkFrame.Transforms[idx] = ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
     }
-
-    // Root pose
-    const FTransform RootPoseUE = ToUnrealTransform(FVector(Pose->rootPosition.X, Pose->rootPosition.Y, Pose->rootPosition.Z),
-        FQuat(Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.Z, Pose->rootOrientation.W));
-    LiveLinkFrame.Transforms[RootIdx] = ToSkeletonSpace * RootPoseUE;
 }
 
 FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()

@@ -97,6 +97,7 @@ private:
     TArray<FQuat> LocalInitialOrientationDifferences;
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
+    FTransform RootBoneTransform;
     
     bool Initialised;
 };

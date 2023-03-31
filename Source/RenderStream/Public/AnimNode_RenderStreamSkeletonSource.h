@@ -11,6 +11,7 @@
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
 
 class ILiveLinkClient;
+class ASkeletalMeshActor;
 
 USTRUCT(BlueprintType)
 struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_Base
@@ -46,6 +47,9 @@ protected:
     void ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose,
         FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame, TArray<FTransform>& InitialPose);
 
+    void CacheSkeletonActors(const FName& ParamName);
+    void ApplyRootPose(const FName& ParamName);
+
     FName GetSkeletonParamName();
 
 private:
@@ -54,6 +58,9 @@ private:
 
     // Delta time from update so that it can be passed to retargeter
     float CachedDeltaTime;
+
+    std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
+    bool SkeletonActorsCached;
 
 };
 
