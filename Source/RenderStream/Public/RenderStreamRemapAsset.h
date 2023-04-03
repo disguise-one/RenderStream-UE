@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "LiveLinkRetargetAsset.h"
 #include "RenderStreamRemapAsset.generated.h"
 
 UENUM(BlueprintType)
@@ -38,24 +37,17 @@ enum RenderStreamBoneNameEquivalents
  * 
  */
 UCLASS(Blueprintable)
-class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
+class RENDERSTREAM_API URenderStreamRemapAsset : public UObject
 {
     GENERATED_UCLASS_BODY()
     
-    virtual ~URenderStreamRemapAsset() override {}
-
-    //~ Begin UObject Interface
     virtual void BeginDestroy() override;
-    //~ End UObject Interface
 
-    //~ Begin ULiveLinkRetargetAsset interface
-    //~ End ULiveLinkRetargetAsset interface
-
-    UFUNCTION(BlueprintCallable, Category = "Live Link Remap")
+    UFUNCTION(BlueprintCallable, Category = "RenderStream Remap")
     TEnumAsByte<RenderStreamBoneNameEquivalents> GetBoneNameEquivalent(const FName& SourceBoneName) const;
 
     /** Blueprint Implementable function for getting a remapped bone name from the original */
-    UFUNCTION(BlueprintNativeEvent, Category = "Live Link Remap")
+    UFUNCTION(BlueprintNativeEvent, Category = "RenderStream Remap")
     FName GetRemappedBoneName(FName BoneName) const;
 
     FName GetMeshBoneName(const FName& SourceBoneName);
@@ -68,8 +60,6 @@ private:
 
     void OnBlueprintClassCompiled(UBlueprint* TargetBlueprint);
 
-    // Name mapping between source bone name and transformed bone name
-    // (returned from GetRemappedBoneName)
     TMap<FName, FName> BoneNameMap;
 
 #if WITH_EDITOR

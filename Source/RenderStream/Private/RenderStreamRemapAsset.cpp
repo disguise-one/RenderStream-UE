@@ -1,13 +1,8 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-
 #include "RenderStreamRemapAsset.h"
 #include "RenderStream.h"
 
 #include "BonePose.h"
 #include "Engine/Blueprint.h"
-#include "LiveLinkTypes.h"
-#include "Roles/LiveLinkAnimationTypes.h"
 
 #pragma optimize("", off)
 
@@ -131,6 +126,7 @@ FName URenderStreamRemapAsset::GetRemappedBoneName_Implementation(FName BoneName
 
 FName URenderStreamRemapAsset::GetMeshBoneName(const FName& SourceBoneName)
 {
+    // Cache bone name map for faster lookups
     FName* MeshBoneNamePtr = BoneNameMap.Find(SourceBoneName);
     FName MeshBoneName;
     if (MeshBoneNamePtr == nullptr)

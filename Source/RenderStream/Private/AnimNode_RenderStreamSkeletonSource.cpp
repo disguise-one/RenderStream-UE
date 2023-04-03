@@ -3,8 +3,6 @@
 
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimTrace.h"
-#include "Features/IModularFeatures.h"
-#include "LiveLinkRemapAsset.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -95,7 +93,6 @@ void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnim
     if (!CurrentRetargetAsset || RetargetAssetPtr != CurrentRetargetAsset->GetClass())
     {
         CurrentRetargetAsset = NewObject<URenderStreamRemapAsset>(const_cast<UAnimInstance*>(InAnimInstance), RetargetAssetPtr);
-        CurrentRetargetAsset->Initialize();
     }
 
     // Get the name of the exposed parameter
