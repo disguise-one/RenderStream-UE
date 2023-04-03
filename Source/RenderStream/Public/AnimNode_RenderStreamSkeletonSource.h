@@ -3,7 +3,6 @@
 #include "Animation/AnimNodeBase.h"
 
 #include "CoreMinimal.h"
-#include "RenderStreamRemapAsset.h"
 #include "RenderStreamLink.h"
 
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
@@ -20,12 +19,8 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Input)
         FPoseLink BasePose;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, NoClear, Category = Retarget, meta = (PinShownByDefault))
-        TSubclassOf<URenderStreamRemapAsset> RetargetAsset;
-
-    UPROPERTY(transient)
-        TObjectPtr<URenderStreamRemapAsset> CurrentRetargetAsset;
-
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
+        TMap<FName, FName> BoneNameMap;
 public:
     FAnimNode_RenderStreamSkeletonSource();
 
@@ -37,10 +32,7 @@ public:
     virtual void PreUpdate(const UAnimInstance* InAnimInstance) override;
     virtual void GatherDebugData(FNodeDebugData& DebugData) override;
 
-    //bool Serialize(FArchive& Ar);
-
 protected:
-    virtual void OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance) override;
 
     void CacheSkeletonActors(const FName& ParamName);
     void ApplyRootPose(const FName& ParamName);
@@ -49,6 +41,8 @@ protected:
 
     void InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose);
     void BuildPoseFromAnimationData(const RenderStreamLink::FSkeletalPose& Pose, FCompactPose& OutPose);
+
+    static bool IsRootBone(const FName& SourceBoneName);
 
 private:
     std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;

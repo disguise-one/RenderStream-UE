@@ -8,19 +8,55 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Animation/SkeletalMeshActor.h"
 
-FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
-    : RetargetAsset(URenderStreamRemapAsset::StaticClass())
-    , CurrentRetargetAsset(nullptr)
+TMap<FName, FName> GetDefaultBoneNameMap()
 {
+    TMap<FName, FName> BoneMap;
+
+    const std::vector<FName> ExpectedBones =
+    {
+        "R",
+        "Spine",
+        "Chest",
+        "Neck",
+        "L_Hip",
+        "L_Knee",
+        "L_Ankle",
+        "L_Foot_Pinky",
+        "L_Shoulder",
+        "L_Elbow",
+        "L_Wrist",
+        "R_Hip",
+        "R_Knee",
+        "R_Ankle",
+        "R_Foot_Pinky",
+        "R_Shoulder",
+        "R_Elbow",
+        "R_Wrist",
+        "L_Big_Toe",
+        "L_Shoulder_Prism",
+        "L_Hand1",
+        "L_Hand2",
+        "R_Big_Toe",
+        "R_Shoulder_Prism",
+        "R_Hand1",
+        "R_Hand2",
+        "L_Ear",
+        "L_Eye",
+        "R_Ear",
+        "R_Eye"
+    };
+
+    for (const FName& Bone : ExpectedBones)
+    {
+        BoneMap.Add(Bone, Bone);
+    }
+
+    return BoneMap;
 }
 
-void FAnimNode_RenderStreamSkeletonSource::OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance)
+FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
 {
-    // Doesn't seem to be called
-
-    CurrentRetargetAsset = nullptr;
-
-    Super::OnInitializeAnimInstance(InProxy, InAnimInstance);
+    BoneNameMap = GetDefaultBoneNameMap();
 }
 
 void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& ParamName)
@@ -82,19 +118,6 @@ void FAnimNode_RenderStreamSkeletonSource::Initialize_AnyThread(const FAnimation
 
 void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnimInstance)
 {
-    // Protection as a class graph pin does not honor rules on abstract classes and NoClear
-    UClass* RetargetAssetPtr = RetargetAsset.Get();
-    if (!RetargetAssetPtr || RetargetAssetPtr->HasAnyClassFlags(CLASS_Abstract))
-    {
-        RetargetAssetPtr = URenderStreamRemapAsset::StaticClass();
-        RetargetAsset = RetargetAssetPtr;
-    }
-
-    if (!CurrentRetargetAsset || RetargetAssetPtr != CurrentRetargetAsset->GetClass())
-    {
-        CurrentRetargetAsset = NewObject<URenderStreamRemapAsset>(const_cast<UAnimInstance*>(InAnimInstance), RetargetAssetPtr);
-    }
-
     // Get the name of the exposed parameter
     const FName ParamName = GetSkeletonParamName();
     if (ParamName == FName())
@@ -161,10 +184,8 @@ void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Outp
 
     const FRenderStreamModule* Module = FRenderStreamModule::Get();
 
-    if (!CurrentRetargetAsset || !Module)
-    {
+    if (!Module)
         return;
-    }
 
     FName ParamName = GetSkeletonParamName();
     const RenderStreamLink::FSkeletalPose* Pose = Module->GetSkeletalPose(ParamName);
@@ -233,6 +254,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
 {
     const FBoneContainer& BoneContainerRef = OutPose.GetBoneContainer();
     const int32 MeshBoneCount = OutPose.GetNumBones();
+    const FName SkeletonName = GetSkeletonParamName();
 
     // Initialise bone info vectors
     const int32 SourceBoneCount = Layout.joints.Num();
@@ -257,9 +279,13 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         InitialPose[SourceIndex] = ToUnrealTransform(Joint.transform);
 
         // Find equivalent mesh bone name and index for current source bone
-        const FName MeshBoneName = CurrentRetargetAsset->GetMeshBoneName(SourceBoneName);
-        const int32 ReferenceMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
-        const FCompactPoseBoneIndex MeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceMeshIndex));
+        FCompactPoseBoneIndex MeshIndex(INDEX_NONE);
+        if (BoneNameMap.Contains(SourceBoneName))
+        {
+            const FName MeshBoneName = BoneNameMap[SourceBoneName];
+            const int32 ReferenceMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
+            MeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceMeshIndex));
+        }
 
         // Populate mappings between indices and number of children
         if (MeshIndex != INDEX_NONE)
@@ -273,7 +299,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         }
     }
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
-        *CurrentRetargetAsset->GetName(), SourceBoneCount);
+        *SkeletonName.ToString(), SourceBoneCount);
 
     // We now go through and calculate any differences between the initial pose of the mesh, and the initial pose of the source data
     // Then we can account for these offsets when applying the live source frame data to the skeleton
@@ -341,7 +367,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         SourceInitialPoseRotations[MeshIndex] = InitialRotation;
 
         // Find root bone transform
-        if (CurrentRetargetAsset->IsRootBone(SourceBoneName))
+        if (IsRootBone(SourceBoneName))
         {
             RootBoneTransform.SetLocation(Position);
             RootBoneTransform.SetRotation(Rotation);
@@ -375,7 +401,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
     }
 
     UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
-        *CurrentRetargetAsset->GetName(), MeshBoneCount);
+        *SkeletonName.ToString(), MeshBoneCount);
 }
 
 void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const RenderStreamLink::FSkeletalPose& Pose, FCompactPose& OutPose)
@@ -396,7 +422,7 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
 
             // Root position and rotation are set in the actor transform.
             // Apply the inverse of the root bone transform here to ensure the root stays at zero
-            if (CurrentRetargetAsset->IsRootBone(SourceBoneName))
+            if (IsRootBone(SourceBoneName))
             {
                 FTransform RootInverseTransform = RootBoneTransform.Inverse();
                 OutPose[MeshIndex].SetLocation(RootInverseTransform.GetTranslation());
@@ -414,6 +440,12 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
             }
         }
     }
+    const FName SkeletonName = GetSkeletonParamName();
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Applied Live Link pose data to %d poses"),
-        *CurrentRetargetAsset->GetName(), SourceBoneCount);
+        *SkeletonName.ToString(), SourceBoneCount);
+}
+
+/*static*/ bool FAnimNode_RenderStreamSkeletonSource::IsRootBone(const FName& SourceBoneName)
+{
+    return SourceBoneName == "R";
 }
