@@ -18,6 +18,7 @@ enum class RenderStreamParameterType : uint8
     Transform,
     Text,
     Event,
+    Skeleton,
 };
 
 RENDERSTREAM_API RenderStreamLink::RemoteParameterType RenderStreamParameterTypeToLink(RenderStreamParameterType type);

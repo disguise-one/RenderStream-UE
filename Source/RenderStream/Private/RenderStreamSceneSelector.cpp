@@ -1,10 +1,8 @@
 #include "RenderStreamSceneSelector.h"
-#include "Core.h"
 #include "GameFramework/Actor.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include <string.h>
 #include <malloc.h>
-#include <algorithm>
 #include "RenderStream.h"
 #include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
@@ -27,8 +25,8 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
 
         if (Level->IsPersistentLevel())
         {
-            auto World = Level->GetWorld();
-            for (ULevelStreaming* SubLevel : World->GetStreamingLevels())
+            const auto World = Level->GetWorld();
+            for (const ULevelStreaming* SubLevel : World->GetStreamingLevels())
                 if (SubLevel->GetLoadedLevel() != Level)
                     GetAllLevels(Actors, SubLevel->GetLoadedLevel());
 
@@ -65,7 +63,7 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
     uint32_t nBytes = 0;
     RenderStreamLink::instance().rs_loadSchema(AssetPath.c_str(), nullptr, &nBytes);
 
-    const static int MAX_TRIES = 3;
+    constexpr static int MAX_TRIES = 3;
     int iterations = 0;
 
     RenderStreamLink::RS_ERROR res = RenderStreamLink::RS_ERROR_BUFFER_OVERFLOW;
@@ -115,7 +113,7 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 
 static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamLink::RemoteParameterType expectedType, const RenderStreamLink::RemoteParameter& parameter)
 {
-    FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
+    const FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
     
     if (key != parameter.key || expectedType != parameter.type)
     {
@@ -136,7 +134,7 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
 
-        size_t increment = ValidateParameters(actor, sceneParameters.parameters + offset, sceneParameters.nParameters);
+        const size_t increment = ValidateParameters(actor, sceneParameters.parameters + offset, sceneParameters.nParameters);
         if (increment == SIZE_MAX)
         {
             UE_LOG(LogRenderStream, Error, TEXT("Schema validation failed for actor '%s'"), *actor->GetName());
@@ -355,6 +353,23 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Warning, TEXT("Unknown object property: %s"), *Name);
             }
         }
+        else if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+        {
+            const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
+            const FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed skeleton property: %s"), *Name);
+                if (numParameters < nParameters + 1)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_SKELETON, parameters[nParameters]);
+                ++nParameters;
+            }
+        }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
         {
             UE_LOG(LogRenderStream, Log, TEXT("Exposed text property: %s"), *Name);
@@ -387,6 +402,7 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     size_t nFloatParams = 0;
     size_t nImageParams = 0;
     size_t nTextParams = 0;
+    size_t nPoseParams = 0;
     for (size_t i = 0; i < params.nParameters ; ++i)
     {
         const RenderStreamLink::RemoteParameter& param = params.parameters[i];
@@ -405,6 +421,9 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
             break;
         case RenderStreamLink::RS_PARAMETER_TEXT:
             nTextParams++;
+            break;
+        case RenderStreamLink::RS_PARAMETER_SKELETON:
+            nPoseParams++;
             break;
         default:
             UE_LOG(LogRenderStream, Error, TEXT("Unhandled parameter type"));
@@ -442,7 +461,7 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
-void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals) const
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
     struct
@@ -464,6 +483,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     size_t iFloat = 0;
     size_t iImage = 0;
     size_t iText = 0;
+    size_t iPose = 0;
 
     const float* floatValues = *ppFloatValues;
     const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
@@ -593,16 +613,16 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         }
         else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
         {
-            if (iImage >= nImageVals)
-            {
-                UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
-                continue;
-            }
-
             const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
             UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
             if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
             {
+                if (iImage >= nImageVals)
+                {
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                    continue;
+                }
+
                 const RenderStreamLink::ImageFrameData& frameData = imageValues[iImage];
                 if (!Texture->bGPUSharedFlag || Texture->GetFormat() != formatMap[frameData.format].ue)
                 {
@@ -618,7 +638,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 [this, toggle, Texture, frameData, iImage](FRHICommandListImmediate& RHICmdList)
                 {
                     SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Block %d"), iImage);
-                    auto rtResource = Texture->GetRenderTargetResource();
+                    const auto rtResource = Texture->GetRenderTargetResource();
                     if (!rtResource)
                     {
                         return;
@@ -681,6 +701,16 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 ++iImage;
             }
         }
+        else if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+        {
+            const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
+            FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
+            {
+                ApplySkeletalPose(specHash, iPose++, Property->GetName(), PropKey);
+            }
+        }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
         {
             const char* cString = nullptr;
@@ -690,12 +720,99 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             }
             ++iText;
         }
-        
         ++iParam;
     }
-    
+
     *ppFloatValues += iFloat;
     *ppImageValues += iImage;
     *ppParams += iParam;
+}
 
+void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPose, const FString& ParamKey, RenderStreamLink::FAnimDataKey& PropKey)
+{
+    // first get the pose for this param index
+    RenderStreamLink::FSkeletalPose Pose;
+    {
+        RenderStreamLink::SkeletonPose rsPose{};
+        int nJoints;
+        if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, nullptr, &nJoints);
+            Err != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose size for index %llu. Error: %d"), iPose, Err);
+            return;
+        }
+
+        Pose.joints.SetNum(nJoints);
+        rsPose.joints = Pose.joints.GetData();
+        if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, &rsPose, &nJoints);
+            Err  != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose %llu with %d joints. Error: %d"), iPose, Err, nJoints);
+            return;
+        }
+
+        Pose.layoutId = rsPose.layoutId;
+        Pose.layoutVersion = rsPose.layoutVersion;
+        Pose.rootPosition = FVector3f(rsPose.rootTransform.x, rsPose.rootTransform.y, rsPose.rootTransform.z);
+        Pose.rootOrientation = FQuat4f(rsPose.rootTransform.rx, rsPose.rootTransform.ry, rsPose.rootTransform.rz, rsPose.rootTransform.rw);
+    }
+
+    // check the layout cache for the layout associated with this pose
+    const RenderStreamLink::FSkeletalLayout* Layout = m_skeletalLayoutCache.Find(Pose.layoutId);
+    if (!Layout || Layout->version != Pose.layoutVersion)
+    {
+        // we either haven't seen this layout before or the version expected by the pose is different to our cached version so refresh
+        RenderStreamLink::FSkeletalLayout newLayout{};
+        RenderStreamLink::SkeletonLayout rsLayout{};
+        int nJoints;
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout %llu size for skeletal pose %llu."), Pose.layoutId, iPose);
+            return;
+        }
+
+        newLayout.joints.SetNum(nJoints);
+        rsLayout.joints = newLayout.joints.GetData();
+        if (RenderStreamLink::instance().rs_getSkeletonLayout(specHash, Pose.layoutId, &rsLayout, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get layout %llu for skeletal pose %llu."), Pose.layoutId, iPose);
+            return;
+        }
+        
+        TArray<int> nameLengths;
+        nameLengths.SetNum(nJoints);
+        TArray<int*> nameLengthPtrs;
+        nameLengthPtrs.SetNum(nJoints);
+        for (int32 i = 0; i < nJoints; ++i)
+            nameLengthPtrs[i] = &nameLengths[i];
+
+        if (RenderStreamLink::instance().rs_getSkeletonJointNames(specHash, Pose.layoutId, nullptr, nameLengthPtrs.GetData(), &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint name lengths for layout %llu and skeletal pose %llu."), Pose.layoutId, iPose);
+            return;
+        }
+        
+        TArray<std::string> jointNames;
+        jointNames.SetNum(nJoints);
+        for (int32 i = 0; i < nJoints; ++i)
+            jointNames[i].resize(nameLengths[i]);
+        TArray<const char*> jointNamesCStrings;
+        jointNamesCStrings.SetNum(nJoints);
+        for (int32 i = 0; i < nJoints; ++i)
+            jointNamesCStrings[i] = jointNames[i].c_str();
+
+        if (RenderStreamLink::instance().rs_getSkeletonJointNames(specHash, Pose.layoutId, jointNamesCStrings.GetData(), nullptr, &nJoints) != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get joint names for layout %llu and skeletal pose %llu."), Pose.layoutId, iPose);
+            return;
+        }
+
+        newLayout.jointNames.SetNum(nJoints);
+        for (int32 i = 0; i < newLayout.jointNames.Num(); ++i)
+            newLayout.jointNames[i] = FString(jointNames[i].c_str());
+        newLayout.version = rsLayout.version;
+        Layout = &m_skeletalLayoutCache.Emplace(Pose.layoutId, newLayout);
+    }
+
+    FRenderStreamModule::Get()->PushAnimDataToSource(PropKey, ParamKey, *Layout, Pose);
 }
