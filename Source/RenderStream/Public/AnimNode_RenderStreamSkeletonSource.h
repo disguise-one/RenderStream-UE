@@ -45,12 +45,15 @@ protected:
     virtual void OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance) override;
 
     void ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose,
-        FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame, TArray<FTransform>& InitialPose);
+        FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame);
 
     void CacheSkeletonActors(const FName& ParamName);
     void ApplyRootPose(const FName& ParamName);
 
     FName GetSkeletonParamName();
+
+    void InitialiseAnimationData(const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, const FCompactPose& OutPose);
+    void BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose);
 
 private:
 
@@ -61,6 +64,15 @@ private:
 
     std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
     bool SkeletonActorsCached;
+
+    // Cached pose info
+    TArray<FTransform> InitialPose;
+    TArray<FQuat> MeshToSourceInitialOrientations;
+    TArray<FQuat> LocalInitialOrientationDifferences;
+    TArray<FQuat> SourceInitialPoseRotations;
+    TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
+    FTransform RootBoneTransform;
+    bool PoseInitialised;
 
 };
 

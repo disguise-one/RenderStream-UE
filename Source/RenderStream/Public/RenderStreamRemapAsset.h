@@ -49,11 +49,8 @@ class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
     //~ End UObject Interface
 
     //~ Begin ULiveLinkRetargetAsset interface
-    virtual void BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose) override;
     virtual void BuildPoseAndCurveFromBaseData(float DeltaTime, const FLiveLinkBaseStaticData* InBaseStaticData, const FLiveLinkBaseFrameData* InBaseFrameData, FCompactPose& OutPose, FBlendedCurve& OutCurve) override;
     //~ End ULiveLinkRetargetAsset interface
-
-    void SetInitialPose(const TArray<FTransform>& Pose) { InitialPose = Pose; }
 
     UFUNCTION(BlueprintCallable, Category = "Live Link Remap")
     TEnumAsByte<RenderStreamBoneNameEquivalents> GetBoneNameEquivalent(const FName& SourceBoneName) const;
@@ -70,14 +67,15 @@ class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
     UFUNCTION(BlueprintNativeEvent, Category = "Live Link Remap")
     void RemapCurveElements(UPARAM(ref)TMap<FName, float>& CurveItems) const;
 
+    FName GetMeshBoneName(const FName& SourceBoneName);
+    bool IsRootBone(const FName& SourceBoneName);
+
 protected:
     virtual RenderStreamBoneNameEquivalents GetBoneNameEquivalent_Internal(const FName& SourceBoneName) const;
 
 private:
 
     void OnBlueprintClassCompiled(UBlueprint* TargetBlueprint);
-
-    void InitialiseAnimationData(const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, const FCompactPose& OutPose);
 
     // Name mapping between source bone name and transformed bone name
     // (returned from GetRemappedBoneName)
@@ -92,12 +90,4 @@ private:
     FDelegateHandle OnBlueprintCompiledDelegate;
 #endif
 
-    TArray<FTransform> InitialPose;
-    TArray<FQuat> MeshToSourceInitialOrientations;
-    TArray<FQuat> LocalInitialOrientationDifferences;
-    TArray<FQuat> SourceInitialPoseRotations;
-    TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
-    FTransform RootBoneTransform;
-    
-    bool Initialised;
 };
