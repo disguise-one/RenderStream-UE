@@ -42,25 +42,6 @@ void URenderStreamRemapAsset::BeginDestroy()
 void URenderStreamRemapAsset::OnBlueprintClassCompiled(UBlueprint* TargetBlueprint)
 {
     BoneNameMap.Reset();
-    CurveNameMap.Reset();
-}
-
-void MakeCurveMapFromFrame(const FCompactPose& InPose, const FLiveLinkBaseStaticData* InBaseStaticData, const FLiveLinkBaseFrameData* InFrameData, const TArray<FName, TMemStackAllocator<>>& TransformedCurveNames, TMap<FName, float>& OutCurveMap)
-{
-    OutCurveMap.Reset();
-    OutCurveMap.Reserve(InFrameData->PropertyValues.Num());
-
-    if (InBaseStaticData->PropertyNames.Num() == InFrameData->PropertyValues.Num())
-    {
-        for (int32 CurveIdx = 0; CurveIdx < InBaseStaticData->PropertyNames.Num(); ++CurveIdx)
-        {
-            const float PropertyValue = InFrameData->PropertyValues[CurveIdx];
-            if (FMath::IsFinite(PropertyValue))
-            {
-                OutCurveMap.Add(TransformedCurveNames[CurveIdx]) = PropertyValue;
-            }
-        }
-    }
 }
 
 TEnumAsByte<RenderStreamBoneNameEquivalents> URenderStreamRemapAsset::GetBoneNameEquivalent(const FName& SourceBoneName) const
@@ -146,15 +127,6 @@ RenderStreamBoneNameEquivalents URenderStreamRemapAsset::GetBoneNameEquivalent_I
 FName URenderStreamRemapAsset::GetRemappedBoneName_Implementation(FName BoneName) const
 {
     return BoneName;
-}
-
-FName URenderStreamRemapAsset::GetRemappedCurveName_Implementation(FName CurveName) const
-{
-    return CurveName;
-}
-
-void URenderStreamRemapAsset::RemapCurveElements_Implementation(TMap<FName, float>& CurveItems) const
-{
 }
 
 FName URenderStreamRemapAsset::GetMeshBoneName(const FName& SourceBoneName)

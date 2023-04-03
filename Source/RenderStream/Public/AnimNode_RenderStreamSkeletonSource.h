@@ -44,28 +44,20 @@ public:
 protected:
     virtual void OnInitializeAnimInstance(const FAnimInstanceProxy* InProxy, const UAnimInstance* InAnimInstance) override;
 
-    void ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose,
-        FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame);
-
     void CacheSkeletonActors(const FName& ParamName);
     void ApplyRootPose(const FName& ParamName);
 
     FName GetSkeletonParamName();
 
-    void InitialiseAnimationData(const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, const FCompactPose& OutPose);
-    void BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose);
+    void InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose);
+    void BuildPoseFromAnimationData(const RenderStreamLink::FSkeletalPose& Pose, FCompactPose& OutPose);
 
 private:
-
-    ILiveLinkClient* LiveLinkClient_AnyThread;
-
-    // Delta time from update so that it can be passed to retargeter
-    float CachedDeltaTime;
-
     std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
     bool SkeletonActorsCached;
 
     // Cached pose info
+    TArray<FName> SourceBoneNames;
     TArray<FTransform> InitialPose;
     TArray<FQuat> MeshToSourceInitialOrientations;
     TArray<FQuat> LocalInitialOrientationDifferences;

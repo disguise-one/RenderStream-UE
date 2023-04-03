@@ -4,11 +4,7 @@
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimTrace.h"
 #include "Features/IModularFeatures.h"
-#include "ILiveLinkClient.h"
-#include "LiveLinkCustomVersion.h"
 #include "LiveLinkRemapAsset.h"
-#include "Roles/LiveLinkAnimationRole.h"
-#include "Roles/LiveLinkAnimationTypes.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -17,8 +13,6 @@
 FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
     : RetargetAsset(URenderStreamRemapAsset::StaticClass())
     , CurrentRetargetAsset(nullptr)
-    , LiveLinkClient_AnyThread(nullptr)
-    , CachedDeltaTime(0.0f)
 {
 }
 
@@ -88,28 +82,8 @@ void FAnimNode_RenderStreamSkeletonSource::Initialize_AnyThread(const FAnimation
     BasePose.Initialize(Context);
 }
 
-
-FTransform ToUnrealTransform(const FVector& d3Pos, const FQuat& d3Rot)
-{
-    // Standard d3 to Unreal coordinate system transform
-    const FVector pos(
-        FUnitConversion::Convert(d3Pos.Z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(d3Pos.X, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(d3Pos.Y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
-    const FQuat rotation(d3Rot.Z, d3Rot.X, d3Rot.Y, d3Rot.W);
-    return FTransform(rotation, pos);
-}
-
 void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnimInstance)
 {
-    ILiveLinkClient* ThisFrameClient = nullptr;
-    IModularFeatures& ModularFeatures = IModularFeatures::Get();
-    if (ModularFeatures.IsModularFeatureAvailable(ILiveLinkClient::ModularFeatureName))
-    {
-        ThisFrameClient = &IModularFeatures::Get().GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
-    }
-    LiveLinkClient_AnyThread = ThisFrameClient;
-
     // Protection as a class graph pin does not honor rules on abstract classes and NoClear
     UClass* RetargetAssetPtr = RetargetAsset.Get();
     if (!RetargetAssetPtr || RetargetAssetPtr->HasAnyClassFlags(CLASS_Abstract))
@@ -153,8 +127,12 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
         return;
 
     // Transform root pose to UE coordinate system
-    const FTransform RootPoseUE = ToUnrealTransform(FVector(Pose->rootPosition.X, Pose->rootPosition.Y, Pose->rootPosition.Z),
-        FQuat(Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.Z, Pose->rootOrientation.W));
+    const FVector RootPos(
+        FUnitConversion::Convert(Pose->rootPosition.Z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(Pose->rootPosition.X, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(Pose->rootPosition.Y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+    const FQuat RootRotation = FQuat(Pose->rootOrientation.Z, Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.W)
+        * FQuat::MakeFromRotator(FRotator(0, 90, 0));  // Apply 90 degree yaw to account for skeleton default orientation
 
     // Apply pose to any cached skeleton actors
     for (const TWeakObjectPtr<ASkeletalMeshActor> SkeletonActor : SkeletonActors)
@@ -164,9 +142,8 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
             USceneComponent* SceneComponent = SkeletonActor->K2_GetRootComponent();
             if (SceneComponent)
             {
-                const FQuat RotationOffset = RootPoseUE.GetRotation() * FQuat::MakeFromRotator(FRotator(0, 90, 0));  // Apply 90 degree yaw to account for skeleton default orientation
-                SceneComponent->SetRelativeRotation(RotationOffset);
-                SceneComponent->SetRelativeLocation(RootPoseUE.GetLocation());
+                SceneComponent->SetRelativeRotation(RootRotation);
+                SceneComponent->SetRelativeLocation(RootPos);
             }
         }
     }
@@ -177,9 +154,6 @@ void FAnimNode_RenderStreamSkeletonSource::Update_AnyThread(const FAnimationUpda
     BasePose.Update(Context);
 
     GetEvaluateGraphExposedInputs().Execute(Context);
-
-    // Accumulate Delta time from update
-    CachedDeltaTime += Context.GetDeltaTime();
 
     TRACE_ANIM_NODE_VALUE(Context, TEXT("SkeletonParamName"), GetSkeletonParamName());
 }
@@ -196,24 +170,22 @@ void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Outp
     }
 
     FName ParamName = GetSkeletonParamName();
-    const RenderStreamLink::FSkeletalLayout* Layout = Module->GetSkeletalLayout(ParamName);
     const RenderStreamLink::FSkeletalPose* Pose = Module->GetSkeletalPose(ParamName);
 
-    FLiveLinkSkeletonStaticData LiveLinkStatic;
-    FLiveLinkAnimationFrameData LiveLinkFrame;
+    // Initialise data if required
+    if (!PoseInitialised)
+    {
+        const RenderStreamLink::FSkeletalLayout* Layout = Module->GetSkeletalLayout(ParamName);
+        if (Layout)
+        {
+            InitialiseAnimationData(*Layout, Output.Pose);
+            PoseInitialised = true;
+        }
+    }
 
-    if (!Layout || !Pose)
-        return;
-
-    ProcessSkeletonData(Layout, Pose, LiveLinkStatic, LiveLinkFrame);
-
-    FLiveLinkSubjectFrameData SubjectFrameData;
-
-    check(CurrentRetargetAsset);
-    BuildPoseFromAnimationData(CachedDeltaTime, &LiveLinkStatic, &LiveLinkFrame, Output.Pose);
-    CurrentRetargetAsset->BuildPoseAndCurveFromBaseData(CachedDeltaTime, &LiveLinkStatic, &LiveLinkFrame, Output.Pose, Output.Curve);
-    CachedDeltaTime = 0.f; // Reset so that if we evaluate again we don't "create" time inside of the retargeter
-            
+    // Apply latest pose to skeleton
+    if (Pose && PoseInitialised)
+        BuildPoseFromAnimationData(*Pose, Output.Pose);      
 }
 
 void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimationCacheBonesContext& Context)
@@ -225,58 +197,23 @@ void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimation
 void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& DebugData)
 {
     FString DebugLine = FString::Printf(TEXT("RenderStreamSkeletonSource - SkeletonParamName: %s"), *GetSkeletonParamName().ToString());
-
     DebugData.AddDebugItem(DebugLine);
     BasePose.GatherDebugData(DebugData);
 }
 
-void FAnimNode_RenderStreamSkeletonSource::ProcessSkeletonData(const RenderStreamLink::FSkeletalLayout* Layout, const RenderStreamLink::FSkeletalPose* Pose, 
-    FLiveLinkSkeletonStaticData& LiveLinkStatic, FLiveLinkAnimationFrameData& LiveLinkFrame)
+FTransform ToUnrealTransform(const RenderStreamLink::Transform& transform)
 {
-    if (!Layout || !Pose)
-        return;
+    // Standard d3 to Unreal coordinate system transform
+    const FVector pos(
+        FUnitConversion::Convert(transform.z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(transform.x, EUnit::Meters, FRenderStreamModule::distanceUnit()),
+        FUnitConversion::Convert(transform.y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+    const FQuat rotation(transform.rz, transform.rx, transform.ry, transform.rw);
+    const FTransform JointPoseUE(rotation, pos);
 
     // Unreal skeletons are defined with X sideways, rather than Y, so need to apply a 90 degree yaw
     const FTransform ToSkeletonSpace(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
-
-    int32 RootIdx = INDEX_NONE;
-
-    // Static data
-    LiveLinkStatic.BoneNames.SetNum(Layout->joints.Num());
-    LiveLinkStatic.BoneParents.SetNum(Layout->joints.Num());
-    InitialPose.SetNum(Layout->joints.Num());
-
-    for (int32 i = 0; i < Layout->joints.Num(); ++i)
-    {
-        const RenderStreamLink::SkeletonJointDesc& Joint = Layout->joints[i];
-        const FString& Name = Layout->jointNames[i];
-
-        // Set bone names and parent indices
-        LiveLinkStatic.BoneNames[i] = FName(Name);
-        const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
-        LiveLinkStatic.BoneParents[i] = idx; // Root bone is indicated by negative index, which IndexOfByPredicate will return if not found
-        if (idx == INDEX_NONE)
-            RootIdx = i;
-
-        // Set initial pose
-        const FTransform JointPoseUE = ToUnrealTransform(FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z),
-            FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw));
-        InitialPose[i] = ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
-    }
-
-    // Frame Data
-    LiveLinkFrame.Transforms.SetNum(Pose->joints.Num());
-
-    for (int32 i = 0; i < Pose->joints.Num(); ++i)
-    {
-        // Set live pose for each joint
-        const RenderStreamLink::SkeletonJointPose& Joint = Pose->joints[i];
-        const int32 idx = Layout->joints.IndexOfByPredicate([&Joint](const auto& LayoutJoint) { return LayoutJoint.id == Joint.id; });
-
-        const FTransform JointPoseUE = ToUnrealTransform(FVector(Joint.transform.x, Joint.transform.y, Joint.transform.z),
-            FQuat(Joint.transform.rx, Joint.transform.ry, Joint.transform.rz, Joint.transform.rw));
-        LiveLinkFrame.Transforms[idx] = ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
-    }
+    return ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
 }
 
 FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()
@@ -295,33 +232,39 @@ FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()
     return FName();
 }
 
-
-void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, const FCompactPose& OutPose)
+void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose)
 {
     const FBoneContainer& BoneContainerRef = OutPose.GetBoneContainer();
     const int32 MeshBoneCount = OutPose.GetNumBones();
 
-    const TArray<FName>& SourceBoneNames = InSkeletonData->GetBoneNames();
-    const TArray<int32>& SourceParentIndices = InSkeletonData->GetBoneParents();
-    const int32 SourceBoneCount = SourceBoneNames.Num();
-
-    SourceToMeshIndex.Init(FCompactPoseBoneIndex(INDEX_NONE), SourceBoneCount);
+    // Initialise bone info vectors
+    const int32 SourceBoneCount = Layout.joints.Num();
+    SourceBoneNames.SetNum(SourceBoneCount);
+    TArray<int32> SourceParentIndices; SourceParentIndices.SetNum(SourceBoneCount);
     TArray<int32> SourceNumberOfChildren; SourceNumberOfChildren.Init(0, SourceBoneCount);
     TArray<int32> MeshToSourceIndex; MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
+    SourceToMeshIndex.Init(FCompactPoseBoneIndex(INDEX_NONE), SourceBoneCount);
+    InitialPose.SetNum(SourceBoneCount);
 
-    // Loop through source bone names and find mapping to mesh bones
+    // Loop through source layout and find mapping to mesh bones
     // Find remapped bone names and cache them for fast subsequent retrieval.
     // NB source bones may not be in hierarchy order
     for (int SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
     {
-        // Find equivalent mesh bone name for current source bone
+        // Get source bone info from layout
+        const RenderStreamLink::SkeletonJointDesc& Joint = Layout.joints[SourceIndex];
+        SourceBoneNames[SourceIndex] = FName(Layout.jointNames[SourceIndex]);
         const FName& SourceBoneName = SourceBoneNames[SourceIndex];
-        const FName MeshBoneName = CurrentRetargetAsset->GetMeshBoneName(SourceBoneName);
+        const int32 SourceParentBoneIndex = Layout.joints.IndexOfByPredicate([&Joint](const auto& OtherJoint) { return OtherJoint.id == Joint.parentId; });
+        SourceParentIndices[SourceIndex] = SourceParentBoneIndex;
+        InitialPose[SourceIndex] = ToUnrealTransform(Joint.transform);
 
+        // Find equivalent mesh bone name and index for current source bone
+        const FName MeshBoneName = CurrentRetargetAsset->GetMeshBoneName(SourceBoneName);
         const int32 ReferenceMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
         const FCompactPoseBoneIndex MeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceMeshIndex));
-        const int32 SourceParentBoneIndex = SourceParentIndices[SourceIndex];
 
+        // Populate mappings between indices and number of children
         if (MeshIndex != INDEX_NONE)
         {
             MeshToSourceIndex[MeshIndex.GetInt()] = SourceIndex;
@@ -331,7 +274,6 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const FLiveLi
         {
             SourceNumberOfChildren[SourceParentBoneIndex] += 1;
         }
-
     }
     UE_LOG(LogRenderStream, Verbose, TEXT("%s: Cached %d remapped bone names from static skeleton data "),
         *CurrentRetargetAsset->GetName(), SourceBoneCount);
@@ -439,17 +381,10 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const FLiveLi
         *CurrentRetargetAsset->GetName(), MeshBoneCount);
 }
 
-void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(float DeltaTime, const FLiveLinkSkeletonStaticData* InSkeletonData, const FLiveLinkAnimationFrameData* InFrameData, FCompactPose& OutPose)
+void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const RenderStreamLink::FSkeletalPose& Pose, FCompactPose& OutPose)
 {
-    const TArray<FName>& SourceBoneNames = InSkeletonData->GetBoneNames();
-    const int32 SourceBoneCount = SourceBoneNames.Num();
-
-    // Initialise data if required
-    if (!PoseInitialised)
-    {
-        InitialiseAnimationData(InSkeletonData, InFrameData, OutPose);
-        PoseInitialised = true;
-    }
+    const int32 SourceBoneCount = Pose.joints.Num();
+    check(SourceBoneNames.Num() == SourceBoneCount);
 
     // Loop over source pose data and apply to mesh bones
     for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
@@ -458,8 +393,9 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(float Delt
 
         if (MeshIndex != INDEX_NONE)
         {
+            const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[SourceIndex];
             const FName& SourceBoneName = SourceBoneNames[SourceIndex];
-            const FTransform& SourceBoneTransform = InFrameData->Transforms[SourceIndex];
+            const FTransform SourceBoneTransform = ToUnrealTransform(Joint.transform);
 
             // Root position and rotation are set in the actor transform.
             // Apply the inverse of the root bone transform here to ensure the root stays at zero
@@ -481,6 +417,6 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(float Delt
             }
         }
     }
-    UE_LOG(LogRenderStream, Verbose, TEXT("%s: Applied Live Link pose data to %d poses for frame %d"),
-        *CurrentRetargetAsset->GetName(), SourceBoneCount, InFrameData->FrameId);
+    UE_LOG(LogRenderStream, Verbose, TEXT("%s: Applied Live Link pose data to %d poses"),
+        *CurrentRetargetAsset->GetName(), SourceBoneCount);
 }

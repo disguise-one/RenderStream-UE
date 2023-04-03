@@ -49,7 +49,6 @@ class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
     //~ End UObject Interface
 
     //~ Begin ULiveLinkRetargetAsset interface
-    virtual void BuildPoseAndCurveFromBaseData(float DeltaTime, const FLiveLinkBaseStaticData* InBaseStaticData, const FLiveLinkBaseFrameData* InBaseFrameData, FCompactPose& OutPose, FBlendedCurve& OutCurve) override;
     //~ End ULiveLinkRetargetAsset interface
 
     UFUNCTION(BlueprintCallable, Category = "Live Link Remap")
@@ -58,14 +57,6 @@ class RENDERSTREAM_API URenderStreamRemapAsset : public ULiveLinkRetargetAsset
     /** Blueprint Implementable function for getting a remapped bone name from the original */
     UFUNCTION(BlueprintNativeEvent, Category = "Live Link Remap")
     FName GetRemappedBoneName(FName BoneName) const;
-
-    /** Blueprint Implementable function for getting a remapped curve name from the original */
-    UFUNCTION(BlueprintNativeEvent, Category = "Live Link Remap")
-    FName GetRemappedCurveName(FName CurveName) const;
-
-    /** Blueprint Implementable function for remapping, adding or otherwise modifying the curve element data from Live Link. This is run after GetRemappedCurveName */
-    UFUNCTION(BlueprintNativeEvent, Category = "Live Link Remap")
-    void RemapCurveElements(UPARAM(ref)TMap<FName, float>& CurveItems) const;
 
     FName GetMeshBoneName(const FName& SourceBoneName);
     bool IsRootBone(const FName& SourceBoneName);
@@ -80,10 +71,6 @@ private:
     // Name mapping between source bone name and transformed bone name
     // (returned from GetRemappedBoneName)
     TMap<FName, FName> BoneNameMap;
-
-    // Name mapping between source curve name and transformed curve name
-    // (returned from GetRemappedCurveName)
-    TMap<FName, FName> CurveNameMap;
 
 #if WITH_EDITOR
     /** Blueprint.OnCompiled delegate handle */
