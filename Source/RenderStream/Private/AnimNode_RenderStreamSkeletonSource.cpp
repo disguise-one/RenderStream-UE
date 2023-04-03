@@ -163,7 +163,7 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
             USceneComponent* SceneComponent = SkeletonActor->K2_GetRootComponent();
             if (SceneComponent)
             {
-                const FQuat RotationOffset = FQuat::MakeFromRotator(FRotator(0, 90, 0)) * RootPoseUE.GetRotation();  // Apply 90 degree yaw to account for skeleton default orientation
+                const FQuat RotationOffset = RootPoseUE.GetRotation() * FQuat::MakeFromRotator(FRotator(0, 90, 0));  // Apply 90 degree yaw to account for skeleton default orientation
                 SceneComponent->SetRelativeRotation(RotationOffset);
                 SceneComponent->SetRelativeLocation(RootPoseUE.GetLocation());
             }
