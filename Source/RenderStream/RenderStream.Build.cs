@@ -22,8 +22,8 @@ public class RenderStream : ModuleRules
                 "InputCore", 
                 "UMG",
                 "OpenColorIO", 
-                "LiveLinkInterface", 
-                "LiveLinkAnimationCore"
+				"AnimGraph",
+				"AnimGraphRuntime"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 
@@ -46,8 +46,7 @@ public class RenderStream : ModuleRules
                 "DisplayClusterConfiguration",
                 "HeadMountedDisplay",
                 "EngineSettings",
-                "LiveLink",
-                "LiveLinkInterface"
+                "BlueprintGraph"
             });
 
         PrivateIncludePaths.AddRange(
