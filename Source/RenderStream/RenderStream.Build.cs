@@ -21,9 +21,7 @@ public class RenderStream : ModuleRules
                 "Networking", 
                 "InputCore", 
                 "UMG",
-                "OpenColorIO", 
-				"AnimGraph",
-				"AnimGraphRuntime"
+                "OpenColorIO"
             });
         PrivateDependencyModuleNames.AddRange(
             new string[] 
@@ -46,7 +44,7 @@ public class RenderStream : ModuleRules
                 "DisplayClusterConfiguration",
                 "HeadMountedDisplay",
                 "EngineSettings",
-                "BlueprintGraph"
+                "AnimGraphRuntime"
             });
 
         PrivateIncludePaths.AddRange(
