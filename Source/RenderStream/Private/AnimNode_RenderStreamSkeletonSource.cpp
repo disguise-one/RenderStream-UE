@@ -339,10 +339,17 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         MeshBoneWorldPositions[MeshIndex] = Position;
         MeshBoneWorldRotations[MeshIndex] = Rotation;
 
-        // Find difference in starting orientation between mesh pose and static source data
         const int32 SourceIndex = MeshToSourceIndex[MeshIndex];
         if (SourceIndex == INDEX_NONE)
             continue;
+
+        // Find root bone transform
+        // Apply the inverse of the parents total position/rotation, so that root bone is at zero
+        const FName& SourceBoneName = SourceBoneNames[SourceIndex];
+        if (IsRootBone(SourceBoneName) && (MeshParentIndex != INDEX_NONE) && (MeshParentIndex < MeshBoneCount))
+        {
+            RootBoneTransform = FTransform(MeshBoneWorldRotations[MeshParentIndex.GetInt()], MeshBoneWorldPositions[MeshParentIndex.GetInt()]).Inverse();
+        }
 
         const int32 SourceParentIndex = SourceParentIndices[SourceIndex];
         if (SourceParentIndex == INDEX_NONE)
@@ -362,16 +369,8 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         }
 
         // Find source initial pose rotation
-        const FName& SourceBoneName = SourceBoneNames[SourceIndex];
         const FQuat InitialRotation = InitialPose[SourceIndex].GetRotation();
         SourceInitialPoseRotations[MeshIndex] = InitialRotation;
-
-        // Find root bone transform
-        if (IsRootBone(SourceBoneName))
-        {
-            RootBoneTransform.SetLocation(Position);
-            RootBoneTransform.SetRotation(Rotation);
-        }
 
         // Find offset between mesh joint and the SOURCE pose's parent (in case source contains fewer bones than mesh)
         // And use this to calculate the initial orientation of the mesh pose bone
@@ -424,9 +423,8 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
             // Apply the inverse of the root bone transform here to ensure the root stays at zero
             if (IsRootBone(SourceBoneName))
             {
-                FTransform RootInverseTransform = RootBoneTransform.Inverse();
-                OutPose[MeshIndex].SetLocation(RootInverseTransform.GetTranslation());
-                OutPose[MeshIndex].SetRotation(RootInverseTransform.GetRotation());
+                OutPose[MeshIndex].SetLocation(RootBoneTransform.GetTranslation());
+                OutPose[MeshIndex].SetRotation(RootBoneTransform.GetRotation());
             }
             else
             {
