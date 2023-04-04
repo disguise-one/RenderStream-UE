@@ -5,7 +5,7 @@
 #include "AnimGraphNode_RenderStreamSkeletonSource.generated.h"
 
 UCLASS()
-class RENDERSTREAMEDITOR_API UAnimGraphNode_RenderStreamSkeletonSource : public UAnimGraphNode_Base
+class RENDERSTREAMUNCOOKED_API UAnimGraphNode_RenderStreamSkeletonSource : public UAnimGraphNode_Base
 {
     GENERATED_BODY()
 

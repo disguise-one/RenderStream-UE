@@ -10,7 +10,7 @@
 class ILiveLinkClient;
 class ASkeletalMeshActor;
 
-USTRUCT(BlueprintType)
+USTRUCT(BlueprintInternalUseOnly)
 struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_Base
 {
     GENERATED_BODY()

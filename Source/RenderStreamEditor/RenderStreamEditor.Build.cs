@@ -24,9 +24,7 @@ public class RenderStreamEditor : ModuleRules
             "EditorStyle", 
             "PropertyEditor", 
             "SourceControl", 
-            "LevelEditor", 
-            "BlueprintGraph",
-            "AnimGraph"
+            "LevelEditor"
         });
     }
 }
