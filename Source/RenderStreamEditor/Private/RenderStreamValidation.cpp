@@ -22,7 +22,7 @@ bool FRenderStreamValidation::ValidateProjectSettings()
 
     // Texture streaming
     if (RenderSettings->bTextureStreaming)
-    {
+    { 
         IssuesFound = true;
         FOnActionTokenExecuted FixTextureStreaming;
         FixTextureStreaming.BindLambda([]() {
@@ -82,7 +82,7 @@ FRenderStreamChannelInfo FRenderStreamValidation::GetChannelInfo(TWeakObjectPtr<
         if (Camera)
         {
             Info.PostProcessSettings = Camera->GetCameraComponent()->PostProcessSettings;
-            Info.Name = TCHAR_TO_UTF8(*Camera->GetName());
+            Info.Name = TCHAR_TO_UTF8(*Camera->GetActorNameOrLabel());
         }
 
         // Check if any post-processing volumes in the level enable settings (camera settings take priority when overridden)
@@ -383,6 +383,11 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
         FMessageLog RSV("RenderStreamValidation");
         RSV.SuppressLoggingToOutputLog(true);
         RSV.Info()->AddToken(FTextToken::Create(FText::FromString("Project settings:")));
+        if (Caches.Num() == 0)
+        {
+            IssuesFound = true;
+            RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString(TEXT("Camera with a renderstream channel definition component not detected.")))));
+        }
     }
     IssuesFound |= ValidateProjectSettings();
 
