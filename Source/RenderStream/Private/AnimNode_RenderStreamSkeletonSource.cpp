@@ -8,6 +8,8 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Animation/SkeletalMeshActor.h"
 
+#include "Animation/AnimBlueprintGeneratedClass.h"
+
 TMap<FName, FName> GetDefaultBoneNameMap()
 {
     TMap<FName, FName> BoneMap;
