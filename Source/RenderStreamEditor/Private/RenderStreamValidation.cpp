@@ -391,7 +391,7 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
         if (!Cache)
             continue;
 
-        const FString LevelName = Cache->Level.GetAssetPath().GetAssetName().ToString();
+        const FString LevelName = Cache->GetName();
 
         {
             FMessageLog RSV("RenderStreamValidation");
