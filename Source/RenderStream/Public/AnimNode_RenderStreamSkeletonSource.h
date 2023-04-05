@@ -56,6 +56,7 @@ private:
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
     FTransform RootBoneTransform;
+    TArray<FQuat> MeshBoneWorldRotations;
     bool PoseInitialised;
 
 };

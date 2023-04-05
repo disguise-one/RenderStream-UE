@@ -316,7 +316,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
 
     // Temporary vectors used to initialise the persistent vectors above
     TArray<FVector> MeshBoneWorldPositions; MeshBoneWorldPositions.Init(FVector::ZeroVector, MeshBoneCount);
-    TArray<FQuat> MeshBoneWorldRotations; MeshBoneWorldRotations.Init(FQuat::Identity, MeshBoneCount);
+    MeshBoneWorldRotations.Init(FQuat::Identity, MeshBoneCount);
     TArray<FQuat> WorldInitialOrientationDifferences;  WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
 
     // Loop over mesh bones (from OutPose input)
@@ -332,8 +332,8 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         const FCompactPoseBoneIndex MeshParentIndex = OutPose.GetParentBoneIndex(CPMeshIndex);
         if ((MeshParentIndex != INDEX_NONE) && (MeshParentIndex < MeshBoneCount))
         {
-            Position = Position + MeshBoneWorldPositions[MeshParentIndex.GetInt()];  // Find world positions with no rotations applied
-            Rotation = Rotation * MeshBoneWorldRotations[MeshParentIndex.GetInt()];
+            Position = MeshBoneWorldRotations[MeshParentIndex.GetInt()] * Position + MeshBoneWorldPositions[MeshParentIndex.GetInt()];  // Find world positions with no rotations applied
+            Rotation = MeshBoneWorldRotations[MeshParentIndex.GetInt()] * Rotation;
         }
 
         MeshBoneWorldPositions[MeshIndex] = Position;
@@ -394,7 +394,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
             // World orientation difference is the global difference in orientations of the bones
             // Local orientation difference is  the relative offset to the parent bone required to achieve the correct global orientations
             WorldInitialOrientationDifferences[MeshIndex] = SourceInitialOrientation * MeshInitialOrientation.Inverse();
-            LocalInitialOrientationDifferences[ParentMeshIndex] = WorldInitialOrientationDifferences[MeshIndex] * WorldInitialOrientationDifferences[ParentMeshIndex].Inverse();
+            LocalInitialOrientationDifferences[ParentMeshIndex] = MeshBoneWorldRotations[ParentMeshIndex].Inverse() * (WorldInitialOrientationDifferences[MeshIndex] * WorldInitialOrientationDifferences[ParentMeshIndex].Inverse()) * MeshBoneWorldRotations[ParentMeshIndex];
         }
         MeshToSourceInitialOrientations[ParentMeshIndex] = WorldInitialOrientationDifferences[MeshIndex];
     }
@@ -424,17 +424,20 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
             if (IsRootBone(SourceBoneName))
             {
                 OutPose[MeshIndex].SetLocation(RootBoneTransform.GetTranslation());
-                OutPose[MeshIndex].SetRotation(RootBoneTransform.GetRotation());
+                OutPose[MeshIndex].SetRotation(OutPose[MeshIndex].GetRotation());
             }
             else
             {
+                FQuat TotalMeshRot = MeshToSourceInitialOrientations[MeshIndex.GetInt()] * MeshBoneWorldRotations[MeshIndex.GetInt()];
+                FQuat SourceRotation = TotalMeshRot.Inverse() * SourceBoneTransform.GetRotation() * TotalMeshRot;
+                OutPose[MeshIndex].SetRotation(OutPose[MeshIndex].GetRotation() * SourceRotation);
                 // TODO apply position?
-                OutPose[MeshIndex].SetRotation(
-                    LocalInitialOrientationDifferences[MeshIndex.GetInt()] *         // 5. Apply local rotations to account for difference in initial orientations
-                    MeshToSourceInitialOrientations[MeshIndex.GetInt()].Inverse() *  // 4. Get back to mesh initial orientation space
-                    SourceInitialPoseRotations[MeshIndex.GetInt()] *                 // 3. Apply source initial pose rotation
-                    SourceBoneTransform.GetRotation() *                              // 2. Apply local bone rotations in source zero-rotation pose space
-                    MeshToSourceInitialOrientations[MeshIndex.GetInt()]);            // 1. Transform from mesh to source initial orientation space (from pos, ignoring initial rotation)
+                //OutPose[MeshIndex].SetRotation(
+                //    LocalInitialOrientationDifferences[MeshIndex.GetInt()] *         // 5. Apply local rotations to account for difference in initial orientations
+                //    MeshToSourceInitialOrientations[MeshIndex.GetInt()].Inverse() *  // 4. Get back to mesh initial orientation space
+                //    SourceInitialPoseRotations[MeshIndex.GetInt()] *                 // 3. Apply source initial pose rotation
+                //    SourceBoneTransform.GetRotation() *                              // 2. Apply local bone rotations in source zero-rotation pose space
+                //    MeshToSourceInitialOrientations[MeshIndex.GetInt()]);            // 1. Transform from mesh to source initial orientation space (from pos, ignoring initial rotation)
             }
         }
     }
