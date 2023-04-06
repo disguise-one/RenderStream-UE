@@ -50,14 +50,11 @@ private:
 
     // Cached pose info
     TArray<FName> SourceBoneNames;
-    TArray<FTransform> InitialPose;
-    TArray<FQuat> MeshToSourceInitialOrientations;
+    TArray<FQuat> MeshToSourceSpaceRotations;
     TArray<FQuat> LocalInitialOrientationDifferences;
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
     FTransform RootBoneTransform;
-    TArray<FQuat> MeshBoneWorldRotations;
     bool PoseInitialised;
-
 };
 
