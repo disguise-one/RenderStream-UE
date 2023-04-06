@@ -259,7 +259,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
     // Initialise bone info vectors
     const int32 SourceBoneCount = Layout.joints.Num();
     SourceBoneNames.SetNum(SourceBoneCount);
-    TArray<int32> SourceParentIndices; SourceParentIndices.SetNum(SourceBoneCount);
+    SourceParentIndices.SetNum(SourceBoneCount);
     TArray<int32> SourceNumberOfChildren; SourceNumberOfChildren.Init(0, SourceBoneCount);
     TArray<int32> MeshToSourceIndex; MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
     SourceToMeshIndex.Init(FCompactPoseBoneIndex(INDEX_NONE), SourceBoneCount);
@@ -326,7 +326,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         const FCompactPoseBoneIndex CPMeshIndex(MeshIndex);
 
         // Calculate world positions of bones in initial mesh pose
-        FVector Position = OutPose[CPMeshIndex].GetLocation();
+        FVector Position = OutPose[CPMeshIndex].GetTranslation();
         FQuat Rotation = OutPose[CPMeshIndex].GetRotation();
 
         const FCompactPoseBoneIndex MeshParentIndex = OutPose.GetParentBoneIndex(CPMeshIndex);
@@ -420,26 +420,33 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
         {
             const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[SourceIndex];
             const FName& SourceBoneName = SourceBoneNames[SourceIndex];
-            FTransform SourceBoneTransform = ToUnrealTransform(Joint.transform);
 
             if (IsRootBone(SourceBoneName))
             {
                 // Set the root bone position so it is at zero
                 // Root pose is applied directly to the SkeletalMeshActor transform
-                OutPose[MeshIndex].SetLocation(RootBoneTransform.GetTranslation());
-                SourceBoneTransform = FTransform::Identity;
+                OutPose[MeshIndex].SetTranslation(RootBoneTransform.GetTranslation());
+                OutPose[MeshIndex].SetRotation(OutPose[MeshIndex].GetRotation());
             }
             else
             {
-                // TODO apply position to other bones
-            }
+                // Get bone transform from source data, and rotate into mesh bone coordinate system
+                const FTransform SourceBoneTransform = ToUnrealTransform(Joint.transform);
 
-            // Apply rotations
-            const FQuat& MeshToSource = MeshToSourceSpaceRotations[SourceIndex];  // Transform from space in which rotations are applied to UE mesh, to space in which rotations are applied in source data
-            const FQuat SourceRotation = MeshToSource.Inverse() * SourceInitialPoseRotations[SourceIndex] * SourceBoneTransform.GetRotation() * MeshToSource;  // Rotation to apply from the source data
-            const FQuat& MeshRotation = OutPose[MeshIndex].GetRotation();  // Rotation to apply for the initial mesh pose
-            const FQuat& InitialOrientationOffset = LocalInitialOrientationDifferences[SourceIndex];  // Rotation to apply to account for different initial orientations (e.g. A-pose vs T-pose)
-            OutPose[MeshIndex].SetRotation(InitialOrientationOffset * MeshRotation * SourceRotation);
+                // Apply rotations
+                const FQuat& MeshToSource = MeshToSourceSpaceRotations[SourceIndex];  // Transform from space in which rotations are applied to UE mesh, to space in which rotations are applied in source data
+                const FQuat SourceRotation = MeshToSource.Inverse() * SourceInitialPoseRotations[SourceIndex] * SourceBoneTransform.GetRotation() * MeshToSource;  // Rotation to apply from the source data
+                const FQuat MeshRotation = OutPose[MeshIndex].GetRotation();  // Rotation to apply for the initial mesh pose
+                const FQuat& InitialOrientationOffset = LocalInitialOrientationDifferences[SourceIndex];  // Rotation to apply to account for different initial orientations (e.g. A-pose vs T-pose)
+                OutPose[MeshIndex].SetRotation(InitialOrientationOffset * MeshRotation * SourceRotation);
+
+                // Apply position
+                const int32 SourceParentIndex = SourceParentIndices[SourceIndex];
+                const FQuat& MeshToSourceParent = MeshToSourceSpaceRotations[SourceParentIndex];  // Position is transformed into parent coordinate space
+                const FVector SourcePosition = MeshToSourceParent.Inverse() * SourceBoneTransform.GetTranslation(); // Position to apply from the source data
+                const FVector MeshPosition = OutPose[MeshIndex].GetTranslation();  // Position to apply for the initial mesh pose
+                OutPose[MeshIndex].SetTranslation(MeshPosition + SourcePosition);
+            }
         }
     }
     const FName SkeletonName = GetSkeletonParamName();
