@@ -429,8 +429,8 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
             else
             {
                 FQuat TotalMeshRot = MeshToSourceInitialOrientations[MeshIndex.GetInt()] * MeshBoneWorldRotations[MeshIndex.GetInt()];
-                FQuat SourceRotation = TotalMeshRot.Inverse() * SourceBoneTransform.GetRotation() * TotalMeshRot;
-                OutPose[MeshIndex].SetRotation(OutPose[MeshIndex].GetRotation() * SourceRotation);
+                FQuat SourceRotation = TotalMeshRot.Inverse() * SourceInitialPoseRotations[MeshIndex.GetInt()] * SourceBoneTransform.GetRotation() * TotalMeshRot;
+                OutPose[MeshIndex].SetRotation(LocalInitialOrientationDifferences[MeshIndex.GetInt()] * OutPose[MeshIndex].GetRotation() * SourceRotation);
                 // TODO apply position?
                 //OutPose[MeshIndex].SetRotation(
                 //    LocalInitialOrientationDifferences[MeshIndex.GetInt()] *         // 5. Apply local rotations to account for difference in initial orientations
