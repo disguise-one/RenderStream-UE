@@ -377,6 +377,11 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
         FMessageLog RSV("RenderStreamValidation");
         RSV.SuppressLoggingToOutputLog(true);
         RSV.Info()->AddToken(FTextToken::Create(FText::FromString("Project settings:")));
+        if (Caches.Num() == 0)
+        {
+            IssuesFound = true;
+            RSV.Warning()->AddToken(FTextToken::Create(FText::FromString(FString(TEXT("Camera with a renderstream channel definition component not detected.")))));
+        }
     }
     IssuesFound |= ValidateProjectSettings();
 
