@@ -16,16 +16,11 @@ struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_
     GENERATED_BODY()
 
 public:
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Input)
-        FPoseLink BasePose;
-
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
         TMap<FName, FName> BoneNameMap;
 public:
     FAnimNode_RenderStreamSkeletonSource();
 
-    virtual void Initialize_AnyThread(const FAnimationInitializeContext& Context) override;
-    virtual void CacheBones_AnyThread(const FAnimationCacheBonesContext& Context) override;
     virtual void Update_AnyThread(const FAnimationUpdateContext& Context) override;
     virtual void Evaluate_AnyThread(FPoseContext& Output) override;
     virtual bool HasPreUpdate() const { return true; }

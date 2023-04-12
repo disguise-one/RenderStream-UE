@@ -111,11 +111,6 @@ void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& Para
     }
 }
 
-void FAnimNode_RenderStreamSkeletonSource::Initialize_AnyThread(const FAnimationInitializeContext& Context)
-{
-    BasePose.Initialize(Context);
-}
-
 void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnimInstance)
 {
     // Get the name of the exposed parameter
@@ -171,8 +166,6 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
 
 void FAnimNode_RenderStreamSkeletonSource::Update_AnyThread(const FAnimationUpdateContext& Context)
 {
-    BasePose.Update(Context);
-
     GetEvaluateGraphExposedInputs().Execute(Context);
 
     TRACE_ANIM_NODE_VALUE(Context, TEXT("SkeletonParamName"), GetSkeletonParamName());
@@ -180,8 +173,6 @@ void FAnimNode_RenderStreamSkeletonSource::Update_AnyThread(const FAnimationUpda
 
 void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Output)
 {
-    BasePose.Evaluate(Output);
-
     const FRenderStreamModule* Module = FRenderStreamModule::Get();
 
     if (!Module)
@@ -206,17 +197,10 @@ void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Outp
         BuildPoseFromAnimationData(*Pose, Output.Pose);      
 }
 
-void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimationCacheBonesContext& Context)
-{
-    Super::CacheBones_AnyThread(Context);
-    BasePose.CacheBones(Context);
-}
-
 void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& DebugData)
 {
     FString DebugLine = FString::Printf(TEXT("RenderStreamSkeletonSource - SkeletonParamName: %s"), *GetSkeletonParamName().ToString());
     DebugData.AddDebugItem(DebugLine);
-    BasePose.GatherDebugData(DebugData);
 }
 
 FTransform ToUnrealTransform(const RenderStreamLink::Transform& transform)
