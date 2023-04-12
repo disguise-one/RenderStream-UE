@@ -175,6 +175,8 @@ void FAnimNode_RenderStreamSkeletonSource::Update_AnyThread(const FAnimationUpda
 
 void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Output)
 {
+    Output.ResetToRefPose();
+
     const FRenderStreamModule* Module = FRenderStreamModule::Get();
 
     if (!Module)
