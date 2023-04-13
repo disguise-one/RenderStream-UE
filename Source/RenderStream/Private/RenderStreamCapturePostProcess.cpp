@@ -36,6 +36,10 @@ bool FRenderStreamCapturePostProcess::IsConfigurationChanged(const FDisplayClust
 // we can do the work done in FRenderStreamProjectionPolicy HandleStartScene and HandleEndScene here.
 bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportManager* InViewportManager)
 {
+    if (!IsInCluster()) {
+        return false;
+    }
+
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
 
@@ -50,11 +54,12 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     }
     return true;
 }
+
 void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportManager* InViewportManager) {}
 
 void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
 {
-    if (ViewportProxy == nullptr)
+    if (!IsInCluster() || ViewportProxy == nullptr)
     {
         return;
     }

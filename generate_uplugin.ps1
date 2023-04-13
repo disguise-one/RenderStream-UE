@@ -27,10 +27,7 @@ if ($null -eq $GitExe) {
 }
 
 $GitBranch = "(git error)"
-$GitTagsClean = ""
-$GitTagsUnclean = ""
-$GitTagsIsClean = $true
-
+$GitTag = ""
 try {
     $GitBranch = & $GitExe rev-parse --abbrev-ref HEAD
 
@@ -41,13 +38,25 @@ try {
 
     $GitTagNoChange= & $GitExe describe --tags --abbrev=0 HEAD
     $GitTagShowChange = & $GitExe describe --tags HEAD
-    $GitTagsNotClean = $GitTagNoChange -ne $GitTagShowChange
+    if ($GitTagNoChange -eq $GitTagShowChange) {
+        $GitTag = $GitTagNoChange
+    }
 } catch {
     $GitBranch = "(git error)"
 }
 
+$GitAheadOfRemote = $false
 $GitUncommitted = $false
-if (& $GitExe status --porcelain |Where {$_ -notmatch '^\?\?'}) {
+# include branch local/remote status with -b
+$GitStatus = & $GitExe status -b --porcelain
+
+# search status string for a branch status with "ahead #" in it (where # is any number)
+if ($GitStatus -match '^## (\S+) \[ahead (\d+)(, behind (\d+))?\]') {
+    $GitAheadOfRemote = $true
+}
+
+# branch message starts with ## anything else is some entry in the working tree and therefore uncommitted
+if ($GitStatus -notmatch '^##') {
     $GitUncommitted = $true
 }
 
@@ -58,9 +67,13 @@ $Uplugin.IsBetaVersion = $false
 $Uplugin.CanContainContent = $true
 
 $FriendlyName = $Uplugin.FriendlyName
-$NewVersionName = $GitBranch + '_' + $GitTagShowChange
+$NewVersionName = $GitBranch
+if ($GitTag) {
+    # if we have a tag there's no need to include the branch name as the tag identifies the build accurately enough
+    $NewVersionName = $GitTag
+}
 
-if ($GitUncommitted -or $GitTagsNotClean) {
+if ($GitUncommitted -or $GitAheadOfRemote) {
     if ($GitUncommitted) {
         $NewVersionName += " (Uncommited Changes)"
     } else {
@@ -68,18 +81,18 @@ if ($GitUncommitted -or $GitTagsNotClean) {
     }
     $FriendlyName += " (DEV)"
 } else {
-    if ($GitTagNoChange -match 'Gold Release') {
+    if ($GitTag -match 'Gold Release') {
         $Uplugin.IsExperimentalVersion = $false
     } else {
 
         # Release candidate is beta but not experimental
-        if ($GitTagNoChange -match 'release candidate') {
+        if ($GitTag -match 'release candidate') {
             $Uplugin.IsExperimentalVersion = $false
             $Uplugin.IsBetaVersion = $true
         }
 
         # custom release may contain beta features but is typically experimental
-        if (Find-CustomReleaseName -Tag $GitTagNoChange) {
+        if (Find-CustomReleaseName -Tag $GitTag) {
             $Uplugin.IsBetaVersion = $true
         }
     }

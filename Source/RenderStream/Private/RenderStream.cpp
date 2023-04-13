@@ -84,11 +84,11 @@ namespace
         auto dx11device = static_cast<ID3D11Device*>(GDynamicRHI->RHIGetNativeDevice());
         return dx11device;
     }
+}
 
-    bool IsInCluster()
-    {
-        return IDisplayCluster::IsAvailable() && IDisplayCluster::Get().GetOperationMode() == EDisplayClusterOperationMode::Cluster;
-    }
+bool IsInCluster()
+{
+    return IDisplayCluster::IsAvailable() && IDisplayCluster::Get().GetOperationMode() == EDisplayClusterOperationMode::Cluster;
 }
 
 bool IsDX11()
@@ -597,7 +597,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
     // Each call must always have a frame response, because there will be a corresponding render call.
     {
         std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = IsDX11() ? GFrameCounter : static_cast<uint64>(GFrameNumber);
+        uint64 frameCounter = GFrameCounter;
         info.m_frameResponsesMap[frameCounter] = {frameData.tTracked, cameraData};
     }
 
