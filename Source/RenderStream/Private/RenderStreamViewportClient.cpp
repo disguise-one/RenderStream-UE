@@ -523,6 +523,26 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					WorldViewInfo.ViewProjectionMatrix = View->ViewMatrices.GetViewProjectionMatrix();
 					WorldViewInfo.ViewToWorld = View->ViewMatrices.GetInvViewMatrix();
 					World->LastRenderTime = World->GetTimeSeconds();
+
+					// Render the player's HUD.
+					if (PlayerController->MyHUD)
+					{
+						DebugCanvasObject->SceneView = View;
+						PlayerController->MyHUD->SetCanvas(CanvasObject, DebugCanvasObject);
+
+						PlayerController->MyHUD->PostRender();
+
+						// Put these pointers back as if a blueprint breakpoint hits during HUD PostRender they can
+						// have been changed
+						CanvasObject->Canvas	  = SceneCanvas;
+						DebugCanvasObject->Canvas = DebugCanvas;
+
+						// A side effect of PostRender is that the playercontroller could be destroyed
+						if (IsValid(PlayerController))
+						{
+							PlayerController->MyHUD->SetCanvas(NULL, NULL);
+						}
+					}
 				}
 			}
 

@@ -31,9 +31,21 @@
 			"WhitelistPlatforms": [
 				"Win64"
 			]
+		},
+		{
+			"Name": "RenderStreamUncooked",
+			"Type": "UncookedOnly",
+			"LoadingPhase": "PreDefault",
+			"WhitelistPlatforms": [
+				"Win64"
+			]
 		}
 	],
 	"Plugins": [
+		{
+			"Name": "LiveLink",
+			"Enabled": true
+		},
 		{
 			"Name": "nDisplay",
 			"Enabled": true

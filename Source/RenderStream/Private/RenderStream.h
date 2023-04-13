@@ -28,9 +28,12 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 class UGameInstance;
+class ASkeletalMeshActor;
 
 bool IsInCluster();
 bool IsDX11();
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSkeletonSpawned, ASkeletalMeshActor*);
 
 struct FRenderStreamViewportInfo
 {
@@ -90,10 +93,20 @@ public:
 
     FRenderStreamViewportInfo& GetViewportInfo(FString const& ViewportId);
 
+    void PushAnimDataToSource(const RenderStreamLink::FAnimDataKey& Key, const FString& SubjectName, const RenderStreamLink::FSkeletalLayout& Layout, const RenderStreamLink::FSkeletalPose& Pose);
+    const FName* GetSkeletalParamName(const RenderStreamLink::FAnimDataKey& Key) const;
+    const RenderStreamLink::FSkeletalLayout* GetSkeletalLayout(const FName& SubjectName) const;
+    const RenderStreamLink::FSkeletalPose* GetSkeletalPose(const FName& SubjectName) const;
+
     TMap<FString, TSharedPtr<FRenderStreamViewportInfo>> ViewportInfos;
     TSharedPtr<FRenderStreamProjectionPolicyFactory> ProjectionPolicyFactory;
     TSharedPtr<FRenderStreamPostProcessFactory> PostProcessFactory;
     TSharedPtr<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe> m_logDevice = nullptr;
     double m_LastTime = 0;
     bool m_gameInstanceStarted = false;
+    
+    TMap<RenderStreamLink::FAnimDataKey, FName> SkeletalParamNames;
+    TMap<FName, RenderStreamLink::FSkeletalLayout> SkeletalLayouts;
+    TMap<FName, RenderStreamLink::FSkeletalPose> SkeletalPoses;
+    mutable FOnSkeletonSpawned OnSkeletonSpawned;
 };

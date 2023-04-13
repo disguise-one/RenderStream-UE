@@ -2,7 +2,8 @@ param(
     [string[]] [Parameter (Position = 2, ValueFromRemainingArguments )] $RemainingArgs
 )
 
-# script that cleans up the symbolic link created in the TC env setup. Can be exapnded to do more things in the future 
+# Script that cleans up the symbolic link created in the TC env setup.
+# Can be exapnded to do more things in the future.
 function remove-sybolic_link {
 
     # delete drive and symbolic link

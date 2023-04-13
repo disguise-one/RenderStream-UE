@@ -377,6 +377,17 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed object property: %s"), *Name);
             }
         }
+        else if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+        {
+            const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+            const FSoftObjectPtr& o = SoftObjectProperty->GetPropertyValue(SoftObjectAddress);
+            FSoftObjectPath PropKey = o.ToSoftObjectPath();
+            if (TSoftObjectPtr<USkeleton> Skeleton(PropKey); Skeleton.IsValid() || Skeleton.IsPending())
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed skeleton property: %s"), *Name);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Skeleton);
+            }
+        }
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
         {
             const FText v = TextProperty->GetPropertyValue_InContainer(Root);
@@ -411,7 +422,7 @@ void GenerateScene(
     const URenderStreamChannelCacheAsset* Cache,
     const URenderStreamChannelCacheAsset* Persistent)
 {
-    FString sceneName = FPackageName::GetShortName(Cache->Level.GetAssetPathName());
+    FString sceneName = Cache->GetName();
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
     TArray<const URenderStreamChannelCacheAsset*> Levels;
@@ -651,7 +662,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     for (size_t i = 0; i < ChannelCaches.Num(); ++i)
     {
         URenderStreamChannelCacheAsset* Cache = ChannelCaches[i];
-        const FName PathName = Cache->Level.GetAssetPathName();
+        const auto PathName = Cache->Level.GetAssetPath();
         if (FPackageName::DoesPackageExist(PathName.ToString()))
         {
             for (const FString& Channel : Cache->Channels)

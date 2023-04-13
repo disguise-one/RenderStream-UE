@@ -1,4 +1,4 @@
-# sets up the local enviroment and calls the package_plugin sctipt 
+# sets up the local environment and calls the package_plugin script 
 
 
 if (-not(Test-Path ".\local_env.json")){

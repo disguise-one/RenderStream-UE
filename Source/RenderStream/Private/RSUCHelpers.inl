@@ -271,7 +271,7 @@ namespace RSUCHelpers
             data.vk.width = uint32_t(point2.X);
             data.vk.height = uint32_t(point2.Y);
             // TODO: semaphores
-
+            
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
             {
