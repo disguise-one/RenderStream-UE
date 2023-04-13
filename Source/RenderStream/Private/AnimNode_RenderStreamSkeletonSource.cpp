@@ -61,13 +61,47 @@ FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
     BoneNameMap = GetDefaultBoneNameMap();
 }
 
+FAnimNode_RenderStreamSkeletonSource::~FAnimNode_RenderStreamSkeletonSource()
+{
+    const FRenderStreamModule* Module = FRenderStreamModule::Get();
+    if (Module)
+    {
+        Module->OnSkeletonSpawned.Remove(OnSkeletonSpawnedHandle);
+    }
+    
+}
+
 void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& ParamName)
 {
     // Find and cache any skeleton actors using this animation node
     SkeletonActors.clear();
+    
+    TArray<AActor*> FoundActors;
+    UGameplayStatics::GetAllActorsOfClass(GWorld, ASkeletalMeshActor::StaticClass(), FoundActors);
+
+    for (AActor* Actor : FoundActors)
+    {
+        if (ASkeletalMeshActor* SkeletalMeshActor = Cast<ASkeletalMeshActor>(Actor))
+        {
+            AddIfCorrespondingSkeletonActor(SkeletalMeshActor);
+        }
+    }
+
+    // Add delegate to pick up any actors spawned after this point
+    const FRenderStreamModule* Module = FRenderStreamModule::Get();
+    if (!Module)
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No Renderstream module found"), *ParamName.ToString());
+        return;
+    }
+    OnSkeletonSpawnedHandle = Module->OnSkeletonSpawned.AddRaw(this, &FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor);
+}
+
+void FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor(ASkeletalMeshActor* SkeletalMeshActor)
+{
     USkeleton* ThisSkeleton = nullptr;
     const UAnimBlueprintGeneratedClass* BPClass = dynamic_cast<const UAnimBlueprintGeneratedClass*>(GetAnimClassInterface());
-    FString SkeletonName = ParamName.ToString();
+    const FString SkeletonName = GetSkeletonParamName().ToString();
 
     if (!BPClass)
     {
@@ -82,34 +116,14 @@ void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& Para
         return;
     }
 
-    TArray<AActor*> FoundActors;
-    UGameplayStatics::GetAllActorsOfClass(GWorld, ASkeletalMeshActor::StaticClass(), FoundActors);
-
-    if (FoundActors.IsEmpty())
+    USkeletalMesh* SkeletalMesh = SkeletalMeshActor->ReplicatedMesh;
+    if (SkeletalMesh)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No skeletal mesh actors found"), *SkeletonName);
-        return;
-    }
-
-    for (AActor* Actor : FoundActors)
-    {
-        if (ASkeletalMeshActor* SkeletalMeshActor = Cast<ASkeletalMeshActor>(Actor))
+        USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+        if (Skeleton == ThisSkeleton)
         {
-            USkeletalMesh* SkeletalMesh = SkeletalMeshActor->ReplicatedMesh;
-            if (SkeletalMesh)
-            {
-                USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
-                if (Skeleton == ThisSkeleton)
-                {
-                    SkeletonActors.push_back(TWeakObjectPtr<ASkeletalMeshActor>(SkeletalMeshActor));
-                }
-            }
+            SkeletonActors.push_back(TWeakObjectPtr<ASkeletalMeshActor>(SkeletalMeshActor));
         }
-    }
-
-    if (SkeletonActors.empty())
-    {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No corresponding skeletal mesh actors found"), *SkeletonName);
     }
 }
 
@@ -152,6 +166,10 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
         * FQuat::MakeFromRotator(FRotator(0, 90, 0));  // Apply 90 degree yaw to account for skeleton default orientation
 
     // Apply pose to any cached skeleton actors
+    if (SkeletonActors.empty())
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error applying skeleton data for <%s>. No corresponding skeletal mesh actors found"), *ParamName.ToString());
+    }
     for (const TWeakObjectPtr<ASkeletalMeshActor> SkeletonActor : SkeletonActors)
     {
         if (SkeletonActor.IsValid())

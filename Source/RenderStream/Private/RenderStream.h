@@ -28,9 +28,12 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 class UGameInstance;
+class ASkeletalMeshActor;
 
 bool IsInCluster();
 bool IsDX11();
+
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSkeletonSpawned, ASkeletalMeshActor*);
 
 struct FRenderStreamViewportInfo
 {
@@ -105,4 +108,5 @@ public:
     TMap<RenderStreamLink::FAnimDataKey, FName> SkeletalParamNames;
     TMap<FName, RenderStreamLink::FSkeletalLayout> SkeletalLayouts;
     TMap<FName, RenderStreamLink::FSkeletalPose> SkeletalPoses;
+    mutable FOnSkeletonSpawned OnSkeletonSpawned;
 };
