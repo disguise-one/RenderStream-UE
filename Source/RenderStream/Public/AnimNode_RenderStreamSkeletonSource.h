@@ -16,10 +16,12 @@ struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_
     GENERATED_BODY()
 
 public:
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
         TMap<FName, FName> BoneNameMap;
 public:
     FAnimNode_RenderStreamSkeletonSource();
+    ~FAnimNode_RenderStreamSkeletonSource();
 
     virtual void Update_AnyThread(const FAnimationUpdateContext& Context) override;
     virtual void Evaluate_AnyThread(FPoseContext& Output) override;
@@ -30,6 +32,7 @@ public:
 protected:
 
     void CacheSkeletonActors(const FName& ParamName);
+    void AddIfCorrespondingSkeletonActor(ASkeletalMeshActor* SkeletalMeshActor);
     void ApplyRootPose(const FName& ParamName);
 
     FName GetSkeletonParamName();
@@ -42,6 +45,7 @@ protected:
 private:
     std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
     bool SkeletonActorsCached;
+    FDelegateHandle OnSkeletonSpawnedHandle;
 
     // Cached pose info
     TArray<FName> SourceBoneNames;
