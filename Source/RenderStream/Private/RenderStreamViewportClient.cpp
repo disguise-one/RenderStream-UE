@@ -217,14 +217,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 	//Get world for render
 	UWorld* const MyWorld = GetWorld();
 
-	// Initialize new render frame resources
-	FDisplayClusterRenderFrame RenderFrame;
-	if (!DCRenderDevice->BeginNewFrame(InViewport, MyWorld, RenderFrame))
-	{
-		// skip rendering: Can't build render frame
-		return;
-	}
-
 	////////////////////////////////
 	// Otherwise we use our own version of the UGameViewportClient::Draw which is basically
 	// a simpler version of the original one but with multiple ViewFamilies support
@@ -286,6 +278,17 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
 	// Gather all view families first
 	TArray<FSceneViewFamilyContext*> ViewFamilies;
+
+	// Initialize new render frame resources
+	FDisplayClusterRenderFrame RenderFrame;
+	if (!DCRenderDevice->BeginNewFrame(InViewport, MyWorld, RenderFrame))
+	{
+		// skip rendering: Can't build render frame
+		return;
+	}
+
+	// Handle special viewports game-thread logic at frame begin
+	DCRenderDevice->InitializeNewFrame();
 
 	for (FDisplayClusterRenderFrame::FFrameRenderTarget& DCRenderTarget : RenderFrame.RenderTargets)
 	{
