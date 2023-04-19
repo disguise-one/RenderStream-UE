@@ -45,6 +45,8 @@ public:
 
         RS_FMT_RGBA8,
         RS_FMT_RGBX8,
+
+        RS_FMT_R32F
     };
 
     enum RS_ERROR
@@ -440,6 +442,8 @@ private:
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
     typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, const SenderFrame* data, const void* frameData); // publish a frame buffer which was generated from the associated tracking and timing information.
 
+    typedef RS_ERROR rs_setDepthFrameFn(StreamHandle streamHandle, const SenderFrame* data);
+
     typedef RS_ERROR rs_releaseImageFn(const SenderFrame* image); // release any references to image (e.g. before deletion)
 
     typedef RS_ERROR rs_logToD3Fn(const char * str);
@@ -566,6 +570,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getSkeletonJointPosesFn* rs_getSkeletonJointPoses = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
     rs_sendFrameFn* rs_sendFrame2 = nullptr;
+    rs_setDepthFrameFn* rs_setDepthFrame = nullptr;
     rs_releaseImageFn* rs_releaseImage2 = nullptr;
     rs_logToD3Fn* rs_logToD3 = nullptr;
     rs_sendProfilingDataFn* rs_sendProfilingData = nullptr;

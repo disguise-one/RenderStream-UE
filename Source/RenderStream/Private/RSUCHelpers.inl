@@ -54,16 +54,16 @@ namespace {
         void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions);
     };
 
-    class RSResizeCopyWithDepth : public RSResizeCopy
+    class RSResizeDepthCopy : public RSResizeCopy
     {
-        DECLARE_EXPORTED_SHADER_TYPE(RSResizeCopyWithDepth, Global, /* RenderStream */);
+        DECLARE_EXPORTED_SHADER_TYPE(RSResizeDepthCopy, Global, /* RenderStream */);
     public:
-        RSResizeCopyWithDepth() { }
+        RSResizeDepthCopy() { }
 
-        RSResizeCopyWithDepth(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+        RSResizeDepthCopy(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
             : RSResizeCopy(Initializer)
         { }
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions);
     };
 
 
@@ -76,17 +76,11 @@ namespace {
     SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
-    BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyDepthUB, )
-    SHADER_PARAMETER(FVector2f, UVScale)
-    SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
-    SHADER_PARAMETER_TEXTURE(Texture2D, Depth)
-    SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
-    END_GLOBAL_SHADER_PARAMETER_STRUCT()
+    
 
     IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
-    IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyDepthUB, "RSResizeCopyDepthUB");
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
-    IMPLEMENT_SHADER_TYPE(, RSResizeCopyWithDepth, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyWithDepthPS"), SF_Pixel);
+    IMPLEMENT_SHADER_TYPE(, RSResizeDepthCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyDepthPS"), SF_Pixel);
 
     void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions)
     {
@@ -102,30 +96,137 @@ namespace {
     }
 
 
-    void RSResizeCopyWithDepth::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions)
+    void RSResizeDepthCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions)
     {
-        RSResizeCopyDepthUB UB;
+        RSResizeCopyUB UB;
         {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
-            UB.Texture = RGBTexture;
-            UB.Depth = DepthTexture;
-            UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
+            UB.Texture = DepthTexture;
+            UB.UVScale = FVector2f((float)OutputDimensions.X / (float)DepthTexture->GetSizeX(), (float)OutputDimensions.Y / (float)DepthTexture->GetSizeY());
         }
 
-        TUniformBufferRef<RSResizeCopyDepthUB> Data = TUniformBufferRef<RSResizeCopyDepthUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
-        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyDepthUB>(), Data);
+        TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
+        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyUB>(), Data);
     }
 
 }
 
 namespace RSUCHelpers
 {
+
+    static void SetDepthFrame(FRHICommandListImmediate& RHICmdList, 
+        const RenderStreamLink::StreamHandle Handle,
+        FTextureRHIRef BufTexture,
+        FRHITexture* InDepthTexture
+    )
+    {
+        // need to copy depth texture into buf texture
+        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Set Depth Frame"));
+        // convert the source with a draw call
+        FGraphicsPipelineStateInitializer GraphicsPSOInit;
+        FRHITexture* RenderTarget = BufTexture.GetReference();
+        FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::DontLoad_Store);
+
+        {
+            SCOPED_DRAW_EVENTF(RHICmdList, DepthCapture, TEXT("RS Depth Blit"));
+            RHICmdList.BeginRenderPass(RPInfo, TEXT("DepthCapture"));
+
+            RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc, ERHIAccess::RTV));
+
+            RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+            GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+            GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
+            GraphicsPSOInit.BlendState = TStaticBlendStateWriteMask<CW_RGBA, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE>::GetRHI();
+            GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
+
+            // configure media shaders
+            auto ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+            TShaderMapRef<FMediaShadersVS> VertexShader(ShaderMap);
+
+            GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
+            GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+
+            
+            TShaderMapRef<RSResizeDepthCopy> ConvertShader(ShaderMap);
+            GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+            SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
+            ConvertShader->SetParameters(RHICmdList, InDepthTexture, InDepthTexture->GetSizeXY());
+            
+
+            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
+            // draw full size quad into render target
+
+            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer();
+            RHICmdList.SetStreamSource(0, VertexBuffer, 0);
+
+            // set viewport to RT size
+            RHICmdList.SetViewport(0, 0, 0.0f, streamTexSize.X, streamTexSize.Y, 1.0f);
+            RHICmdList.DrawPrimitive(0, 2, 1);
+            RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::RTV, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc));
+
+            RHICmdList.EndRenderPass();
+        }
+
+        void* resource = BufTexture->GetTexture2D()->GetNativeResource();
+
+        auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
+        if (toggle == "D3D11")
+        {
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
+            data.dx11.resource = static_cast<ID3D11Resource*>(resource);
+
+            auto output = RenderStreamLink::instance().rs_setDepthFrame(Handle, &data);
+            if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to set depth frame: %d"), output);
+            }
+        }
+        else if (toggle == "D3D12")
+        {
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
+            data.dx12.resource = static_cast<ID3D12Resource*>(resource);
+
+            {
+                auto output = RenderStreamLink::instance().rs_setDepthFrame(Handle, &data);
+                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+                {
+                    UE_LOG(LogRenderStream, Log, TEXT("Failed to set depth frame: %d"), output);
+                }
+            }
+        }
+        else if (toggle == "Vulkan")
+        {
+            RenderStreamLink::RSPixelFormat fmt = RenderStreamLink::RS_FMT_R32F;
+            
+
+            FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(BufTexture);
+            auto point2 = VulkanTexture->GetSizeXY();
+
+            RenderStreamLink::SenderFrame data = {};
+            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
+            data.vk.memory = VulkanTexture->GetAllocationHandle();
+            data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
+            data.vk.format = fmt;
+            data.vk.width = uint32_t(point2.X);
+            data.vk.height = uint32_t(point2.Y);
+
+            auto output = RenderStreamLink::instance().rs_setDepthFrame(Handle, &data);
+            if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+            }
+            
+        }
+    }
+
     static void SendFrame(const RenderStreamLink::StreamHandle Handle,
         FTextureRHIRef& BufTexture,
         FRHICommandListImmediate& RHICmdList,
         RenderStreamLink::CameraResponseData FrameData,
         FRHITexture* InSourceTexture,
-        FRHITexture* InDepthTexture,
         FIntPoint Point,
         FVector2f CropU,
         FVector2f CropV)
@@ -156,20 +257,12 @@ namespace RSUCHelpers
             GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
             GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 
-            if (InDepthTexture)
-            {
-                TShaderMapRef<RSResizeCopyWithDepth> ConvertShader(ShaderMap);
-                GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-                SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
-                ConvertShader->SetParameters(RHICmdList, InSourceTexture, InDepthTexture, Point);
-            }
-            else
-            {
-                TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
-                GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-                SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
-                ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
-            }
+            
+            TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
+            GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+            SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
+            ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+            
 
             auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
             // draw full size quad into render target
@@ -305,6 +398,7 @@ namespace RSUCHelpers
             { DXGI_FORMAT_R32G32B32A32_FLOAT, EPixelFormat::PF_A32B32G32R32F}, // RS_FMT_RGBA16 
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBA8
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBX8
+            { DXGI_FORMAT_R32_FLOAT, EPixelFormat::PF_R32_FLOAT },             // RS_FMT_R32F
         };
         const auto format = formatMap[rsFormat];
 

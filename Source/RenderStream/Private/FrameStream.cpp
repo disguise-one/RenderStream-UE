@@ -10,14 +10,19 @@ FFrameStream::~FFrameStream()
 {
 }
 
-void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, RenderStreamLink::CameraResponseData& FrameData, FRHITexture* SourceTexture, FRHITexture* DepthTexture, const FIntRect& ViewportRect)
+void FFrameStream::SetDepthFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, FRHITexture* InDepthTexture)
+{
+    RSUCHelpers::SetDepthFrame(RHICmdList, m_handle, m_depthBufTexture, InDepthTexture);
+}
+
+void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, RenderStreamLink::CameraResponseData& FrameData, FRHITexture* SourceTexture, const FIntRect& ViewportRect)
 {
     float ULeft = (float)ViewportRect.Min.X / (float)SourceTexture->GetSizeX();
     float URight = (float)ViewportRect.Max.X / (float)SourceTexture->GetSizeX();
     float VTop = (float)ViewportRect.Min.Y / (float)SourceTexture->GetSizeY();
     float VBottom = (float)ViewportRect.Max.Y / (float)SourceTexture->GetSizeY();
     
-    RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, DepthTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
+    RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
 }
 
 bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat fmt)
@@ -34,12 +39,17 @@ bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const
     if (!RSUCHelpers::CreateStreamResources(m_bufTexture, m_resolution, fmt))
         return false; // helper method logs on failure
 
+    if (!RSUCHelpers::CreateStreamResources(m_depthBufTexture, m_resolution, RenderStreamLink::RSPixelFormat::RS_FMT_R32F))
+        return false;
+
     if (m_handle == 0) {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to create stream"));
         return false;
     }
     UE_LOG(LogRenderStream, Log, TEXT("Created stream '%s'"), *m_streamName);
     
+
+
     return true;
 }
 

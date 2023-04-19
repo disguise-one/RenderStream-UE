@@ -13,10 +13,11 @@ public:
     FFrameStream();
     ~FFrameStream();
 
+    void SetDepthFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, FRHITexture* InDepthTexture);
+
     void SendFrame_RenderingThread(FRHICommandListImmediate & RHICmdList, 
                                    RenderStreamLink::CameraResponseData& FrameData,
                                    FRHITexture* InSourceTexture,
-                                   FRHITexture* InDepthTexture,
                                    const FIntRect& ViewportRect);
 
     bool Setup(const FString& Name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);
@@ -33,6 +34,9 @@ private:
     FString m_channel;
     RenderStreamLink::ProjectionClipping m_clipping;
     FTextureRHIRef m_bufTexture;
+    FTextureRHIRef m_depthBufTexture;
     FIntPoint m_resolution;
     RenderStreamLink::StreamHandle m_handle;
+
+
 };

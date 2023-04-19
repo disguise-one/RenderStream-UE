@@ -45,17 +45,29 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
     Module->LoadSchemas(*GWorld);
 
+
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
     const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
     UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Using Alpha Encoding %d"), settings->AlphaEncoding);
     if (encodeDepth)
     {
-        ViewExtension = FRenderStreamSceneViewExtension::Create();
+        for (auto& viewport : InViewportManager->GetViewports())
+        {
+            ViewExtension = FRenderStreamSceneViewExtension::Create(viewport->GetId());
+        }
+        
     }
     return true;
 }
 
-void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportManager* InViewportManager) {}
+void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportManager* InViewportManager) 
+{
+    if (ViewExtension)
+    {
+        auto depth = ViewExtension->getExtractedDepth();
+        check(depth);
+    }
+}
 
 void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
 {
@@ -64,6 +76,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         return;
     }
 
+    
     auto ViewportId = ViewportProxy->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
@@ -99,13 +112,14 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
         
-        FRHITexture* depth = nullptr;
-        if (ViewExtension && ViewExtension->getExtractedDepth().IsValid())
+        if (ViewExtension)
         {
-            depth = ViewExtension->getExtractedDepth()->GetRHI();
+            auto depth = ViewExtension->getExtractedDepth();
             check(depth);
+            Stream->SetDepthFrame_RenderingThread(RHICmdList, depth->GetShaderResourceRHI());
         }
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], depth, Rects[0]);
+        
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
     }
 
     // Uncomment this to restore client display

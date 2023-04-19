@@ -3,14 +3,18 @@
 #include "RenderStreamSceneViewExtension.h"
 #include "Renderer/Private/SceneTextures.h"
 #include "CoreGlobals.h"
+#include "FrameStream.h"
+#include "RenderStream.h"
+#include "Renderer/Private/PostProcess/PostProcessing.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamViewExtension);
 
 
-FRenderStreamSceneViewExtension::FRenderStreamSceneViewExtension(const FAutoRegister& AutoRegister) : FSceneViewExtensionBase(AutoRegister)
+FRenderStreamSceneViewExtension::FRenderStreamSceneViewExtension(const FAutoRegister& AutoRegister, const FString& ID) : FSceneViewExtensionBase(AutoRegister)
 {
     m_depthEnabled = true;
-    
+    m_viewportId = ID;
+
     IsActiveThisFrameFunctions.Empty();
     FSceneViewExtensionIsActiveFunctor IsActiveFunctor;
     IsActiveFunctor.IsActiveFunction = [=](const ISceneViewExtension* SceneViewExtension, const FSceneViewExtensionContext& Context)
@@ -24,16 +28,18 @@ FRenderStreamSceneViewExtension::~FRenderStreamSceneViewExtension()
 {
 }
 
-TSharedPtr<FRenderStreamSceneViewExtension, ESPMode::ThreadSafe> FRenderStreamSceneViewExtension::Create()
+TSharedPtr<FRenderStreamSceneViewExtension, ESPMode::ThreadSafe> FRenderStreamSceneViewExtension::Create(const FString& Id)
 {
-    auto ext =  FSceneViewExtensions::NewExtension<FRenderStreamSceneViewExtension>();
+    auto ext =  FSceneViewExtensions::NewExtension<FRenderStreamSceneViewExtension>(Id);
     return ext;
 }
 
-void FRenderStreamSceneViewExtension::PostRenderBasePassDeferred_RenderThread(FRDGBuilder& GraphBuilder, FSceneView& InView, const FRenderTargetBindingSlots& RenderTargets, TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures)
+
+void FRenderStreamSceneViewExtension::PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessingInputs& Inputs)
 {
-    auto depth = SceneTextures->GetContents()->SceneDepthTexture;
-    GraphBuilder.QueueTextureExtraction(depth, &m_depthIntermediate);
+    auto depth = Inputs.SceneTextures->GetContents()->SceneDepthTexture;
+    GraphBuilder.QueueTextureExtraction(depth, &m_depthIntermediate, ERDGResourceExtractionFlags::None);
+
 }
 
 
