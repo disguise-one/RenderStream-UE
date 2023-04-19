@@ -10,6 +10,8 @@
 
 #include "Animation/AnimBlueprintGeneratedClass.h"
 
+#include <vector>
+
 TMap<FName, FName> GetDefaultBoneNameMap()
 {
     TMap<FName, FName> BoneMap;
