@@ -731,9 +731,19 @@ void RenderStreamSceneSelector::ApplySkeletalPose(uint64_t specHash, size_t iPos
     RenderStreamLink::FSkeletalPose Pose;
     {
         RenderStreamLink::SkeletonPose rsPose{};
+
+        const auto isNotAssignedSkeleton = [](RenderStreamLink::RS_ERROR error, size_t nJoints)->bool {
+            return  error == RenderStreamLink::RS_ERROR_SUCCESS && nJoints == 0;
+        };
+
         int nJoints;
         if (const RenderStreamLink::RS_ERROR Err = RenderStreamLink::instance().rs_getSkeletonJointPoses(specHash, iPose, nullptr, &nJoints);
-            Err != RenderStreamLink::RS_ERROR_SUCCESS)
+            isNotAssignedSkeleton(Err, nJoints))
+        {
+            // not assigned skeleton is valid workflow; however we want to early out to avoid handling empty data
+            return;
+        }
+        else if (Err != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream failed to get skeletal pose size for index %llu. Error: %d"), iPose, Err);
             return;
