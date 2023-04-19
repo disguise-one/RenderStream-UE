@@ -7,6 +7,8 @@
 
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
 
+#include <vector>
+
 class ILiveLinkClient;
 class ASkeletalMeshActor;
 
