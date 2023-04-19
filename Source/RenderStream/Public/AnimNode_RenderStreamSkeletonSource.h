@@ -5,9 +5,9 @@
 #include "CoreMinimal.h"
 #include "RenderStreamLink.h"
 
-#include "AnimNode_RenderStreamSkeletonSource.generated.h"
-
 #include <vector>
+
+#include "AnimNode_RenderStreamSkeletonSource.generated.h"
 
 class ILiveLinkClient;
 class ASkeletalMeshActor;
