@@ -400,8 +400,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         // Find offset between mesh joint and the SOURCE pose's parent (in case source contains fewer bones than mesh)
         // And use this to calculate the initial orientation of the mesh pose bone
         const FVector MeshInitialOffset = MeshBoneWorldPositions[MeshIndex] - MeshBoneWorldPositions[ParentMeshIndex];
-        float MeshRollAngle = UKismetMathLibrary::Atan2(MeshInitialOffset.Z, MeshInitialOffset.X);
-        const FQuat MeshInitialOrientation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(MeshRollAngle), 0.f));
+        const FQuat MeshInitialOrientation = MeshInitialOffset.ToOrientationQuat();
 
         // Find difference in initial orientation between mesh and source pose
         const FVector SourceInitialOffset = SourceInitialPose[SourceIndex].GetTranslation();
@@ -412,16 +411,21 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         else
         {
             // Calculate the initial orientation of the bone in the source pose
-            float SourceRollAngle = UKismetMathLibrary::Atan2(SourceInitialOffset.Z, SourceInitialOffset.X);
-            const FQuat SourceInitialOrientation = FQuat::MakeFromEuler(FVector(0.f, FMath::RadiansToDegrees(SourceRollAngle), 0.f));
+            const FQuat SourceInitialOrientation = SourceInitialOffset.ToOrientationQuat();
 
-            // Calculate orientation differences between the source and mesh poses
-            // World orientation difference is the global difference in orientations of the bones
-            // Local orientation difference is  the relative offset to the parent bone required to achieve the correct global orientations
-            WorldInitialOrientationDifferences[MeshIndex] = SourceInitialOrientation * MeshInitialOrientation.Inverse();
-            LocalInitialOrientationDifferences[SourceParentIndex] = MeshBoneWorldRotations[ParentMeshIndex].Inverse() * (WorldInitialOrientationDifferences[MeshIndex] * WorldInitialOrientationDifferences[ParentMeshIndex].Inverse()) * MeshBoneWorldRotations[ParentMeshIndex];
+            // Calculate world orientation difference between the source and mesh poses
+            WorldInitialOrientationDifferences[MeshIndex] = FQuat::FindBetween(MeshInitialOffset, SourceInitialOffset);
+
+            // Calculate the local orientation to apply
+            // We are adjusting the parent joint's rotation, however the rotation needs to be applied in the space of its parent
+            const FQuat ParentGlobalRotation = MeshBoneWorldRotations[ParentMeshIndex];
+            const FQuat ParentLocalRotation = OutPose[FCompactPoseBoneIndex(ParentMeshIndex)].GetRotation();
+            const FQuat ParentParentGlobalRotation = ParentGlobalRotation * ParentLocalRotation.Inverse();
+            const FQuat OrientationDifferenceDelta = WorldInitialOrientationDifferences[ParentMeshIndex].Inverse() * WorldInitialOrientationDifferences[MeshIndex];
+            LocalInitialOrientationDifferences[SourceParentIndex] = ParentParentGlobalRotation.Inverse() * OrientationDifferenceDelta * ParentParentGlobalRotation;
         }
 
+        // Update rotations between mesh and source bone space
         MeshToSourceSpaceRotations[SourceParentIndex] = WorldInitialOrientationDifferences[MeshIndex] * MeshToSourceSpaceRotations[SourceParentIndex];
     }
 
