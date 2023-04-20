@@ -55,7 +55,7 @@ private:
     // Cached pose info
     TArray<FName> SourceBoneNames;
     TArray<int32> SourceParentIndices;
-    TArray<FQuat> MeshToSourceSpaceRotations;
+    TArray<FTransform> MeshToSourceSpaceTransforms;
     TArray<FQuat> LocalInitialOrientationDifferences;
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
