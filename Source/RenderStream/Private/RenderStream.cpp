@@ -72,6 +72,7 @@
 #include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
 
 #include "GameMapsSettings.h"
+#include "Engine/GameInstance.h"
 #include "Engine/ObjectLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);

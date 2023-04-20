@@ -55,6 +55,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewport.h"
+#include "Engine/Public/SceneManagement.h"
 
 //#include "Config/DisplayClusterConfigManager.h"
 

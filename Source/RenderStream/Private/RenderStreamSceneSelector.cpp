@@ -10,6 +10,7 @@
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
 #include "RenderStreamSettings.h"
+#include "Engine/Public/TextureResource.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
