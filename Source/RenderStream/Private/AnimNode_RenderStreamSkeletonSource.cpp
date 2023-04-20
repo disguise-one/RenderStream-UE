@@ -441,7 +441,9 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         }
 
         // Update rotations between mesh and source bone space
-        MeshToSourceSpaceTransforms[SourceParentIndex].SetRotation(WorldInitialOrientationDifferences[MeshIndex] * MeshToSourceSpaceTransforms[SourceParentIndex].GetRotation());
+        // Set for parent and current joint, but if this joint children they will be overwritten as we traverse the hierarchy
+        MeshToSourceSpaceTransforms[SourceParentIndex].SetRotation(WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[ParentMeshIndex].GetRotation());
+        MeshToSourceSpaceTransforms[SourceIndex].SetRotation(WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[MeshIndex].GetRotation());
     }
 
     UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
