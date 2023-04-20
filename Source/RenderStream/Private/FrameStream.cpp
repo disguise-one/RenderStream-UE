@@ -10,10 +10,6 @@ FFrameStream::~FFrameStream()
 {
 }
 
-void FFrameStream::SetDepthFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, FRHITexture* InDepthTexture)
-{
-    RSUCHelpers::SetDepthFrame(RHICmdList, m_handle, m_depthBufTexture, InDepthTexture);
-}
 
 void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, RenderStreamLink::CameraResponseData& FrameData, FRHITexture* SourceTexture, const FIntRect& ViewportRect)
 {
@@ -23,6 +19,17 @@ void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdLis
     float VBottom = (float)ViewportRect.Max.Y / (float)SourceTexture->GetSizeY();
     
     RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
+}
+
+void FFrameStream::SendFrameWithDepth_RenderingThread(FRHICommandListImmediate& RHICmdList, RenderStreamLink::CameraResponseData& FrameData, FRHITexture* InSourceTexture, FRHITexture* InDepthTexture, const FIntRect& ViewportRect)
+{
+    float ULeft = (float)ViewportRect.Min.X / (float)InSourceTexture->GetSizeX();
+    float URight = (float)ViewportRect.Max.X / (float)InSourceTexture->GetSizeX();
+    float VTop = (float)ViewportRect.Min.Y / (float)InSourceTexture->GetSizeY();
+    float VBottom = (float)ViewportRect.Max.Y / (float)InSourceTexture->GetSizeY();
+
+    RSUCHelpers::SendFrameWithDepth(m_handle, m_bufTexture, m_depthBufTexture, RHICmdList, FrameData, InSourceTexture, InDepthTexture, InSourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
+
 }
 
 bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat fmt)

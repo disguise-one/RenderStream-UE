@@ -6,7 +6,6 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamPostProcess, Log, All);
 
-class FRenderStreamSceneViewExtension;
 
 /**
  * 'renderstream' policy for disguise integration
@@ -31,10 +30,12 @@ public:
 	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const override;
 
 private:
+
+   
 	TMap<FString, FString> Parameters;
 	FString Id;
 	static FString Type;
-    TSharedPtr<FRenderStreamSceneViewExtension> ViewExtension;
+    bool m_EncodeDepth = false;
 };
 
 class FRenderStreamPostProcessFactory

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "RenderStreamCapturePostProcess.h"
-
+#include "SceneRenderTargetParameters.h"
 
 #include "DisplayClusterConfigurationTypes_Base.h"
 #include "FrameStream.h"
@@ -11,7 +11,6 @@
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
 
-#include "RenderStreamSceneViewExtension.h"
 
 class UCameraComponent;
 class UWorld;
@@ -49,24 +48,14 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
     const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
     UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Using Alpha Encoding %d"), settings->AlphaEncoding);
-    if (encodeDepth)
-    {
-        for (auto& viewport : InViewportManager->GetViewports())
-        {
-            ViewExtension = FRenderStreamSceneViewExtension::Create(viewport->GetId());
-        }
-        
-    }
+    m_EncodeDepth = encodeDepth;
+    
     return true;
 }
 
 void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportManager* InViewportManager) 
 {
-    if (ViewExtension)
-    {
-        auto depth = ViewExtension->getExtractedDepth();
-        check(depth);
-    }
+
 }
 
 void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
@@ -76,7 +65,6 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         return;
     }
 
-    
     auto ViewportId = ViewportProxy->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
@@ -111,15 +99,11 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
-        
-        if (ViewExtension)
-        {
-            auto depth = ViewExtension->getExtractedDepth();
-            check(depth);
-            Stream->SetDepthFrame_RenderingThread(RHICmdList, depth->GetShaderResourceRHI());
-        }
-        
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+
+        if(m_EncodeDepth)
+            Stream->SendFrameWithDepth_RenderingThread(RHICmdList, frameResponse, Resources[0], GetSceneTextureExtracts().GetDepthTexture(), Rects[0]);
+        else
+            Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
     }
 
     // Uncomment this to restore client display
