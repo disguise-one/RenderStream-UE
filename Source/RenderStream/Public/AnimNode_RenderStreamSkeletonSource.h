@@ -5,6 +5,8 @@
 #include "CoreMinimal.h"
 #include "RenderStreamLink.h"
 
+#include "Engine/SkeletalMesh.h"
+
 #include <vector>
 
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
