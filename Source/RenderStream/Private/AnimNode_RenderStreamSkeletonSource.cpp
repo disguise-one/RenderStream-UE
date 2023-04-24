@@ -480,7 +480,7 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
                 const FQuat SourceRotation = MeshToSource.Inverse() * SourceInitialPoseRotations[SourceIndex] * SourceBoneTransform.GetRotation() * MeshToSource;  // Rotation to apply from the source data
                 const FQuat MeshRotation = OutPose[MeshIndex].GetRotation();  // Rotation to apply for the initial mesh pose
                 const FQuat& InitialOrientationOffset = LocalInitialOrientationDifferences[SourceIndex];  // Rotation to apply to account for different initial orientations (e.g. A-pose vs T-pose)
-                OutPose[MeshIndex].SetRotation(InitialOrientationOffset * MeshRotation * SourceRotation);
+                OutPose[MeshIndex].SetRotation((InitialOrientationOffset * MeshRotation * SourceRotation).GetNormalized());
 
                 // Apply position
                 const int32 SourceParentIndex = SourceParentIndices[SourceIndex];
