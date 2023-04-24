@@ -14,36 +14,24 @@ TMap<FName, FName> GetDefaultBoneNameMap()
 
     const std::vector<FName> ExpectedBones =
     {
-        "R",
+        "Pelvis",
         "Spine",
         "Chest",
         "Neck",
-        "L_Hip",
-        "L_Knee",
-        "L_Ankle",
-        "L_Foot_Pinky",
-        "L_Shoulder",
-        "L_Elbow",
-        "L_Wrist",
-        "R_Hip",
-        "R_Knee",
-        "R_Ankle",
-        "R_Foot_Pinky",
-        "R_Shoulder",
-        "R_Elbow",
-        "R_Wrist",
-        "L_Big_Toe",
-        "L_Shoulder_Prism",
-        "L_Hand1",
-        "L_Hand2",
-        "R_Big_Toe",
-        "R_Shoulder_Prism",
-        "R_Hand1",
-        "R_Hand2",
-        "L_Ear",
-        "L_Eye",
-        "R_Ear",
-        "R_Eye"
+        "LeftClavicle",
+        "LeftShoulder",
+        "LeftElbow",
+        "LeftWrist",
+        "LeftHip",
+        "LeftKnee",
+        "LeftAnkle",
+        "RightClavicle",
+        "RightShoulder",
+        "RightElbow",
+        "RightWrist",
+        "RightHip",
+        "RightKnee",
+        "RightAnkle"
     };
 
     for (const FName& Bone : ExpectedBones)
@@ -498,5 +486,5 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
 
 /*static*/ bool FAnimNode_RenderStreamSkeletonSource::IsRootBone(const FName& SourceBoneName)
 {
-    return SourceBoneName == "R";
+    return SourceBoneName == "Pelvis";
 }
