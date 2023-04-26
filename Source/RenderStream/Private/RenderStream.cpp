@@ -897,10 +897,7 @@ void FRenderStreamModule::OnActorSpawned(AActor* InActor)
         InActor->SetActorHiddenInGame(true);
         HideDefaultPawns();
     }
-    else if (ASkeletalMeshActor* SkeletalMeshActor = dynamic_cast<ASkeletalMeshActor*>(InActor))
-    {
-        OnSkeletonSpawned.Broadcast(SkeletalMeshActor);
-    }
+    OnActorSpawnedDelegate.Broadcast(InActor);
 }
 
 void FRenderStreamModule::HideDefaultPawns()

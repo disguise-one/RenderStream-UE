@@ -37,7 +37,7 @@ public:
 protected:
 
     void CacheSkeletonActors(const FName& ParamName);
-    void AddIfCorrespondingSkeletonActor(ASkeletalMeshActor* SkeletalMeshActor);
+    void AddIfCorrespondingSkeletonActor(AActor* SkeletonActor);
     void ApplyRootPose(const FName& ParamName);
 
     FName GetSkeletonParamName();
@@ -48,9 +48,9 @@ protected:
     static bool IsRootBone(const FName& SourceBoneName);
 
 private:
-    std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
+    std::vector<TWeakObjectPtr<AActor>> SkeletonActors;
     bool SkeletonActorsCached;
-    FDelegateHandle OnSkeletonSpawnedHandle;
+    FDelegateHandle OnActorSpawnedHandle;
 
     // Cached pose info
     TArray<FName> SourceBoneNames;
