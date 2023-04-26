@@ -65,7 +65,7 @@ void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& Para
 
     if (!GWorld)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No GWorld."), *ParamName.ToString());
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. No GWorld."), *ParamName.ToString());
         return;
     }
 
@@ -87,31 +87,38 @@ void FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor(ASkel
     const UAnimBlueprintGeneratedClass* BPClass = dynamic_cast<const UAnimBlueprintGeneratedClass*>(GetAnimClassInterface());
     const FString SkeletonName = GetSkeletonParamName().ToString();
 
-    // Get the skeleton corresponding to this AnimGraph
-    if (!BPClass)
+    if (!SkeletalMeshActor)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. Couldn't find blueprint class"), *SkeletonName);
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. Null skeletal mesh actor passed to function"), *SkeletonName);
         return;
     }
 
-    ThisSkeleton = BPClass->TargetSkeleton;
-    if (!ThisSkeleton)
+    // Get the skeleton corresponding to this AnimGraph
+    if (!BPClass)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. Blueprint class has no target skeleton"), *SkeletonName);
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. Couldn't find blueprint class"), *SkeletonName);
+        return;
+    }
+
+    const UClass* ThisAnimClass = IAnimClassInterface::GetActualAnimClass(BPClass);
+    if (!ThisAnimClass)
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. Couldn't find anim class"), *SkeletonName);
         return;
     }
 
     // Check if the SkeletalMeshActor is using this skeleton
-    USkeletalMesh* SkeletalMesh = SkeletalMeshActor->ReplicatedMesh;
-    if (SkeletalMesh)
+    const USkeletalMeshComponent* SkeletalMeshComponent = SkeletalMeshActor->GetSkeletalMeshComponent();
+    if (SkeletalMeshComponent)
     {
-        USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
-        if (Skeleton == ThisSkeleton)
+        TSubclassOf<UAnimInstance> AnimClass = SkeletalMeshComponent->AnimClass;
+        if (AnimClass == ThisAnimClass)
         {
             TWeakObjectPtr<ASkeletalMeshActor> SkeletonWeakPtr(SkeletalMeshActor);
             if (SkeletonWeakPtr.IsValid() &&
                 std::find(SkeletonActors.begin(), SkeletonActors.end(), SkeletonWeakPtr) == SkeletonActors.end())
             {
+                UE_LOG(LogRenderStream, Log, TEXT("Found actor %s for skeleton %s"), *SkeletalMeshActor->GetActorNameOrLabel(), *SkeletonName);
                 SkeletonActors.push_back(SkeletonWeakPtr);
             }
         }
@@ -141,7 +148,7 @@ void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnim
         const FRenderStreamModule* Module = FRenderStreamModule::Get();
         if (!Module)
         {
-            UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No Renderstream module found"), *ParamName.ToString());
+            UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. No Renderstream module found"), *ParamName.ToString());
             return;
         }
         OnSkeletonSpawnedHandle = Module->OnSkeletonSpawned.AddRaw(this, &FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor);
@@ -178,7 +185,7 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
     }
     if (SkeletonActors.empty())
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error applying skeleton data for <%s>. No corresponding skeletal mesh actors found"), *ParamName.ToString());
+        UE_LOG(LogRenderStream, Warning, TEXT("Error applying skeleton data for %s. No corresponding skeletal mesh actors found"), *ParamName.ToString());
     }
 
     // Apply pose to any cached skeleton actors
