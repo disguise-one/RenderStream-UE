@@ -197,7 +197,10 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
             if (SceneComponent)
             {
                 SceneComponent->SetRelativeRotation(RootRotation);
-                SceneComponent->SetRelativeLocation(RootPos);
+                if (ScaleRootOffsets)
+                    SceneComponent->SetRelativeLocation(SceneComponent->GetRelativeScale3D() * RootPos);
+                else
+                    SceneComponent->SetRelativeLocation(RootPos);
             }
         }
     }

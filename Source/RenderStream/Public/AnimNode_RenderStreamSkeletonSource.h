@@ -21,6 +21,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
         TMap<FName, FName> BoneNameMap;
+
+    // When ticked, the root offsets applied to the actor are scaled by the actor's scale
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+        bool ScaleRootOffsets;
 public:
     FAnimNode_RenderStreamSkeletonSource();
     ~FAnimNode_RenderStreamSkeletonSource();
