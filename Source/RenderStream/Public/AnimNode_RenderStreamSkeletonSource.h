@@ -20,12 +20,21 @@ struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_
     GENERATED_BODY()
 
 public:
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Input, DisplayName = "Base Pose (Optional)")
+        FPoseLink BasePose;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
         TMap<FName, FName> BoneNameMap;
+
+    // When ticked, the root offsets applied to the actor are scaled by the actor's scale
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+        bool ScaleRootOffsets;
 public:
     FAnimNode_RenderStreamSkeletonSource();
     ~FAnimNode_RenderStreamSkeletonSource();
+
+    virtual void Initialize_AnyThread(const FAnimationInitializeContext& Context) override;
+    virtual void CacheBones_AnyThread(const FAnimationCacheBonesContext& Context) override;
 
     virtual void Update_AnyThread(const FAnimationUpdateContext& Context) override;
     virtual void Evaluate_AnyThread(FPoseContext& Output) override;
@@ -36,7 +45,7 @@ public:
 protected:
 
     void CacheSkeletonActors(const FName& ParamName);
-    void AddIfCorrespondingSkeletonActor(ASkeletalMeshActor* SkeletalMeshActor);
+    void AddIfCorrespondingSkeletonActor(AActor* SkeletonActor);
     void ApplyRootPose(const FName& ParamName);
 
     FName GetSkeletonParamName();
@@ -47,14 +56,14 @@ protected:
     static bool IsRootBone(const FName& SourceBoneName);
 
 private:
-    std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
+    std::vector<TWeakObjectPtr<AActor>> SkeletonActors;
     bool SkeletonActorsCached;
-    FDelegateHandle OnSkeletonSpawnedHandle;
+    FDelegateHandle OnActorSpawnedHandle;
 
     // Cached pose info
     TArray<FName> SourceBoneNames;
     TArray<int32> SourceParentIndices;
-    TArray<FQuat> MeshToSourceSpaceRotations;
+    TArray<FTransform> MeshToSourceSpaceTransforms;
     TArray<FQuat> LocalInitialOrientationDifferences;
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
