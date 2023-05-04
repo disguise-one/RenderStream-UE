@@ -672,6 +672,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     RenderStreamLink::ScopedSchema Schema;
     Schema.schema.engineName = _strdup(EPIC_PRODUCT_NAME);
     Schema.schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
+    Schema.schema.pluginVersion = _strdup(RS_PLUGIN_VERSION);
     Schema.schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
     Schema.schema.channels.nChannels = uint32_t(Channels.size());
     Schema.schema.channels.channels = static_cast<const char**>(malloc(Schema.schema.channels.nChannels * sizeof(const char*)));
