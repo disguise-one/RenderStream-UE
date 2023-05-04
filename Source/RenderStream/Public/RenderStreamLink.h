@@ -28,6 +28,7 @@ typedef uint64_t VkDeviceSize;
 typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
+#define RS_PLUGIN_VERSION "RS2.0-UE5.0-Prerelease"
 
 class RenderStreamLink
 {
@@ -232,6 +233,8 @@ public:
         uint32_t height;
         RSPixelFormat format;
         ProjectionClipping clipping;
+        const char* mappingName;
+        int32_t iFragment;
     } StreamDescription;
 
     typedef struct
@@ -326,6 +329,7 @@ public:
     {
         const char* engineName;
         const char* engineVersion;
+        const char* pluginVersion;
         const char* info;
         Channels channels;
         Scenes scenes;
@@ -462,6 +466,7 @@ public:
         {
             free(const_cast<char*>(schema.engineName));
             free(const_cast<char*>(schema.engineVersion));
+            free(const_cast<char*>(schema.pluginVersion));
             free(const_cast<char*>(schema.info));
             for (size_t i = 0; i < schema.channels.nChannels; ++i)
                 free(const_cast<char*>(schema.channels.channels[i]));
@@ -492,6 +497,7 @@ public:
         {
             schema.engineName = _strdup(EPIC_PRODUCT_NAME);
             schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
+            schema.pluginVersion = _strdup(RS_PLUGIN_VERSION);
             schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
             schema.channels.nChannels = 0;
             schema.channels.channels = nullptr;
