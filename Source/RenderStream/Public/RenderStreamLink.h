@@ -28,7 +28,7 @@ typedef uint64_t VkDeviceSize;
 typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
-#define RS_PLUGIN_VERSION "RS2.0-UE5.0-Prerelease"
+#define RS_PLUGIN_VERSION "RS2.0-UE5.1-Prerelease"
 
 class RenderStreamLink
 {
