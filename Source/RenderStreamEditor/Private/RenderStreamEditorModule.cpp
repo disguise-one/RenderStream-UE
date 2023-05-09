@@ -411,7 +411,7 @@ void GenerateScene(
     const URenderStreamChannelCacheAsset* Cache,
     const URenderStreamChannelCacheAsset* Persistent)
 {
-    FString sceneName = FPackageName::GetShortName(Cache->Level.GetAssetPathName());
+    FString sceneName = Cache->GetName();
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
     TArray<const URenderStreamChannelCacheAsset*> Levels;
@@ -651,7 +651,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     for (size_t i = 0; i < ChannelCaches.Num(); ++i)
     {
         URenderStreamChannelCacheAsset* Cache = ChannelCaches[i];
-        const FName PathName = Cache->Level.GetAssetPathName();
+        const auto PathName = Cache->Level.GetAssetPath();
         if (FPackageName::DoesPackageExist(PathName.ToString()))
         {
             for (const FString& Channel : Cache->Channels)
