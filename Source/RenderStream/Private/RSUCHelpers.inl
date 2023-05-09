@@ -18,6 +18,7 @@
 #include "RHIStaticStates.h"
 #include "ShaderParameterUtils.h"
 #include "RenderCommandFence.h"
+#include "PipelineStateCache.h"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
