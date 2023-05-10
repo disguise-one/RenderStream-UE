@@ -222,8 +222,16 @@ void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Outp
     if (!Module)
         return;
 
-    FName ParamName = GetSkeletonParamName();
+    const FName ParamName = GetSkeletonParamName();
     const RenderStreamLink::FSkeletalPose* Pose = Module->GetSkeletalPose(ParamName);
+
+    // Check if bone count has changed
+    if (PoseInitialised && Output.Pose.GetNumBones() != MeshBoneCount)
+    {
+        PoseInitialised = false;
+        UE_LOG(LogRenderStream, Log, TEXT("%s: Number of bones has changed from %d to %d. Reinitialising"),
+            *ParamName.ToString(), MeshBoneCount, Output.Pose.GetNumBones());
+    }
 
     // Initialise data if required
     if (!PoseInitialised)
@@ -288,17 +296,17 @@ FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()
 void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose)
 {
     const FBoneContainer& BoneContainerRef = OutPose.GetBoneContainer();
-    const int32 MeshBoneCount = OutPose.GetNumBones();
+    MeshBoneCount = OutPose.GetNumBones();
     const FName SkeletonName = GetSkeletonParamName();
 
     // Initialise bone info vectors
     const int32 SourceBoneCount = Layout.joints.Num();
-    SourceBoneNames.SetNum(SourceBoneCount);
-    SourceParentIndices.SetNum(SourceBoneCount);
+    SourceBoneNames.Init("", SourceBoneCount);
+    SourceParentIndices.Init(INDEX_NONE, SourceBoneCount);
     TArray<int32> SourceNumberOfChildren; SourceNumberOfChildren.Init(0, SourceBoneCount);
     TArray<int32> MeshToSourceIndex; MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
     SourceToMeshIndex.Init(FCompactPoseBoneIndex(INDEX_NONE), SourceBoneCount);
-    TArray<FTransform> SourceInitialPose;  SourceInitialPose.SetNum(SourceBoneCount);
+    TArray<FTransform> SourceInitialPose; SourceInitialPose.Init(FTransform::Identity, SourceBoneCount);
 
     // Loop through source layout and find mapping to mesh bones
     // Find remapped bone names and cache them for fast subsequent retrieval.
