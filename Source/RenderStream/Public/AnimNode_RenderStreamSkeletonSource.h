@@ -68,6 +68,7 @@ private:
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
     FTransform RootBoneTransform;
+    int32 MeshBoneCount;
     bool PoseInitialised;
 };
 
