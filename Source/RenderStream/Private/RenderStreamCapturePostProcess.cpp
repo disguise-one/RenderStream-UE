@@ -57,7 +57,6 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     auto ViewportId = ViewportProxy->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
-
     auto Stream = Module->StreamPool->GetStream(ViewportId);
     // We can't create a stream on the render thread, so our only option is to not do anything if the stream doesn't exist here.
     if (Stream)
@@ -66,19 +65,26 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         RenderStreamLink::CameraResponseData frameResponse;
         {
             std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-            if (Info.m_frameResponsesMap.count(GFrameCounterRenderThread)) // Check current frame data exists
+            if (Info.m_frameResponsesMap.count(Info.RHIFrameNumber)) // Check current frame data exists
             {
-                frameResponse = Info.m_frameResponsesMap[GFrameCounterRenderThread];
-                Info.m_frameResponsesMap.erase(GFrameCounterRenderThread);
+                frameResponse = Info.m_frameResponsesMap[Info.RHIFrameNumber];
+                FVector pos;
+                pos.X = FUnitConversion::Convert(float(frameResponse.camera.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
+                pos.Y = FUnitConversion::Convert(float(frameResponse.camera.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
+                pos.Z = FUnitConversion::Convert(float(frameResponse.camera.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Handling frame %d"), Info.RHIFrameNumber);
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Render data: (%f, %f, %f) (%f, %f, %f)"),
+                    Info.RHILocation.X, Info.RHILocation.Y, Info.RHILocation.Z,
+                    Info.RHIRotation.Pitch, Info.RHIRotation.Yaw, Info.RHIRotation.Roll);
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("DTrack data: (%f, %f, %f) (%f, %f, %f)"),
+                    pos.X, pos.Y, pos.Z,
+                    frameResponse.camera.rx, frameResponse.camera.ry, frameResponse.camera.rz);
+                Info.m_frameResponsesMap.erase(Info.RHIFrameNumber);
             }
             else
             {
-                // default values to avoid any math assertions in debug dlls
-                frameResponse.camera.nearZ = 0.1f;
-                frameResponse.camera.farZ = 1.f;
-                frameResponse.camera.sensorX = 1.f;
-                frameResponse.camera.sensorY = 1.f;
-                frameResponse.camera.focalLength = 1.f;
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Failed to handle frame %d"), Info.RHIFrameNumber);
+                return;
             }
         }
 

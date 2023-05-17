@@ -38,6 +38,9 @@ struct FRenderStreamViewportInfo
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
     RenderStreamLink::CameraHandle CameraHandleLast = 0;
+    FVector RHILocation;
+    FRotator RHIRotation;
+    uint32 RHIFrameNumber;
     
     std::mutex m_frameResponsesLock;
     std::map<uint64, RenderStreamLink::CameraResponseData> m_frameResponsesMap;

@@ -581,6 +581,11 @@ bool FRenderStreamModule::PopulateStreamPool()
 
 void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameData)
 {
+    static float rolllls = 0;
+    rolllls += 1.f;
+    if (rolllls > 360)
+        rolllls -= 360.f;
+    
     for (auto& pair  : ViewportInfos)
     {
         const FFrameStreamPtr stream = StreamPool->GetStream(pair.Key);
@@ -589,25 +594,35 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 
         RenderStreamLink::CameraData cameraData;
         if (RenderStreamLink::instance().rs_getFrameCamera(stream->Handle(), &cameraData) == RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            cameraData.d3Tracking.rzRealCamera = rolllls;
+            cameraData.rz = rolllls;
             ApplyCameraData(*pair.Value, frameData, cameraData);
+        }
     }
 }
 
 void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
 {
-    // Each call must always have a frame response, because there will be a corresponding render call.
-    {
-        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = GFrameCounter;
-        info.m_frameResponsesMap[frameCounter] = {frameData.tTracked, cameraData};
-    }
 
     if (!info.Camera.IsValid())
+    {
+        // Each call must always have a frame response, because there will be a corresponding render call.
+        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+        uint64 frameCounter = GFrameNumber;
+        info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
+        UE_LOG(LogRenderStream, Log, TEXT("Starting frame %d"), frameCounter);
         return;
+    }
 
     // Attach the instanced Camera to the Capture object for this view.
     USceneComponent* SceneComponent = info.Camera->K2_GetRootComponent();
     UCameraComponent* CameraComponent = info.Camera->GetCameraComponent();
+
+    std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+    uint64 frameCounter = SceneComponent->GetScene()->GetFrameNumber();
+    info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
+    UE_LOG(LogRenderStream, Log, TEXT("Starting frame %d"), frameCounter);
 
     if (cameraData.cameraHandle == 0)  // 2D mapping, just set aspect ratio
     {
