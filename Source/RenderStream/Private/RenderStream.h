@@ -32,15 +32,20 @@ class UGameInstance;
 bool IsInCluster();
 bool IsDX11();
 
+struct FRenderStreamRenderFrameInfo
+{
+    FVector Location;
+    FRotator Rotation;
+    uint32 FrameNumber;
+};
+
 struct FRenderStreamViewportInfo
 {
     TWeakObjectPtr<ACameraActor> Template = nullptr;
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
     RenderStreamLink::CameraHandle CameraHandleLast = 0;
-    FVector RHILocation;
-    FRotator RHIRotation;
-    uint32 RHIFrameNumber;
+    FRenderStreamRenderFrameInfo FrameInfo;
     
     std::mutex m_frameResponsesLock;
     std::map<uint64, RenderStreamLink::CameraResponseData> m_frameResponsesMap;

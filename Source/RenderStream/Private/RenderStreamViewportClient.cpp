@@ -291,6 +291,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 	// Handle special viewports game-thread logic at frame begin
 	DCRenderDevice->InitializeNewFrame();
 
+	TMap<FString, FRenderStreamRenderFrameInfo> RenderStreamViewInfo;
+
 	for (FDisplayClusterRenderFrame::FFrameRenderTarget& DCRenderTarget : RenderFrame.RenderTargets)
 	{
 		for (FDisplayClusterRenderFrame::FFrameViewFamily& DCViewFamily : DCRenderTarget.ViewFamilies)
@@ -529,9 +531,15 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					World->LastRenderTime = World->GetTimeSeconds();
 				}
 
-				Info.RHILocation = ViewLocation;
-				Info.RHIRotation = ViewRotation;
-				Info.RHIFrameNumber = ViewFamily.Scene->GetFrameNumber();
+				auto ViewInfo = RenderStreamViewInfo.Find(DCView.Viewport->GetId());
+				if (!ViewInfo)
+				{
+					ViewInfo = &RenderStreamViewInfo.Add(DCView.Viewport->GetId());
+				}
+
+				ViewInfo->Location = ViewLocation;
+				ViewInfo->Rotation = ViewRotation;
+				ViewInfo->FrameNumber = ViewFamily.Scene->GetFrameNumber();
 			}
 
 #if CSV_PROFILER
@@ -720,6 +728,16 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				}
 			}
 		}
+
+		ENQUEUE_RENDER_COMMAND(URenderStreamViewportClient_UpdateViewData)(
+			[RenderStreamViewInfo](FRHICommandListImmediate& RHICmdList)
+			{
+				for (auto const& Pair : RenderStreamViewInfo)
+				{
+					auto& Info = FRenderStreamModule::Get()->GetViewportInfo(Pair.Key);
+					Info.FrameInfo = Pair.Value;
+				}
+			});
 
 		for (FSceneViewFamilyContext* ViewFamilyContext : ViewFamilies)
 		{

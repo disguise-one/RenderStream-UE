@@ -65,25 +65,25 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         RenderStreamLink::CameraResponseData frameResponse;
         {
             std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-            if (Info.m_frameResponsesMap.count(Info.RHIFrameNumber)) // Check current frame data exists
+            if (Info.m_frameResponsesMap.count(Info.FrameInfo.FrameNumber)) // Check current frame data exists
             {
-                frameResponse = Info.m_frameResponsesMap[Info.RHIFrameNumber];
+                frameResponse = Info.m_frameResponsesMap[Info.FrameInfo.FrameNumber];
                 FVector pos;
                 pos.X = FUnitConversion::Convert(float(frameResponse.camera.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
                 pos.Y = FUnitConversion::Convert(float(frameResponse.camera.x), EUnit::Meters, FRenderStreamModule::distanceUnit());
                 pos.Z = FUnitConversion::Convert(float(frameResponse.camera.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
-                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Handling frame %d"), Info.RHIFrameNumber);
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Handling frame %d"), Info.FrameInfo.FrameNumber);
                 UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Render data: (%f, %f, %f) (%f, %f, %f)"),
-                    Info.RHILocation.X, Info.RHILocation.Y, Info.RHILocation.Z,
-                    Info.RHIRotation.Pitch, Info.RHIRotation.Yaw, Info.RHIRotation.Roll);
+                    Info.FrameInfo.Location.X, Info.FrameInfo.Location.Y, Info.FrameInfo.Location.Z,
+                    Info.FrameInfo.Rotation.Pitch, Info.FrameInfo.Rotation.Yaw, Info.FrameInfo.Rotation.Roll);
                 UE_LOG(LogRenderStreamPostProcess, Log, TEXT("DTrack data: (%f, %f, %f) (%f, %f, %f)"),
                     pos.X, pos.Y, pos.Z,
                     frameResponse.camera.rx, frameResponse.camera.ry, frameResponse.camera.rz);
-                Info.m_frameResponsesMap.erase(Info.RHIFrameNumber);
+                Info.m_frameResponsesMap.erase(Info.FrameInfo.FrameNumber);
             }
             else
             {
-                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Failed to handle frame %d"), Info.RHIFrameNumber);
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Failed to handle frame %d"), Info.FrameInfo.FrameNumber);
                 return;
             }
         }
