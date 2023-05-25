@@ -167,7 +167,9 @@ namespace RSUCHelpers
         {
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
+                // Need 2 flushes otherwise we sometimes get duplicate frames.
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
             }
 
             RenderStreamLink::SenderFrameTypeData data = {};
