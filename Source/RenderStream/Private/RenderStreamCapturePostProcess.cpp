@@ -46,14 +46,11 @@ void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportMana
 
 void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
 {
-<<<<<<< HEAD
-=======
     if (!IsInCluster() || ViewportProxy == nullptr)
     {
         return;
     }
 
->>>>>>> 8cb6056 (Fix UE editor crashing when adding a renderstream capture post process to an ndisplay configuration.)
     auto ViewportId = ViewportProxy->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
