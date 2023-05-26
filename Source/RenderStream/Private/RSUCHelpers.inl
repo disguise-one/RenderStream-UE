@@ -165,11 +165,13 @@ namespace RSUCHelpers
         }
         else if (toggle == "D3D12")
         {
+            auto renderPassFence = RHICreateGPUFence(TEXT("RS API Texture Readout"));
+            RHICmdList.WriteGPUFence(renderPassFence);
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
-                // Need 2 flushes otherwise we sometimes get duplicate frames.
-                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+                while (!renderPassFence->Poll())
+                    FPlatformProcess::Sleep(0.001);
             }
 
             RenderStreamLink::SenderFrameTypeData data = {};
