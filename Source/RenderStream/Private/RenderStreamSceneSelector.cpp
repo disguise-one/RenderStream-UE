@@ -481,8 +481,20 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 {
                     uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
                     FFrame Frame = FFrame(Root, *FuncIt, Buffer);
-                    FuncIt->Invoke(Root, Frame, Buffer);
-                    UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
+                    try
+                    {
+                        FuncIt->Invoke(Root, Frame, Buffer);
+                        UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
+                    }
+                    catch (const std::exception& e)
+                    {
+                        FString Message(e.what());
+                        UE_LOG(LogRenderStream, Error, TEXT("Error invoking event: %s"), *Message);
+                    }
+                    catch (...)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Unknown error invoking event"));
+                    }
                 }
                 ++iFloat;
             }
