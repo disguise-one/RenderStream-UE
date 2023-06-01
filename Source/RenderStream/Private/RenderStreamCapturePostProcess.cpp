@@ -48,7 +48,7 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
     const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
     UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Using Alpha Encoding %d"), settings->AlphaEncoding);
-    m_EncodeDepth = encodeDepth;
+    m_EncodeDepth = true;
     
     return true;
 }
