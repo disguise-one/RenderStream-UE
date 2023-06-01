@@ -169,24 +169,26 @@ namespace RSUCHelpers
             RHICmdList.WriteGPUFence(renderPassFence);
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
-                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
-                while (!renderPassFence->Poll())
-                    FPlatformProcess::Sleep(0.001);
+                RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
+                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
-            data.dx12.resource = static_cast<ID3D12Resource*>(resource);
-
-            RenderStreamLink::FrameResponseData Response = {};
-            Response.cameraData = &FrameData;
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            RHICmdList.EnqueueLambda([resource, Handle, FrameData](const FRHICommandListImmediate& rhiCmdList)
                 {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
-            }
+                    RenderStreamLink::SenderFrameTypeData data = {};
+                    data.dx12.resource = static_cast<ID3D12Resource*>(resource);
+
+                    RenderStreamLink::FrameResponseData Response = {};
+                    Response.cameraData = &FrameData;
+                    {
+                        //SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
+                        auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response);
+                        if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+                        {
+                            UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                        }
+                    }
+                });
         }
         else if (toggle == "Vulkan")
         {
