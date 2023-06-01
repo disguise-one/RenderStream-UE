@@ -64,6 +64,8 @@ public class RenderStream : ModuleRules
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");
         //AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");	}
 
+        bEnableExceptions = true;
+
         using (var md5 = MD5.Create())
         {
             using (var stream = File.OpenRead(Path.Combine(EngineDirectory, "Plugins/Runtime/nDisplay/Source/DisplayCluster/Private/Game/EngineClasses/Basics/DisplayClusterViewportClient.cpp")))
