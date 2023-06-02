@@ -27,6 +27,7 @@
 
 class FRHITexture;
 
+static std::atomic_bool m_isBusy;
 namespace {
 
     class RSResizeCopy
@@ -148,6 +149,7 @@ namespace RSUCHelpers
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D11")
         {
+            UE_LOG(LogRenderStream, Log, TEXT("SHOULD NOT GET HERE!!!"));
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
@@ -165,6 +167,7 @@ namespace RSUCHelpers
         }
         else if (toggle == "D3D12")
         {
+            UE_LOG(LogRenderStream, Log, TEXT("d3d12, let's go!!!"));
             auto renderPassFence = RHICreateGPUFence(TEXT("RS API Texture Readout"));
             RHICmdList.WriteGPUFence(renderPassFence);
             {
@@ -188,6 +191,7 @@ namespace RSUCHelpers
                             UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
                         }
                     }
+                    m_isBusy.store(false);
                 });
         }
         else if (toggle == "Vulkan")

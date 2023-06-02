@@ -16,6 +16,14 @@ void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdLis
     float URight = (float)ViewportRect.Max.X / (float)SourceTexture->GetSizeX();
     float VTop = (float)ViewportRect.Min.Y / (float)SourceTexture->GetSizeY();
     float VBottom = (float)ViewportRect.Max.Y / (float)SourceTexture->GetSizeY();
+
+    while (m_isBusy)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("texture is busy"), *m_streamName);
+        Sleep(1);
+    }
+
+    m_isBusy.store(true);
     RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
 }
 
