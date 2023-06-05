@@ -4,6 +4,7 @@
 #include "Camera/CameraComponent.h"
 #include "Engine/GameEngine.h"
 #include "Kismet/GameplayStatics.h"
+#include <RenderStream.h>
 
 DEFINE_LOG_CATEGORY(LogRenderStreamChannelDefinition);
 
@@ -116,6 +117,20 @@ URenderStreamChannelDefinition::URenderStreamChannelDefinition()
     , ShowFlags(EShowFlagInitMode::ESFIM_Game)
     , Registered(false)
 {
+}
+
+uint32 URenderStreamChannelDefinition::FrameNumber() const
+{
+    auto& Info = FRenderStreamModule::Get()->GetViewportInfo(GetChannelName());
+    return Info.RHIFrameNumber;
+}
+
+double URenderStreamChannelDefinition::TTracked(uint32 frame) const
+{
+    auto& Info = FRenderStreamModule::Get()->GetViewportInfo(GetChannelName());
+    std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
+    auto element = Info.m_frameResponsesMap.find(frame);
+    return element == Info.m_frameResponsesMap.end() ? 0.0 : element->first;
 }
 
 void URenderStreamChannelDefinition::ResetDefaultVisibility(AActor* Actor)

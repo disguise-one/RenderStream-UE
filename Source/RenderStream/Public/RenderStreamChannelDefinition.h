@@ -49,6 +49,11 @@ public:
     bool GetVisibility(AActor* Actor) const;
     UFUNCTION(BlueprintPure, Category = Visibility)
     bool IsInstanced() const { return IsInstance; }
+
+    UFUNCTION(BlueprintPure, Category = Debug)
+    uint32 FrameNumber() const;
+    UFUNCTION(BlueprintPure, Category = Debug)
+    double TTracked(uint32 frame) const;
     
     UPROPERTY(BlueprintAssignable, Category = "Components|Activation")
     FOnInstancedSignature OnCameraInstanced;
