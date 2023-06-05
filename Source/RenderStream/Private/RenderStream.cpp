@@ -601,11 +601,12 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 
 void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
 {
+    uint64 frameCounter = 0;
     if (!info.Camera.IsValid())
     {
         // Each call must always have a frame response, because there will be a corresponding render call.
         std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = GFrameNumber;
+        frameCounter = GFrameNumber;
         info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
         UE_LOG(LogRenderStream, Log, TEXT("Starting frame %d with no camera"), frameCounter);
         return;
@@ -617,7 +618,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
 
     {
         std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = SceneComponent->GetScene()->GetFrameNumber();
+        frameCounter = SceneComponent->GetScene()->GetFrameNumber();
         info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
     }
 
@@ -654,6 +655,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         float _roll = cameraData.rz;
         FQuat rotationQuat = FQuat::MakeFromEuler(FVector(_roll, _pitch, _yaw));
         SceneComponent->SetRelativeRotation(rotationQuat);
+        UE_LOG(LogRenderStream, Log, TEXT("IYP: ApplyCamera frame: %d, tTracked: %f, rx: %f, ry: %f, rz: %f"), frameCounter, frameData.tTracked, SceneComponent->GetRelativeRotation().Yaw, SceneComponent->GetRelativeRotation().Pitch, SceneComponent->GetRelativeRotation().Roll);
 
         FVector pos;
         pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, FRenderStreamModule::distanceUnit());

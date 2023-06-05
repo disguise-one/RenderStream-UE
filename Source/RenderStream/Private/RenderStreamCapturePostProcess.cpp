@@ -70,6 +70,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
             {
                 
                 frameResponse = Info.m_frameResponsesMap[Info.RHIFrameNumber];
+                UE_LOG(LogRenderStream, Log, TEXT("IYP: PerformPostProcess frame: %d, tTracked: %f"), Info.RHIFrameNumber, frameResponse.tTracked);
                 Info.m_frameResponsesMap.erase(Info.RHIFrameNumber);
             }
             else
@@ -91,6 +92,12 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+        auto frameNumber = Info.RHIFrameNumber;
+        RHICmdList.EnqueueLambda([&Info, frameNumber](const FRHICommandListImmediate& _)
+            {
+                std::lock_guard guard(Info.m_frameResponsesLock);
+                Info.m_frameResponsesMap.erase(frameNumber - 2);
+            });
     }
 
     // Uncomment this to restore client display

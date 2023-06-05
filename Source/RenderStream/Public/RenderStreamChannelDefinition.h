@@ -39,7 +39,7 @@ public:
     UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = Debug)
     FString StreamName;
 
-    UFUNCTION(BlueprintCallable, Category = SceneCapture)
+    UFUNCTION(BlueprintPure, Category = SceneCapture)
     TArray<ACameraActor*> GetInstancedCameras();
     
     UFUNCTION(BlueprintCallable, Category = Visibility)

@@ -187,6 +187,7 @@ namespace RSUCHelpers
                         {
                             UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
                         }
+                        UE_LOG(LogRenderStream, Log, TEXT("IYP: rs_sendFrame tTracked: %f"), FrameData.tTracked);
                     }
                 });
         }

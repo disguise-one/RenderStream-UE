@@ -530,6 +530,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				}
 
 				Info.RHIFrameNumber = ViewFamily.Scene->GetFrameNumber();
+                UE_LOG(LogRenderStream, Log, TEXT("IYP: Draw frame: %d, tTracked: %f"), Info.RHIFrameNumber, Info.m_frameResponsesMap[Info.RHIFrameNumber].tTracked);
 			}
 
 #if CSV_PROFILER
