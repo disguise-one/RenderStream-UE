@@ -51,9 +51,9 @@ public:
     bool IsInstanced() const { return IsInstance; }
 
     UFUNCTION(BlueprintPure, Category = Debug)
-    uint32 FrameNumber() const;
+    int FrameNumber() const;
     UFUNCTION(BlueprintPure, Category = Debug)
-    double TTracked(uint32 frame) const;
+    double TTracked(int frame) const;
     
     UPROPERTY(BlueprintAssignable, Category = "Components|Activation")
     FOnInstancedSignature OnCameraInstanced;
