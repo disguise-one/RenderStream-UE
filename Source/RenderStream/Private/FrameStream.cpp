@@ -4,7 +4,7 @@
 #include "RSUCHelpers.inl"
 
 FFrameStream::FFrameStream()
-    : m_streamName(""), m_bufTextures(), m_handle(0) { }
+    : m_streamName(""), m_bufTexture(nullptr), m_handle(0) {}
 
 FFrameStream::~FFrameStream()
 {
@@ -16,14 +16,7 @@ void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdLis
     float URight = (float)ViewportRect.Max.X / (float)SourceTexture->GetSizeX();
     float VTop = (float)ViewportRect.Min.Y / (float)SourceTexture->GetSizeY();
     float VBottom = (float)ViewportRect.Max.Y / (float)SourceTexture->GetSizeY();
-
-    if(m_bufTextures.empty())
-        UE_LOG(LogRenderStream, Error, TEXT("No more texture buffer available in the frame stream queue."));
-
-    FTextureRHIRef first = m_bufTextures.front(); // take the first ref
-    m_bufTextures.pop(); // remove the first ref
-    RSUCHelpers::SendFrame(m_handle, first, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
-    m_bufTextures.push(first); // place what was the first ref at the end
+    RSUCHelpers::SendFrame(m_handle, m_bufTexture, RHICmdList, FrameData, SourceTexture, SourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
 }
 
 bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat fmt)
@@ -37,17 +30,8 @@ bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const
     m_resolution = Resolution;
     m_streamName = name;
 
-    FTextureRHIRef texture1, texture2, texture3, texture4;
-    if (!RSUCHelpers::CreateStreamResources(texture1, m_resolution, fmt) 
-        || !RSUCHelpers::CreateStreamResources(texture2, m_resolution, fmt) 
-        || !RSUCHelpers::CreateStreamResources(texture3, m_resolution, fmt) 
-        || !RSUCHelpers::CreateStreamResources(texture4, m_resolution, fmt))
+    if (!RSUCHelpers::CreateStreamResources(m_bufTexture, m_resolution, fmt))
         return false; // helper method logs on failure
-
-    m_bufTextures.push(texture1);
-    m_bufTextures.push(texture2);
-    m_bufTextures.push(texture3);
-    m_bufTextures.push(texture4);
 
     if (m_handle == 0) {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to create stream"));

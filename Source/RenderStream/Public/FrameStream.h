@@ -1,6 +1,4 @@
 #pragma once
-#include <queue>
-
 #include "RenderStreamLink.h"
 #include "RenderStreamSettings.h"
 
@@ -33,7 +31,7 @@ private:
     FString m_streamName;
     FString m_channel;
     RenderStreamLink::ProjectionClipping m_clipping;
-    std::queue<FTextureRHIRef> m_bufTextures;
+    FTextureRHIRef m_bufTexture;
     FIntPoint m_resolution;
     RenderStreamLink::StreamHandle m_handle;
 };
