@@ -28,7 +28,6 @@ class RENDERSTREAM_API URenderStreamChannelDefinition : public UActorComponent
 public:
     // Sets default values for this component's properties
     URenderStreamChannelDefinition();
-    
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Visible")
     TSet<TSoftObjectPtr<AActor>> Visible;
     UPROPERTY(EditAnywhere, interp, Category = Visibility, DisplayName = "Force Hiddens")
@@ -37,6 +36,8 @@ public:
     EChannelVisibilty DefaultVisibility;
     UPROPERTY(EditAnywhere, interp, Category = SceneCapture)
     TArray<struct FEngineShowFlagsSetting> ShowFlagSettings;
+    UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = Debug)
+    FString StreamName;
 
     UFUNCTION(BlueprintCallable, Category = SceneCapture)
     TArray<ACameraActor*> GetInstancedCameras();

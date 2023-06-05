@@ -121,13 +121,13 @@ URenderStreamChannelDefinition::URenderStreamChannelDefinition()
 
 int URenderStreamChannelDefinition::FrameNumber() const
 {
-    auto& Info = FRenderStreamModule::Get()->GetViewportInfo(GetChannelName());
+    auto& Info = FRenderStreamModule::Get()->GetViewportInfo(StreamName);
     return Info.RHIFrameNumber;
 }
 
 double URenderStreamChannelDefinition::TTracked(int frame) const
 {
-    auto& Info = FRenderStreamModule::Get()->GetViewportInfo(GetChannelName());
+    auto& Info = FRenderStreamModule::Get()->GetViewportInfo(StreamName);
     std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
     auto element = Info.m_frameResponsesMap.find(frame);
     return element == Info.m_frameResponsesMap.end() ? 0.0 : element->first;

@@ -423,6 +423,12 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             Info.Camera->SetOwner(Info.Template->GetOwner());
             Info.Camera->AttachToActor(Info.Template->GetAttachParentActor(), FAttachmentTransformRules::KeepWorldTransform);
 
+            URenderStreamChannelDefinition* ChildDefinition = Info.Camera->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (ChildDefinition)
+            {
+                ChildDefinition->StreamName = Name;
+            }
+
             USceneComponent* RootComponent = Info.Template->GetRootComponent();
             if (RootComponent)
                 Info.Camera->SetActorRelativeTransform(Info.Template->GetRootComponent()->GetRelativeTransform());
