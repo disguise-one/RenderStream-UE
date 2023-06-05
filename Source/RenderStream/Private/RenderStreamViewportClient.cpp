@@ -528,6 +528,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					WorldViewInfo.ViewToWorld = View->ViewMatrices.GetInvViewMatrix();
 					World->LastRenderTime = World->GetTimeSeconds();
 				}
+
+				Info.RHIFrameNumber = ViewFamily.Scene->GetFrameNumber();
 			}
 
 #if CSV_PROFILER

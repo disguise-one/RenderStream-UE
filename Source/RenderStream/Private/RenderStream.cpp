@@ -595,19 +595,25 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 
 void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
 {
-    // Each call must always have a frame response, because there will be a corresponding render call.
-    {
-        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = GFrameCounter;
-        info.m_frameResponsesMap[frameCounter] = {frameData.tTracked, cameraData};
-    }
-
     if (!info.Camera.IsValid())
+    {
+        // Each call must always have a frame response, because there will be a corresponding render call.
+        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+        uint64 frameCounter = GFrameNumber;
+        info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
+        UE_LOG(LogRenderStream, Log, TEXT("Starting frame %d with no camera"), frameCounter);
         return;
+    }
 
     // Attach the instanced Camera to the Capture object for this view.
     USceneComponent* SceneComponent = info.Camera->K2_GetRootComponent();
     UCameraComponent* CameraComponent = info.Camera->GetCameraComponent();
+
+    {
+        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+        uint64 frameCounter = SceneComponent->GetScene()->GetFrameNumber();
+        info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
+    }
 
     if (cameraData.cameraHandle == 0)  // 2D mapping, just set aspect ratio
     {

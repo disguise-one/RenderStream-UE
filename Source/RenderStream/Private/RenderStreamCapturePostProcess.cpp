@@ -66,10 +66,11 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         RenderStreamLink::CameraResponseData frameResponse;
         {
             std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-            if (Info.m_frameResponsesMap.count(GFrameCounterRenderThread)) // Check current frame data exists
+            if (Info.m_frameResponsesMap.count(Info.RHIFrameNumber)) // Check current frame data exists
             {
-                frameResponse = Info.m_frameResponsesMap[GFrameCounterRenderThread];
-                Info.m_frameResponsesMap.erase(GFrameCounterRenderThread);
+                
+                frameResponse = Info.m_frameResponsesMap[Info.RHIFrameNumber];
+                Info.m_frameResponsesMap.erase(Info.RHIFrameNumber);
             }
             else
             {
@@ -79,6 +80,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
                 frameResponse.camera.sensorX = 1.f;
                 frameResponse.camera.sensorY = 1.f;
                 frameResponse.camera.focalLength = 1.f;
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Failed to handle frame %d"), Info.RHIFrameNumber);
             }
         }
 
