@@ -11,6 +11,7 @@
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
 
+#include "SceneRendering.h"
 
 class UCameraComponent;
 class UWorld;
@@ -22,9 +23,45 @@ FString FRenderStreamCapturePostProcess::Type = TEXT("renderstream_capture");
 
 FRenderStreamCapturePostProcess::FRenderStreamCapturePostProcess(const FString& PostProcessId, const struct FDisplayClusterConfigurationPostprocess* InConfigurationPostProcess)
     : Id(PostProcessId)
-{}
+{
+    if (!ResolvedSceneColorCallbackHandle.IsValid())
+    {
+        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
+        {
+            ResolvedSceneColorCallbackHandle = RendererModule->GetResolvedSceneColorCallbacks().AddRaw(this, &FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread);
+        }
+    }
 
-FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess() {}
+    if (!PostOverlayCallbackHandle.IsValid())
+    {
+        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
+        {
+            PostOverlayCallbackHandle = RendererModule->RegisterPostOpaqueRenderDelegate(FPostOpaqueRenderDelegate::CreateRaw(this, &FRenderStreamCapturePostProcess::OnPostOverlayDelegateCallback));
+        }
+    }
+}
+
+FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess() 
+{
+    if (ResolvedSceneColorCallbackHandle.IsValid())
+    {
+        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
+        {
+            RendererModule->GetResolvedSceneColorCallbacks().Remove(ResolvedSceneColorCallbackHandle);
+        }
+
+        ResolvedSceneColorCallbackHandle.Reset();
+    }
+    if (PostOverlayCallbackHandle.IsValid())
+    {
+        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
+        {
+            RendererModule->RemovePostOpaqueRenderDelegate(PostOverlayCallbackHandle);
+        }
+    }
+
+
+}
 
 bool FRenderStreamCapturePostProcess::IsConfigurationChanged(const FDisplayClusterConfigurationPostprocess* InConfigurationPostprocess) const
 {
@@ -35,6 +72,7 @@ bool FRenderStreamCapturePostProcess::IsConfigurationChanged(const FDisplayClust
 // we can do the work done in FRenderStreamProjectionPolicy HandleStartScene and HandleEndScene here.
 bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportManager* InViewportManager)
 {
+
     if (!IsInCluster()) {
         return false;
     }
@@ -44,6 +82,14 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
     Module->LoadSchemas(*GWorld);
 
+    for (auto Viewport : InViewportManager->GetViewports())
+    {
+        m_extractedDepth.Add(Viewport->GetId(), TRefCountPtr<IPooledRenderTarget>());
+        m_depthIds.Add(Viewport->GetId());
+    }
+
+    m_maxDepthBuffers = m_extractedDepth.Num();
+    m_depthIndex = 0;
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
     const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
@@ -100,14 +146,33 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
 
+        check(m_extractedDepth[ViewportId]);
         if(m_EncodeDepth)
-            Stream->SendFrameWithDepth_RenderingThread(RHICmdList, frameResponse, Resources[0], GetSceneTextureExtracts().GetDepthTexture(), Rects[0]);
+            Stream->SendFrameWithDepth_RenderingThread(RHICmdList, frameResponse, Resources[0], m_extractedDepth[ViewportId]->GetRHI(), Rects[0]);
         else
             Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
     }
 
     // Uncomment this to restore client display
     // InViewportProxy->ResolveResources(RHICmdList, EDisplayClusterViewportResourceType::InputShaderResource, InViewportProxy->GetOutputResourceType());
+}
+
+void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures)
+{
+    check(IsInRenderingThread());
+
+    // Total hack that relies on the viewports being rendered in order
+    // TODO need to find a way of associating SceneTexture extraction to nDisplay Viewports
+    // This is also causing an Access Violation when exiting which needs investigation.
+    GraphBuilder.QueueTextureExtraction(SceneTextures.Depth.Resolve, &m_extractedDepth[m_depthIds[m_depthIndex++]]);
+    if (m_depthIndex >= m_maxDepthBuffers) 
+        m_depthIndex = 0;
+}
+
+void FRenderStreamCapturePostProcess::OnPostOverlayDelegateCallback(FPostOpaqueRenderParameters& RenderParameters)
+{
+    UE_LOG(LogTemp, Log, TEXT("%p"), RenderParameters.Uid);
+
 }
 
 FRenderStreamPostProcessFactory::BasePostProcessPtr FRenderStreamPostProcessFactory::Create(

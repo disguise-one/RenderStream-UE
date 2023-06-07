@@ -30,8 +30,16 @@ public:
 	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const override;
 
 private:
+    void OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures);
 
-   
+    void OnPostOverlayDelegateCallback(FPostOpaqueRenderParameters& Parameters);
+    FDelegateHandle ResolvedSceneColorCallbackHandle;
+    FDelegateHandle PostOverlayCallbackHandle;
+    TMap<FString, TRefCountPtr<IPooledRenderTarget>> m_extractedDepth;
+    TArray<FString> m_depthIds;
+    int m_depthIndex;
+    int m_maxDepthBuffers;
+
 	TMap<FString, FString> Parameters;
 	FString Id;
 	static FString Type;
