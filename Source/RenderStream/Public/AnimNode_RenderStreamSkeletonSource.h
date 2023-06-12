@@ -21,6 +21,10 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
         TMap<FName, FName> BoneNameMap;
+
+    // When ticked, the root offsets applied to the actor are scaled by the actor's scale
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+        bool ScaleRootOffsets;
 public:
     FAnimNode_RenderStreamSkeletonSource();
     ~FAnimNode_RenderStreamSkeletonSource();
@@ -37,7 +41,7 @@ public:
 protected:
 
     void CacheSkeletonActors(const FName& ParamName);
-    void AddIfCorrespondingSkeletonActor(ASkeletalMeshActor* SkeletalMeshActor);
+    void AddIfCorrespondingSkeletonActor(AActor* SkeletonActor);
     void ApplyRootPose(const FName& ParamName);
 
     FName GetSkeletonParamName();
@@ -48,9 +52,9 @@ protected:
     static bool IsRootBone(const FName& SourceBoneName);
 
 private:
-    std::vector<TWeakObjectPtr<ASkeletalMeshActor>> SkeletonActors;
+    std::vector<TWeakObjectPtr<AActor>> SkeletonActors;
     bool SkeletonActorsCached;
-    FDelegateHandle OnSkeletonSpawnedHandle;
+    FDelegateHandle OnActorSpawnedHandle;
 
     // Cached pose info
     TArray<FName> SourceBoneNames;
@@ -60,6 +64,7 @@ private:
     TArray<FQuat> SourceInitialPoseRotations;
     TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
     FTransform RootBoneTransform;
+    int32 MeshBoneCount;
     bool PoseInitialised;
 };
 

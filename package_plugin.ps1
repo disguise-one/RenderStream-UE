@@ -10,6 +10,9 @@ if ($plugin_folder -eq ""){
     write-host "project too set to $plugin_folder"
 }
 
+# Strip quoation marks from the provided UE path (drag and drop from file explorer)
+$unreal_engine_path = $unreal_engine_path -replace '"', ""
+
 $plugin_name = "RenderStream-UE"
 $build_tool = "$($unreal_engine_path)\Engine\Build\BatchFiles\RunUAT.bat"
 $plugin_path = "$($plugin_folder)\$($plugin_name).uplugin"
@@ -26,7 +29,7 @@ Get-Variable -Scope script
 
 # Remove the project-local intermediate directory, if it exists - this can interfere with a clean build of the plugin.
 if (Test-Path $local_intermediate) {
-	Remove-Item -Path $local_intermediate -Recurse -Force
+    Remove-Item -Path $local_intermediate -Recurse -Force
 }
 
 # Remove the path the build tool creates to package in - this can interfere with a clean build of the plugin, too.
@@ -39,29 +42,42 @@ $Uplugin = Get-Content $plugin_path | ConvertFrom-Json
 $launch_command = "$($build_tool) BuildPlugin -Plugin=""$($plugin_path)"" -Package=""$($out_path)"" -CreateSubFolder -VS2019"
 Write-Host "Packaging Unreal plugin"
 Write-Host "$launch_command" 
-Invoke-Expression -Command "$launch_command" -ErrorAction Stop
 
-if ($LASTEXITCODE -eq 0) {
-    Write-Information -MessageData 'Packaging complete. Zipping build contents.' -InformationAction Continue
-	
-	# Remove the intermediate results from the packaging process - not useful for distribution
-	Remove-Item -Path (Join-Path -Path "$out_path" -ChildPath "Intermediate") -Recurse
+for ($i=1; $i -le 3; $i++) {
+    Write-Host "Attempt: $i/3"
+    Invoke-Expression -Command "$launch_command" -ErrorAction Stop
 
-    # The version name sometimes contains a slash eg heads/r1.28_UE4.26_r1.28_UE4.26
-    # depending on version of git (see generate_uplugin.ps1 which creates the .uplugin file)
-    $versionName = $Uplugin.VersionName
-    $versionName = $versionName -replace '/', '_'
+    if ($LASTEXITCODE -eq 0) {
+        Write-Information -MessageData 'Packaging complete. Zipping build contents.' -InformationAction Continue
+        
+        # Remove the intermediate results from the packaging process - not useful for distribution
+        Remove-Item -Path (Join-Path -Path "$out_path" -ChildPath "Intermediate") -Recurse
 
-    $out_file = "$($plugin_name)_{0}.zip" -f $versionName
-    $destination = Join-Path -Path "$zip_path" -ChildPath "$out_file"
-    $compress = @{
-        Path = "$out_path"
-        CompressionLevel = 'Optimal'
-        DestinationPath = "$destination"
+        # The version name sometimes contains a slash eg heads/r1.28_UE4.26_r1.28_UE4.26
+        # depending on version of git (see generate_uplugin.ps1 which creates the .uplugin file)
+        $versionName = $Uplugin.VersionName
+        $versionName = $versionName -replace '/', '_'
+
+        $out_file = "$($plugin_name)_{0}.zip" -f $versionName
+        $destination = Join-Path -Path "$zip_path" -ChildPath "$out_file"
+        $compress = @{
+            Path = "$out_path"
+            CompressionLevel = 'Optimal'
+            DestinationPath = "$destination"
+        }
+        
+        Compress-Archive @compress
+        break
     }
-    
-    Compress-Archive @compress
+
+    Write-Host "Packaging process failed"
 }
-else {
+
+if ($LASTEXITCODE -ne 0) {
+    if ($LASTEXITCODE -eq $null) {
+        # Ensure non-zero value is returned on exit
+        exit -1
+    }
+    # Preserve exit code
     exit $LASTEXITCODE
 }

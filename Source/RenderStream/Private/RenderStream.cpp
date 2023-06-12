@@ -632,7 +632,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         if (cameraData.focusDistance > 0)
         {
             CineCamera->FocusSettings.FocusMethod = ECameraFocusMethod::Manual;
-            CineCamera->FocusSettings.ManualFocusDistance = cameraData.focusDistance * 100.0; // m to cm
+            CineCamera->FocusSettings.ManualFocusDistance = FUnitConversion::Convert(cameraData.focusDistance, EUnit::Meters, FRenderStreamModule::distanceUnit());
         }
     }
     else if (CameraComponent)
@@ -897,10 +897,7 @@ void FRenderStreamModule::OnActorSpawned(AActor* InActor)
         InActor->SetActorHiddenInGame(true);
         HideDefaultPawns();
     }
-    else if (ASkeletalMeshActor* SkeletalMeshActor = dynamic_cast<ASkeletalMeshActor*>(InActor))
-    {
-        OnSkeletonSpawned.Broadcast(SkeletalMeshActor);
-    }
+    OnActorSpawnedDelegate.Broadcast(InActor);
 }
 
 void FRenderStreamModule::HideDefaultPawns()

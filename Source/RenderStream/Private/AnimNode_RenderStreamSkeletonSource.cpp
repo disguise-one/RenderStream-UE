@@ -16,36 +16,24 @@ TMap<FName, FName> GetDefaultBoneNameMap()
 
     const std::vector<FName> ExpectedBones =
     {
-        "R",
+        "Pelvis",
         "Spine",
         "Chest",
         "Neck",
-        "L_Hip",
-        "L_Knee",
-        "L_Ankle",
-        "L_Foot_Pinky",
-        "L_Shoulder",
-        "L_Elbow",
-        "L_Wrist",
-        "R_Hip",
-        "R_Knee",
-        "R_Ankle",
-        "R_Foot_Pinky",
-        "R_Shoulder",
-        "R_Elbow",
-        "R_Wrist",
-        "L_Big_Toe",
-        "L_Shoulder_Prism",
-        "L_Hand1",
-        "L_Hand2",
-        "R_Big_Toe",
-        "R_Shoulder_Prism",
-        "R_Hand1",
-        "R_Hand2",
-        "L_Ear",
-        "L_Eye",
-        "R_Ear",
-        "R_Eye"
+        "LeftClavicle",
+        "LeftShoulder",
+        "LeftElbow",
+        "LeftWrist",
+        "LeftHip",
+        "LeftKnee",
+        "LeftAnkle",
+        "RightClavicle",
+        "RightShoulder",
+        "RightElbow",
+        "RightWrist",
+        "RightHip",
+        "RightKnee",
+        "RightAnkle"
     };
 
     for (const FName& Bone : ExpectedBones)
@@ -66,7 +54,7 @@ FAnimNode_RenderStreamSkeletonSource::~FAnimNode_RenderStreamSkeletonSource()
     const FRenderStreamModule* Module = FRenderStreamModule::Get();
     if (Module)
     {
-        Module->OnSkeletonSpawned.Remove(OnSkeletonSpawnedHandle);
+        Module->OnActorSpawnedDelegate.Remove(OnActorSpawnedHandle);
     }
     
 }
@@ -74,27 +62,35 @@ FAnimNode_RenderStreamSkeletonSource::~FAnimNode_RenderStreamSkeletonSource()
 void FAnimNode_RenderStreamSkeletonSource::CacheSkeletonActors(const FName& ParamName)
 {
     // Find and cache any skeleton actors using this animation node
+    // Note that skeletal mesh components can be added to basic actors, not just skeletalmeshactors
 
     if (!GWorld)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No GWorld."), *ParamName.ToString());
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. No GWorld."), *ParamName.ToString());
         return;
     }
 
     TArray<AActor*> FoundActors;
-    UGameplayStatics::GetAllActorsOfClass(GWorld, ASkeletalMeshActor::StaticClass(), FoundActors);
+    UGameplayStatics::GetAllActorsOfClass(GWorld, AActor::StaticClass(), FoundActors);
 
     for (AActor* Actor : FoundActors)
     {
-        if (ASkeletalMeshActor* SkeletalMeshActor = Cast<ASkeletalMeshActor>(Actor))
-        {
-            AddIfCorrespondingSkeletonActor(SkeletalMeshActor);
-        }
+        AddIfCorrespondingSkeletonActor(Actor);
     }
 }
 
-void FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor(ASkeletalMeshActor* SkeletalMeshActor)
+void FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor(AActor* SkeletonActor)
 {
+    if (!SkeletonActor)
+        return;
+
+    // Get any skeletal mesh components from the actor
+    TArray<USkeletalMeshComponent*> SkeletalMeshComponents;
+    SkeletonActor->GetComponents(SkeletalMeshComponents, false);
+
+    if (SkeletalMeshComponents.IsEmpty())
+        return;
+
     USkeleton* ThisSkeleton = nullptr;
     const UAnimBlueprintGeneratedClass* BPClass = dynamic_cast<const UAnimBlueprintGeneratedClass*>(GetAnimClassInterface());
     const FString SkeletonName = GetSkeletonParamName().ToString();
@@ -102,29 +98,32 @@ void FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor(ASkel
     // Get the skeleton corresponding to this AnimGraph
     if (!BPClass)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. Couldn't find blueprint class"), *SkeletonName);
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. Couldn't find blueprint class"), *SkeletonName);
         return;
     }
 
-    ThisSkeleton = BPClass->TargetSkeleton;
-    if (!ThisSkeleton)
+    const UClass* ThisAnimClass = IAnimClassInterface::GetActualAnimClass(BPClass);
+    if (!ThisAnimClass)
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. Blueprint class has no target skeleton"), *SkeletonName);
+        UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. Couldn't find anim class"), *SkeletonName);
         return;
     }
 
-    // Check if the SkeletalMeshActor is using this skeleton
-    USkeletalMesh* SkeletalMesh = SkeletalMeshActor->ReplicatedMesh;
-    if (SkeletalMesh)
+    // Check if the actor is using this skeleton
+    for (const USkeletalMeshComponent* SkeletalMeshComponent : SkeletalMeshComponents)
     {
-        USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
-        if (Skeleton == ThisSkeleton)
+        if (SkeletalMeshComponent)
         {
-            TWeakObjectPtr<ASkeletalMeshActor> SkeletonWeakPtr(SkeletalMeshActor);
-            if (SkeletonWeakPtr.IsValid() &&
-                std::find(SkeletonActors.begin(), SkeletonActors.end(), SkeletonWeakPtr) == SkeletonActors.end())
+            TSubclassOf<UAnimInstance> AnimClass = SkeletalMeshComponent->AnimClass;
+            if (AnimClass == ThisAnimClass)
             {
-                SkeletonActors.push_back(SkeletonWeakPtr);
+                TWeakObjectPtr<AActor> SkeletonWeakPtr(SkeletonActor);
+                if (SkeletonWeakPtr.IsValid() &&
+                    std::find(SkeletonActors.begin(), SkeletonActors.end(), SkeletonWeakPtr) == SkeletonActors.end())
+                {
+                    UE_LOG(LogRenderStream, Log, TEXT("Found actor %s for skeleton %s"), *SkeletonActor->GetActorNameOrLabel(), *SkeletonName);
+                    SkeletonActors.push_back(SkeletonWeakPtr);
+                }
             }
         }
     }
@@ -153,10 +152,10 @@ void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnim
         const FRenderStreamModule* Module = FRenderStreamModule::Get();
         if (!Module)
         {
-            UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton <%s>. No Renderstream module found"), *ParamName.ToString());
+            UE_LOG(LogRenderStream, Warning, TEXT("Error initialising skeleton %s. No Renderstream module found"), *ParamName.ToString());
             return;
         }
-        OnSkeletonSpawnedHandle = Module->OnSkeletonSpawned.AddRaw(this, &FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor);
+        OnActorSpawnedHandle = Module->OnActorSpawnedDelegate.AddRaw(this, &FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor);
     }
 
     // Apply the root pose to the skeleton actors
@@ -186,15 +185,11 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
     // Check skeleton actors have been cached
     if (SkeletonActors.empty())
     {
-        CacheSkeletonActors(ParamName);
-    }
-    if (SkeletonActors.empty())
-    {
-        UE_LOG(LogRenderStream, Warning, TEXT("Error applying skeleton data for <%s>. No corresponding skeletal mesh actors found"), *ParamName.ToString());
+        UE_LOG(LogRenderStream, Warning, TEXT("Error applying skeleton data for %s. No corresponding skeletal mesh actors found"), *ParamName.ToString());
     }
 
     // Apply pose to any cached skeleton actors
-    for (const TWeakObjectPtr<ASkeletalMeshActor> SkeletonActor : SkeletonActors)
+    for (const TWeakObjectPtr<AActor> SkeletonActor : SkeletonActors)
     {
         if (SkeletonActor.IsValid())
         {
@@ -202,7 +197,10 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
             if (SceneComponent)
             {
                 SceneComponent->SetRelativeRotation(RootRotation);
-                SceneComponent->SetRelativeLocation(RootPos);
+                if (ScaleRootOffsets)
+                    SceneComponent->SetRelativeLocation(SceneComponent->GetRelativeScale3D() * RootPos);
+                else
+                    SceneComponent->SetRelativeLocation(RootPos);
             }
         }
     }
@@ -226,8 +224,16 @@ void FAnimNode_RenderStreamSkeletonSource::Evaluate_AnyThread(FPoseContext& Outp
     if (!Module)
         return;
 
-    FName ParamName = GetSkeletonParamName();
+    const FName ParamName = GetSkeletonParamName();
     const RenderStreamLink::FSkeletalPose* Pose = Module->GetSkeletalPose(ParamName);
+
+    // Check if bone count has changed
+    if (PoseInitialised && Output.Pose.GetNumBones() != MeshBoneCount)
+    {
+        PoseInitialised = false;
+        UE_LOG(LogRenderStream, Log, TEXT("%s: Number of bones has changed from %d to %d. Reinitialising"),
+            *ParamName.ToString(), MeshBoneCount, Output.Pose.GetNumBones());
+    }
 
     // Initialise data if required
     if (!PoseInitialised)
@@ -292,17 +298,17 @@ FName FAnimNode_RenderStreamSkeletonSource::GetSkeletonParamName()
 void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose)
 {
     const FBoneContainer& BoneContainerRef = OutPose.GetBoneContainer();
-    const int32 MeshBoneCount = OutPose.GetNumBones();
+    MeshBoneCount = OutPose.GetNumBones();
     const FName SkeletonName = GetSkeletonParamName();
 
     // Initialise bone info vectors
     const int32 SourceBoneCount = Layout.joints.Num();
-    SourceBoneNames.SetNum(SourceBoneCount);
-    SourceParentIndices.SetNum(SourceBoneCount);
+    SourceBoneNames.Init("", SourceBoneCount);
+    SourceParentIndices.Init(INDEX_NONE, SourceBoneCount);
     TArray<int32> SourceNumberOfChildren; SourceNumberOfChildren.Init(0, SourceBoneCount);
     TArray<int32> MeshToSourceIndex; MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
     SourceToMeshIndex.Init(FCompactPoseBoneIndex(INDEX_NONE), SourceBoneCount);
-    TArray<FTransform> SourceInitialPose;  SourceInitialPose.SetNum(SourceBoneCount);
+    TArray<FTransform> SourceInitialPose; SourceInitialPose.Init(FTransform::Identity, SourceBoneCount);
 
     // Loop through source layout and find mapping to mesh bones
     // Find remapped bone names and cache them for fast subsequent retrieval.
@@ -482,7 +488,7 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
                 const FQuat SourceRotation = MeshToSource.Inverse() * SourceInitialPoseRotations[SourceIndex] * SourceBoneTransform.GetRotation() * MeshToSource;  // Rotation to apply from the source data
                 const FQuat MeshRotation = OutPose[MeshIndex].GetRotation();  // Rotation to apply for the initial mesh pose
                 const FQuat& InitialOrientationOffset = LocalInitialOrientationDifferences[SourceIndex];  // Rotation to apply to account for different initial orientations (e.g. A-pose vs T-pose)
-                OutPose[MeshIndex].SetRotation(InitialOrientationOffset * MeshRotation * SourceRotation);
+                OutPose[MeshIndex].SetRotation((InitialOrientationOffset * MeshRotation * SourceRotation).GetNormalized());
 
                 // Apply position
                 const int32 SourceParentIndex = SourceParentIndices[SourceIndex];
@@ -500,5 +506,5 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
 
 /*static*/ bool FAnimNode_RenderStreamSkeletonSource::IsRootBone(const FName& SourceBoneName)
 {
-    return SourceBoneName == "R";
+    return SourceBoneName == "Pelvis";
 }
