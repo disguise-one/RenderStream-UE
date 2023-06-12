@@ -9,8 +9,8 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamChannelDefinition, Log, All);
 
-UENUM()
-enum class EChannelVisibilty 
+UENUM(BlueprintType)
+enum class EChannelVisibilty : uint8
 {
     Visible,
     Hidden
