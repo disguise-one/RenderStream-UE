@@ -32,13 +32,13 @@ FRenderStreamCapturePostProcess::FRenderStreamCapturePostProcess(const FString& 
         }
     }
 
-    if (!PostOverlayCallbackHandle.IsValid())
-    {
-        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
-        {
-            PostOverlayCallbackHandle = RendererModule->RegisterPostOpaqueRenderDelegate(FPostOpaqueRenderDelegate::CreateRaw(this, &FRenderStreamCapturePostProcess::OnPostOverlayDelegateCallback));
-        }
-    }
+    //if (!PostOverlayCallbackHandle.IsValid())
+    //{
+    //    if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
+    //    {
+    //        PostOverlayCallbackHandle = RendererModule->RegisterPostOpaqueRenderDelegate(FPostOpaqueRenderDelegate::CreateRaw(this, &FRenderStreamCapturePostProcess::OnPostOpaqueDelegateCallback));
+    //    }
+    //}
 }
 
 FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess() 
@@ -52,13 +52,13 @@ FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess()
 
         ResolvedSceneColorCallbackHandle.Reset();
     }
-    if (PostOverlayCallbackHandle.IsValid())
-    {
-        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
-        {
-            RendererModule->RemovePostOpaqueRenderDelegate(PostOverlayCallbackHandle);
-        }
-    }
+   //if (PostOverlayCallbackHandle.IsValid())
+   //{
+   //    if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
+   //    {
+   //        RendererModule->RemovePostOpaqueRenderDelegate(PostOverlayCallbackHandle);
+   //    }
+   //}
 
 
 }
@@ -139,6 +139,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
             }
         }
 
+
         TArray<FRHITexture*> Resources;
         TArray<FIntRect> Rects;
         // NOTE: If you get a black screen on the stream when updating the plugin to a new unreal version try changing the EDisplayClusterViewportResourceType enum.
@@ -169,10 +170,10 @@ void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuil
         m_depthIndex = 0;
 }
 
-void FRenderStreamCapturePostProcess::OnPostOverlayDelegateCallback(FPostOpaqueRenderParameters& RenderParameters)
+void FRenderStreamCapturePostProcess::OnPostOpaqueDelegateCallback(FPostOpaqueRenderParameters& RenderParameters)
 {
-    UE_LOG(LogTemp, Log, TEXT("%p"), RenderParameters.Uid);
-
+    //UE_LOG(LogTemp, Log, TEXT("%p"), RenderParameters.Uid);
+    
 }
 
 FRenderStreamPostProcessFactory::BasePostProcessPtr FRenderStreamPostProcessFactory::Create(

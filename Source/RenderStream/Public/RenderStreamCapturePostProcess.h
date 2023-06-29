@@ -32,7 +32,7 @@ public:
 private:
     void OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures);
 
-    void OnPostOverlayDelegateCallback(FPostOpaqueRenderParameters& Parameters);
+    void OnPostOpaqueDelegateCallback(FPostOpaqueRenderParameters& Parameters);
     FDelegateHandle ResolvedSceneColorCallbackHandle;
     FDelegateHandle PostOverlayCallbackHandle;
     TMap<FString, TRefCountPtr<IPooledRenderTarget>> m_extractedDepth;
