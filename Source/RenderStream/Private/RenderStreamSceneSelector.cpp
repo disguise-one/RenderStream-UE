@@ -468,9 +468,20 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 if (floatValues[iFloat] > m_floatValuesLast.data()[iFloat]) // value increment signals an invoke
                 {
                     uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
-                    FFrame Frame = FFrame(Root, *FuncIt, Buffer);
-                    FuncIt->Invoke(Root, Frame, Buffer);
-                    UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
+                    try
+                    {
+                        UE_LOG(LogRenderStream, Verbose, TEXT("Invoking Event %s/%s"), *Root->GetName(), *FuncIt->GetName());
+                        Root->ProcessEvent(*FuncIt, Buffer);
+                    }
+                    catch (const std::exception& e)
+                    {
+                        FString Message(e.what());
+                        UE_LOG(LogRenderStream, Error, TEXT("Error invoking event: %s"), *Message);
+                    }
+                    catch (...)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Unknown error invoking event"));
+                    }
                 }
                 ++iFloat;
             }
