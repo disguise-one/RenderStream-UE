@@ -31,14 +31,6 @@ FRenderStreamCapturePostProcess::FRenderStreamCapturePostProcess(const FString& 
             ResolvedSceneColorCallbackHandle = RendererModule->GetResolvedSceneColorCallbacks().AddRaw(this, &FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread);
         }
     }
-
-    //if (!PostOverlayCallbackHandle.IsValid())
-    //{
-    //    if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
-    //    {
-    //        PostOverlayCallbackHandle = RendererModule->RegisterPostOpaqueRenderDelegate(FPostOpaqueRenderDelegate::CreateRaw(this, &FRenderStreamCapturePostProcess::OnPostOpaqueDelegateCallback));
-    //    }
-    //}
 }
 
 FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess() 
@@ -52,14 +44,6 @@ FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess()
 
         ResolvedSceneColorCallbackHandle.Reset();
     }
-   //if (PostOverlayCallbackHandle.IsValid())
-   //{
-   //    if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
-   //    {
-   //        RendererModule->RemovePostOpaqueRenderDelegate(PostOverlayCallbackHandle);
-   //    }
-   //}
-
 
 }
 
@@ -162,9 +146,9 @@ void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuil
 {
     check(IsInRenderingThread());
 
-    // Total hack that relies on the viewports being rendered in order
-    // TODO need to find a way of associating SceneTexture extraction to nDisplay Viewports
-    // This is also causing an Access Violation when exiting which needs investigation.
+    // Hack that relies on the viewports being rendered in order
+    // TODO need to find a way of associating SceneTexture extraction to nDisplay Viewports - SceneViewExtension?
+    // Access Violation on shutdown is being caused by https://d3technologies.atlassian.net/browse/RSP-186
     GraphBuilder.QueueTextureExtraction(SceneTextures.Depth.Resolve, &m_extractedDepth[m_depthIds[m_depthIndex++]]);
     if (m_depthIndex >= m_maxDepthBuffers) 
         m_depthIndex = 0;
