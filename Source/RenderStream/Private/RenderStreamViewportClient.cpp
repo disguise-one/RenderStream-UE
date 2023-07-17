@@ -840,6 +840,13 @@ void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FScen
         if (Definition->DefaultVisibility == EChannelVisibilty::Visible)
             View->HiddenPrimitives = Collection;
         else
+		{
+			if (Collection.IsEmpty())
+			{
+				Collection.Add(FPrimitiveComponentId());
+			}
+
             View->ShowOnlyPrimitives = Collection;
+		}
     }
 }
