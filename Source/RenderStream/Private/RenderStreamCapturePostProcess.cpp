@@ -75,9 +75,7 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     m_maxDepthBuffers = m_extractedDepth.Num();
     m_depthIndex = 0;
 
-    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
-    const bool encodeDepth = settings->AlphaEncoding == ERenderStreamAlphaEncoding::Depth;
-    UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Using Alpha Encoding %d"), settings->AlphaEncoding);
+    // TODO make this dependent on whether we're actually using depth reprojection
     m_EncodeDepth = true;
     
     return true;

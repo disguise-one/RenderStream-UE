@@ -14,14 +14,6 @@
 class ACameraActor;
 
 UENUM()
-enum class ERenderStreamAlphaEncoding
-{
-    None UMETA(DisplayName = "None"),
-    Alpha UMETA(DisplayName = "Alpha"),
-    Depth UMETA(DisplayName = "Depth"),
-};
-
-UENUM()
 enum class ERenderStreamSceneSelector
 {
     // RenderStream will not manage level loading or visibility.
@@ -48,9 +40,6 @@ public:
     UPROPERTY(EditAnywhere, config, Category = Settings)
     FOpenColorIODisplayConfiguration OCIOConfig;
 
-    UPROPERTY(Config)
-    ERenderStreamAlphaEncoding AlphaEncoding;
-    
     UPROPERTY(EditAnywhere, config, Category = Settings, DisplayName="Detect and control custom events")
     bool GenerateEvents;
 };
