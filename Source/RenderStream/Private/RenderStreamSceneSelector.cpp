@@ -124,7 +124,7 @@ static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamL
     return true;
 }
 
-bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors) const
+bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors, bool ignoreParameterCount) const
 {
     size_t offset = 0;
 
@@ -142,7 +142,7 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
         offset += increment;
     }
 
-    if (offset < sceneParameters.nParameters)
+    if (!ignoreParameterCount && offset < sceneParameters.nParameters)
     {
         UE_LOG(LogRenderStream, Error,
             TEXT("Unexpected extra parameters in schema (nactors = %d, offset = %d, nparams = %d)"), 
