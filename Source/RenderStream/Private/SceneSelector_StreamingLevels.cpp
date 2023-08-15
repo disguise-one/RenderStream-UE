@@ -118,7 +118,7 @@ bool SceneSelector_StreamingLevels::ValidateLevel(uint32_t sceneId)
     const SchemaSpec& spec = m_specs[sceneId];
     UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorStreamingLevels: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
     AActor* levelRoot = spec.streamingLevel ? spec.streamingLevel->GetLevelScriptActor() : nullptr;
-    if (!ValidateParameters(parameters, { spec.persistentRoot, levelRoot }))
+    if (!ValidateParameters(parameters, { spec.persistentRoot, levelRoot }, levelRoot == nullptr))
     {
         UE_LOG(LogRenderStream, Error, TEXT("Failed to validate schema for %s"), UTF8_TO_TCHAR(parameters.name));
         return false;

@@ -19,7 +19,7 @@ protected:
     void GetAllLevels(TArray<AActor*>& Actors, ULevel* Level) const;
 
     virtual bool OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema) = 0;
-    bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors) const;
+    bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors, bool ignoreParameterCount = false) const;
     void ApplyParameters(uint32_t sceneId, const TArray<AActor*>& Actors);
 private:
     size_t ValidateParameters(const AActor* Root, RenderStreamLink::RemoteParameter* const parameters, size_t numParameters) const;
