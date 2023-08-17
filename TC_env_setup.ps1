@@ -87,15 +87,20 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
+# Create a collection in order for the -match operator to return a string
+$vInfo = git rev-parse --short HEAD
+$gitComment = git show -s --format=%B $vInfo
+
+# Check if the commit message matches that of a tagged build
+$matchedTags = $gitComment -match "\(\(.+\)\)"
+
 # If the current revision is tagged, create a new Release on Github and upload the ZIP file as an asset
-Invoke-Expression "git describe --tags --exact-match" | Tee-Object -Variable tag
-
-if ($LASTEXITCODE -eq 0)
+if ($matchedTags)
 {
+    $finalTag = $matchedTags[0] -replace ".*\(\(\s+" -replace "\s+\)\).*"
 
-    write-host "Tag detected: ", $tag, ". Will create draft Github Release"
-
-    write-host "PAT from Team City begins:",$env:personal_access_token.Substring(0,7)
+    write-host "Tag detected: ", $finalTag, " - creating Draft Github Release"
+    write-host "PAT from Team City begins:", $env:personal_access_token.Substring(0,7)
 
     $headers = @{}
     $headers.Add('Authorization',"token $env:personal_access_token")
@@ -104,7 +109,7 @@ if ($LASTEXITCODE -eq 0)
     # Create new release for based on tag discovered
     # eg https://api.github.com/repos/octocat/hello-world/releases
 
-    $body='{"tag_name":"'+$tag+'", "draft":true}'
+    $body='{"tag_name":"'+$finalTag+'", "draft":true}'
 
     write-host "Creating Release"
     
@@ -122,7 +127,7 @@ if ($LASTEXITCODE -eq 0)
 
     $content = $response.Content | ConvertFrom-Json
     $id = $content.id
-    write-host 'Created release. Release id:', $id
+    write-host "Created release. Release id: ", $id
 
     $headers.Add('Content-Type','application/zip')
 
