@@ -77,7 +77,9 @@ namespace {
         }
 
         TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
-        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyUB>(), Data);
+        FRHIBatchedShaderParameters Params;
+        SetUniformBufferParameter(Params, GetUniformBufferParameter<RSResizeCopyUB>(), Data);
+        CommandList.SetBatchedShaderParameters(CommandList.GetBoundPixelShader(), Params);
     }
 
 }

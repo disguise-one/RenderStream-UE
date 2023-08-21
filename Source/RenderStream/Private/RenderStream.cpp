@@ -215,7 +215,7 @@ void FRenderStreamModule::StartupModule()
         FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
 
         FWorldDelegates::OnStartGameInstance.AddRaw(this, &FRenderStreamModule::GameInstanceStarted);
-        FCoreDelegates::ApplicationWillTerminateDelegate.AddRaw(this, &FRenderStreamModule::AppWillTerminate);
+        FCoreDelegates::GetApplicationWillTerminateDelegate().AddRaw(this, &FRenderStreamModule::AppWillTerminate);
         
         Monitor.Open();
     }
@@ -276,7 +276,7 @@ void FRenderStreamModule::ShutdownModule()
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
 
     FWorldDelegates::OnStartGameInstance.RemoveAll(this);
-    FCoreDelegates::ApplicationWillTerminateDelegate.RemoveAll(this);
+    FCoreDelegates::GetApplicationWillTerminateDelegate().RemoveAll(this);
 
     // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
     // we call this function before unloading the module.
