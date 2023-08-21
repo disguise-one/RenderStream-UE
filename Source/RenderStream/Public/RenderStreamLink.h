@@ -327,12 +327,18 @@ public:
         const char** channels;
     } Channels;
 
+    enum SchemaConfigFlags
+    {
+        RS_DEPTHSUPPORT = 0x01
+    };
+
     typedef struct
     {
         const char* engineName;
         const char* engineVersion;
         const char* pluginVersion;
         const char* info;
+        int flags;
         Channels channels;
         Scenes scenes;
     } Schema;
@@ -346,7 +352,7 @@ public:
 #pragma pack(pop)
 
 #define RENDER_STREAM_VERSION_MAJOR 2
-#define RENDER_STREAM_VERSION_MINOR 0
+#define RENDER_STREAM_VERSION_MINOR 1
 
     enum UseDX12SharedHeapFlag
     {
