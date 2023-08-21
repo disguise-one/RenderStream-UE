@@ -24,7 +24,8 @@ public class RenderStreamEditor : ModuleRules
             "EditorStyle", 
             "PropertyEditor", 
             "SourceControl", 
-            "LevelEditor"
+            "LevelEditor",
+            "MessageLog",
         });
     }
 }

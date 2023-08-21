@@ -7,7 +7,7 @@
 #include "UObject/Object.h"
 #include "Engine/EngineTypes.h"
 
-#include "OpenColorIO/Public/OpenColorIOConfiguration.h"
+#include "OpenColorIOConfiguration.h"
 
 #include "RenderStreamSettings.generated.h"
 

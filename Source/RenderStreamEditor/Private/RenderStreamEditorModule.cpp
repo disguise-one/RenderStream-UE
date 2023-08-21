@@ -38,9 +38,9 @@
 
 #include "GameMapsSettings.h"
 
-#include "MessageLog/Public/MessageLogInitializationOptions.h"
-#include "MessageLog/Public/MessageLogModule.h"
-#include "MessageLog/Public/IMessageLogListing.h"
+#include "MessageLogInitializationOptions.h"
+#include "MessageLogModule.h"
+#include "IMessageLogListing.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 

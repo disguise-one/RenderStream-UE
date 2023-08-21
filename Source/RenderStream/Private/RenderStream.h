@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "Core/Public/Modules/ModuleInterface.h"
+#include "Modules/ModuleInterface.h"
 #include "DisplayClusterConfigurationTypes_Viewport.h"
 #include "Cluster/IDisplayClusterClusterManager.h"
 #include <deque>

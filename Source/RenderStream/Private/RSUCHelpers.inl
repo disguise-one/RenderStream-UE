@@ -2,7 +2,7 @@
 
 #include "RenderStreamLink.h"
 
-#include "Engine/Public/HardwareInfo.h"
+#include "HardwareInfo.h"
 
 #include "D3D12RHIBridge.h"
 
@@ -19,7 +19,7 @@
 #include "ShaderParameterUtils.h"
 #include "RenderCommandFence.h"
 
-#include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 
 #include <array>
 #include <VulkanResources.h>
@@ -213,7 +213,7 @@ namespace RSUCHelpers
                     return;
             }
 
-            FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(BufTexture);
+            FVulkanTexture* VulkanTexture = ResourceCast(BufTexture);
             auto point2 = VulkanTexture->GetSizeXY();
 
             RenderStreamLink::SenderFrame data = {};

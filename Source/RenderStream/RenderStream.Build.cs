@@ -44,7 +44,8 @@ public class RenderStream : ModuleRules
                 "DisplayClusterConfiguration",
                 "HeadMountedDisplay",
                 "EngineSettings",
-                "AnimGraphRuntime"
+                "AnimGraphRuntime",
+                "MessageLog"
             });
 
         PrivateIncludePaths.AddRange(

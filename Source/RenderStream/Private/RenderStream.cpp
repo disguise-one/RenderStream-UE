@@ -10,10 +10,10 @@
 #include "SceneSelector_Maps.h"
 
 #include "GenericPlatform/GenericPlatformMath.h"
-#include "Core/Public/Modules/ModuleManager.h"
-#include "CoreUObject/Public/Misc/PackageName.h"
+#include "Modules/ModuleManager.h"
+#include "Misc/PackageName.h"
 #include "Misc/CoreDelegates.h"
-#include "Json/Public/Serialization/JsonSerializer.h"
+#include "Serialization/JsonSerializer.h"
 #include "Misc/FileHelper.h"
 
 #include "Kismet/GameplayStatics.h"
@@ -57,7 +57,7 @@
 #include "ShaderCompiler.h"
 #include "Stats/StatsData.h"
 
-#include "Engine/Public/HardwareInfo.h"
+#include "HardwareInfo.h"
 #include "RenderStreamEventHandler.h"
 
 #include "RSUCHelpers.inl"
@@ -69,11 +69,12 @@
 
 #include "Game/IDisplayClusterGameManager.h" 
 #include "DisplayClusterRootActor.h" 
-#include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
+#include "DisplayClusterConfigurationTypes.h" 
 
 #include "GameMapsSettings.h"
 #include "Engine/GameInstance.h"
 #include "Engine/ObjectLibrary.h"
+#include <ID3D12DynamicRHI.h>
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
