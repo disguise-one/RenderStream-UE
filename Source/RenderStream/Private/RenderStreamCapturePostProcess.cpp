@@ -66,17 +66,11 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
     Module->LoadSchemas(*GWorld);
 
-    for (auto Viewport : InViewportManager->GetViewports())
-    {
-        m_extractedDepth.Add(Viewport->GetId(), TRefCountPtr<IPooledRenderTarget>());
-        m_depthIds.Add(Viewport->GetId());
-    }
+    ViewportManager = InViewportManager;
 
-    m_maxDepthBuffers = m_extractedDepth.Num();
-    m_depthIndex = 0;
+    Module->OnStreamsChangedDelegate.AddRaw(this, &FRenderStreamCapturePostProcess::RebuildDepthExtractionTable);
 
-    // TODO make this dependent on whether we're actually using depth reprojection
-    m_EncodeDepth = true;
+    RebuildDepthExtractionTable();
     
     return true;
 }
@@ -129,15 +123,49 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
 
-        check(m_extractedDepth[ViewportId]);
-        if(m_EncodeDepth)
-            Stream->SendFrameWithDepth_RenderingThread(RHICmdList, frameResponse, Resources[0], m_extractedDepth[ViewportId]->GetRHI(), Rects[0]);
-        else
-            Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+        if (m_EncodeDepth)
+        {
+            check(m_extractedDepth[ViewportId]);
+        }
+
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], 
+            m_EncodeDepth ? m_extractedDepth[ViewportId]->GetRHI() : nullptr, 
+            Rects[0]
+        );
     }
 
     // Uncomment this to restore client display
     // InViewportProxy->ResolveResources(RHICmdList, EDisplayClusterViewportResourceType::InputShaderResource, InViewportProxy->GetOutputResourceType());
+}
+
+void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
+{
+    check(ViewportManager);
+
+    FRenderStreamModule* Module = FRenderStreamModule::Get();
+    check(Module);
+
+    m_extractedDepth.Empty();
+    m_depthIds.Empty();
+
+    bool anyViewportExtractsDepth = false;
+
+    for (auto Viewport : ViewportManager->GetViewports())
+    {
+        const FString& ViewportId = Viewport->GetId();
+        m_extractedDepth.Add(ViewportId, TRefCountPtr<IPooledRenderTarget>());
+        m_depthIds.Add(ViewportId);
+        
+        if (const auto KnownViewport = Module->ViewportInfos.Find(ViewportId); KnownViewport)
+        {
+            anyViewportExtractsDepth |= (*KnownViewport)->ShouldExtractDepth;
+        }
+    }
+
+    m_maxDepthBuffers = m_extractedDepth.Num();
+    m_depthIndex = 0;
+
+    m_EncodeDepth = anyViewportExtractsDepth;
 }
 
 void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures)

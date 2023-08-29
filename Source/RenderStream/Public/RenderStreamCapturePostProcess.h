@@ -30,6 +30,8 @@ public:
 	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const override;
 
 private:
+    void RebuildDepthExtractionTable();
+
     void OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures);
 
     void OnPostOpaqueDelegateCallback(FPostOpaqueRenderParameters& Parameters);
@@ -44,6 +46,8 @@ private:
 	FString Id;
 	static FString Type;
     bool m_EncodeDepth = false;
+
+    IDisplayClusterViewportManager* ViewportManager; // Not owned by this class
 };
 
 class FRenderStreamPostProcessFactory

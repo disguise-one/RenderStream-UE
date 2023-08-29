@@ -105,6 +105,12 @@ public:
         REMOTEPARAMETER_READ_ONLY = 2
     };
 
+    enum STREAMDESCRIPTION_FLAGS
+    {
+        STREAMDESCRIPTION_NO_FLAGS = 0,
+        STREAMDESCRIPTION_REQUIRES_DEPTH = 1,
+    };
+
     enum SenderFrameType
     {
         RS_FRAMETYPE_HOST_MEMORY,
@@ -114,7 +120,7 @@ public:
         RS_FRAMETYPE_VULKAN_TEXTURE,
         RS_FRAMETYPE_UNKNOWN
     };
-
+    
     typedef uint64_t StreamHandle;
     typedef uint64_t CameraHandle;
     typedef void (*logger_t)(const char*);
@@ -237,6 +243,7 @@ public:
         ProjectionClipping clipping;
         const char* mappingName;
         int32_t iFragment;
+        int flags;
     } StreamDescription;
 
     typedef struct

@@ -169,7 +169,7 @@ namespace RSUCHelpers
         }
     }
 
-    static void SendFrameWithDepth(const RenderStreamLink::StreamHandle Handle,
+    static void SendFrame(const RenderStreamLink::StreamHandle Handle,
         FTextureRHIRef& BufImageTexture,
         FTextureRHIRef& BufDepthTexture,
         FRHICommandListImmediate& RHICmdList,
@@ -182,12 +182,21 @@ namespace RSUCHelpers
     {
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame With Depth"));
         CopyFrameToBuffer<RSResizeCopy>(RHICmdList, BufImageTexture, InSourceTexture, "RS Image Blit");
-        CopyFrameToBuffer<RSResizeDepthCopy>(RHICmdList, BufDepthTexture, InDepthTexture, "RS Depth Blit");
+
+        if (InDepthTexture)
+        {
+            CopyFrameToBuffer<RSResizeDepthCopy>(RHICmdList, BufDepthTexture, InDepthTexture, "RS Depth Blit");
+        }
 
 
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
         void* imgResource = BufImageTexture->GetTexture2D()->GetNativeResource();
-        void* depthResource = BufDepthTexture->GetTexture2D()->GetNativeResource();
+        void* depthResource = nullptr;
+
+        if (InDepthTexture)
+        {
+            depthResource = BufDepthTexture->GetTexture2D()->GetNativeResource();
+        }
 
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D11")
@@ -201,17 +210,26 @@ namespace RSUCHelpers
             data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
             data.dx11.resource = static_cast<ID3D11Resource*>(imgResource);
 
-            RenderStreamLink::SenderFrame depth = {};
-            depth.type = data.type;
-            depth.dx11.resource = static_cast<ID3D11Resource*>(depthResource);
-
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
-
-            auto output = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
-            if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            
+            RenderStreamLink::RS_ERROR sendResult;
+            if (depthResource != nullptr)
             {
-                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                RenderStreamLink::SenderFrame depth = {};
+                depth.type = data.type;
+                depth.dx11.resource = static_cast<ID3D11Resource*>(depthResource);
+                
+                sendResult = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
+            }
+            else
+            {
+                sendResult = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
+            }
+
+            if (sendResult != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), sendResult);
             }
         }
         else if (toggle == "D3D12")
@@ -225,20 +243,28 @@ namespace RSUCHelpers
             data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
             data.dx12.resource = static_cast<ID3D12Resource*>(imgResource);
 
-            RenderStreamLink::SenderFrame depth = {};
-            depth.type = data.type;
-            depth.dx12.resource = static_cast<ID3D12Resource*>(depthResource);
-
-
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
+
+            RenderStreamLink::RS_ERROR sendResult;
+            if (depthResource != nullptr)
             {
+                RenderStreamLink::SenderFrame depth = {};
+                depth.type = data.type;
+                depth.dx12.resource = static_cast<ID3D12Resource*>(depthResource);
+
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrameWithDepth"));
-                auto output = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-                {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
+                sendResult = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
+            }
+            else
+            {
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
+                sendResult = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
+            }
+
+            if (sendResult != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), sendResult);
             }
         }
         else if (toggle == "Vulkan")
@@ -248,7 +274,7 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            auto setupVulkan = [](FTextureRHIRef& BufTexture) -> RenderStreamLink::SenderFrame
+            auto setupVkResource = [](FTextureRHIRef& BufTexture) -> RenderStreamLink::SenderFrame
             {
 
                 RenderStreamLink::RSPixelFormat fmt = RenderStreamLink::RS_FMT_INVALID;
@@ -289,18 +315,26 @@ namespace RSUCHelpers
             };
             // TODO: semaphores
 
-            RenderStreamLink::SenderFrame data = setupVulkan(BufImageTexture);
-            RenderStreamLink::SenderFrame depth = setupVulkan(BufDepthTexture);
-
+            RenderStreamLink::SenderFrame data = setupVkResource(BufImageTexture);
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
+
+            RenderStreamLink::RS_ERROR sendResult;
+            if (depthResource != nullptr)
             {
+                RenderStreamLink::SenderFrame depth = setupVkResource(BufDepthTexture);
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrameWithDepth"));
-                auto output = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-                {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
+                sendResult = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
+            }
+            else
+            {
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
+                sendResult = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
+            }
+
+            if (sendResult != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), sendResult);
             }
         }
         else
@@ -309,166 +343,6 @@ namespace RSUCHelpers
         }
 
 
-    }
-
-    static void SendFrame(const RenderStreamLink::StreamHandle Handle,
-        FTextureRHIRef& BufTexture,
-        FRHICommandListImmediate& RHICmdList,
-        RenderStreamLink::CameraResponseData FrameData,
-        FRHITexture* InSourceTexture,
-        FIntPoint Point,
-        FVector2f CropU,
-        FVector2f CropV)
-    {
-        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
-        // convert the source with a draw call
-        FGraphicsPipelineStateInitializer GraphicsPSOInit;
-        FRHITexture* RenderTarget = BufTexture.GetReference();
-        FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::DontLoad_Store);
-
-        {
-            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Blit"));
-            RHICmdList.BeginRenderPass(RPInfo, TEXT("MediaCapture"));
-
-            RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc, ERHIAccess::RTV));
-
-            RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-
-            GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-            GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-            GraphicsPSOInit.BlendState = TStaticBlendStateWriteMask<CW_RGBA, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE>::GetRHI();
-            GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-
-            // configure media shaders
-            auto ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
-            TShaderMapRef<FMediaShadersVS> VertexShader(ShaderMap);
-
-            GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
-            GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-
-            
-            TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
-            GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-            SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
-            ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
-            
-
-            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
-            // draw full size quad into render target
-            float ULeft = CropU.X;
-            float URight = CropU.Y;
-            float VTop = CropV.X;
-            float VBottom = CropV.Y;
-            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer(ULeft, URight, VTop, VBottom);
-            RHICmdList.SetStreamSource(0, VertexBuffer, 0);
-
-            // set viewport to RT size
-            RHICmdList.SetViewport(0, 0, 0.0f, streamTexSize.X, streamTexSize.Y, 1.0f);
-            RHICmdList.DrawPrimitive(0, 2, 1);
-            RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::RTV, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc));
-
-            RHICmdList.EndRenderPass();
-        }
-
-        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
-        void* resource = BufTexture->GetTexture2D()->GetNativeResource();
-
-        auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
-        if (toggle == "D3D11")
-        {
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
-                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-            }
-
-            RenderStreamLink::SenderFrame data = {};
-            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
-            data.dx11.resource = static_cast<ID3D11Resource*>(resource);
-            RenderStreamLink::FrameResponseData Response = {};
-            Response.cameraData = &FrameData;
-
-            auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
-            if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-            {
-                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-            }
-        }
-        else if (toggle == "D3D12")
-        {
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
-                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-            }
-
-            RenderStreamLink::SenderFrame data = {};
-            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
-            data.dx12.resource = static_cast<ID3D12Resource*>(resource);
-
-            RenderStreamLink::FrameResponseData Response = {};
-            Response.cameraData = &FrameData;
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
-                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-                {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
-            }
-        }
-        else if (toggle == "Vulkan")
-        {
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
-                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-            }
-
-            RenderStreamLink::RSPixelFormat fmt = RenderStreamLink::RS_FMT_INVALID;
-            switch (BufTexture->GetFormat())
-            {
-                case EPixelFormat::PF_B8G8R8A8:
-                    fmt = RenderStreamLink::RS_FMT_BGRA8;
-                    break;
-                case EPixelFormat::PF_FloatRGBA:
-                    fmt = RenderStreamLink::RS_FMT_RGBA32F;
-                    break;
-                case EPixelFormat::PF_A16B16G16R16:
-                    fmt = RenderStreamLink::RS_FMT_RGBA16;
-                    break;
-                case EPixelFormat::PF_R8G8B8A8:
-                    fmt = RenderStreamLink::RS_FMT_RGBA8;
-                    break;
-                default:
-                    UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported format."));
-                    return;
-            }
-
-            FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(BufTexture);
-            auto point2 = VulkanTexture->GetSizeXY();
-
-            RenderStreamLink::SenderFrame data = {};
-            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
-            data.vk.memory = VulkanTexture->GetAllocationHandle();
-            data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
-            data.vk.format = fmt;
-            data.vk.width = uint32_t(point2.X);
-            data.vk.height = uint32_t(point2.Y);
-            // TODO: semaphores
-            
-            RenderStreamLink::FrameResponseData Response = {};
-            Response.cameraData = &FrameData;
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
-                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-                {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
-            }
-        }
-        else
-        {
-            UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
-        }
     }
 
     static bool CreateStreamResources(/*InOut*/ FTextureRHIRef& BufTexture,

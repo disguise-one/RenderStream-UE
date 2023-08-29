@@ -389,6 +389,7 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
     }
 
     FRenderStreamViewportInfo& Info = GetViewportInfo(Name);
+    Info.ShouldExtractDepth = Stream->RequiresDepth();
     const FString Channel = Stream ? Stream->Channel() : "";
     const TWeakObjectPtr<ACameraActor> ChannelCamera = URenderStreamChannelDefinition::GetChannelCamera(Channel);
     if (ChannelCamera == nullptr)
@@ -517,7 +518,7 @@ bool FRenderStreamModule::PopulateStreamPool()
             {
                 // Add new stream to pool
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
-                StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
+                StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format, description.flags & RenderStreamLink::STREAMDESCRIPTION_REQUIRES_DEPTH);
                 Stream = StreamPool->GetStream(Name);
 
                 // create a new viewport for this stream if needed
@@ -548,7 +549,7 @@ bool FRenderStreamModule::PopulateStreamPool()
             else
             {
                 UE_LOG(LogRenderStream, Log, TEXT("Updating stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
-                Stream->Update(Resolution, Channel, description.clipping, description.handle, description.format);
+                Stream->Update(Resolution, Channel, description.clipping, description.handle, description.format, description.flags & RenderStreamLink::STREAMDESCRIPTION_REQUIRES_DEPTH);
                 if (IDisplayCluster::IsAvailable())
                 {
                     const FString LocalNodeId = IDisplayCluster::Get().GetConfigMgr()->GetLocalNodeId();
@@ -572,6 +573,8 @@ bool FRenderStreamModule::PopulateStreamPool()
             if (eventHandler.IsValid())
                 eventHandler->onStreamsChanged(streamInfoArray);
         }
+
+        OnStreamsChangedDelegate.Broadcast();
 
         return true;
     }
