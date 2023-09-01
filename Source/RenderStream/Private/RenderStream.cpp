@@ -228,6 +228,12 @@ void FRenderStreamModule::StartupModule()
     {
         FModuleManager::Get().OnModulesChanged().AddRaw(this, &FRenderStreamModule::OnModulesChanged);
     }
+
+    auto TextureSharingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("nDisplay.render.texturesharing"));
+    if (TextureSharingCVar)
+    {
+        TextureSharingCVar->Set(1, ECVF_SetByCode);
+    }
 }
 
 void FRenderStreamModule::ShutdownModule()
