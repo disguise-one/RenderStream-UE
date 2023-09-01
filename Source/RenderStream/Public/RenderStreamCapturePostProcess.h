@@ -29,18 +29,20 @@ public:
 	virtual void HandleEndScene(IDisplayClusterViewportManager* InViewportManager) override;
 	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const override;
 
+    virtual void HandleBeginNewFrame(IDisplayClusterViewportManager* InViewportManager, FDisplayClusterRenderFrame& InOutRenderFrame) override;
+
 private:
     void RebuildDepthExtractionTable();
 
     void OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures);
+    
+    void OnDisplayClusterPostBackbufferUpdate_RenderThread(FRHICommandListImmediate& CmdList, const IDisplayClusterViewportManagerProxy* ViewportProxyManager, FViewport* Viewport);
 
-    void OnPostOpaqueDelegateCallback(FPostOpaqueRenderParameters& Parameters);
     FDelegateHandle ResolvedSceneColorCallbackHandle;
-    FDelegateHandle PostOverlayCallbackHandle;
+    FDelegateHandle StreamsChangedDelegateHandle;
+    FDelegateHandle DisplayClusterPostBackBufferUpdateHandle;
     TMap<FString, TRefCountPtr<IPooledRenderTarget>> m_extractedDepth;
     TArray<FString> m_depthIds;
-    int m_depthIndex;
-    int m_maxDepthBuffers;
 
 	TMap<FString, FString> Parameters;
 	FString Id;
@@ -48,6 +50,9 @@ private:
     bool m_EncodeDepth = false;
 
     IDisplayClusterViewportManager* ViewportManager; // Not owned by this class
+
+    using ViewportIdOrdering = TArray<FString>;
+    TQueue<ViewportIdOrdering> ViewportIdOrderPerFrame;
 };
 
 class FRenderStreamPostProcessFactory

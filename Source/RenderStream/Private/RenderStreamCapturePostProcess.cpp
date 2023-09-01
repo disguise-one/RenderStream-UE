@@ -6,6 +6,7 @@
 #include "DisplayClusterConfigurationTypes_Base.h"
 #include "FrameStream.h"
 #include "IDisplayCluster.h"
+#include "IDisplayClusterCallbacks.h"
 #include "RenderStream.h"
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
@@ -56,8 +57,8 @@ bool FRenderStreamCapturePostProcess::IsConfigurationChanged(const FDisplayClust
 // we can do the work done in FRenderStreamProjectionPolicy HandleStartScene and HandleEndScene here.
 bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportManager* InViewportManager)
 {
-
-    if (!IsInCluster()) {
+    if (!IsInCluster()) 
+    {
         return false;
     }
 
@@ -68,7 +69,15 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
     ViewportManager = InViewportManager;
 
-    Module->OnStreamsChangedDelegate.AddRaw(this, &FRenderStreamCapturePostProcess::RebuildDepthExtractionTable);
+    if (!StreamsChangedDelegateHandle.IsValid())
+    {
+        StreamsChangedDelegateHandle = Module->OnStreamsChangedDelegate.AddRaw(this, &FRenderStreamCapturePostProcess::RebuildDepthExtractionTable);
+    }
+    
+    if (!DisplayClusterPostBackBufferUpdateHandle.IsValid())
+    {
+        DisplayClusterPostBackBufferUpdateHandle = IDisplayCluster::Get().GetCallbacks().OnDisplayClusterPostBackbufferUpdate_RenderThread().AddRaw(this, &FRenderStreamCapturePostProcess::OnDisplayClusterPostBackbufferUpdate_RenderThread);
+    }
 
     RebuildDepthExtractionTable();
     
@@ -77,7 +86,20 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
 void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportManager* InViewportManager) 
 {
+    if (StreamsChangedDelegateHandle.IsValid())
+    {
+        if (FRenderStreamModule* Module = FRenderStreamModule::Get(); Module)
+        {
+            Module->OnStreamsChangedDelegate.Remove(StreamsChangedDelegateHandle);
+        }
 
+        StreamsChangedDelegateHandle.Reset();
+    }
+
+    if (IsInCluster() && DisplayClusterPostBackBufferUpdateHandle.IsValid())
+    {
+        IDisplayCluster::Get().GetCallbacks().OnDisplayClusterPostBackbufferUpdate_RenderThread().Remove(DisplayClusterPostBackBufferUpdateHandle);
+    }
 }
 
 void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const
@@ -90,7 +112,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     auto ViewportId = ViewportProxy->GetId();
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
-
+    
     auto Stream = Module->StreamPool->GetStream(ViewportId);
     // We can't create a stream on the render thread, so our only option is to not do anything if the stream doesn't exist here.
     if (Stream)
@@ -138,6 +160,24 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     // InViewportProxy->ResolveResources(RHICmdList, EDisplayClusterViewportResourceType::InputShaderResource, InViewportProxy->GetOutputResourceType());
 }
 
+void FRenderStreamCapturePostProcess::HandleBeginNewFrame(IDisplayClusterViewportManager* InViewportManager, FDisplayClusterRenderFrame& InOutRenderFrame)
+{
+    ViewportIdOrdering OrderThisFrame;
+    for (auto&& Target : InOutRenderFrame.RenderTargets)
+    {
+        for (auto&& Family : Target.ViewFamilies)
+        {
+            for (auto&& View : Family.Views)
+            {
+                check(View.Viewport);
+                OrderThisFrame.Add(View.Viewport->GetId());
+            }
+        }
+    }
+    Algo::Reverse(OrderThisFrame);
+    ViewportIdOrderPerFrame.Enqueue(OrderThisFrame);
+}
+
 void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
 {
     check(ViewportManager);
@@ -162,9 +202,6 @@ void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
         }
     }
 
-    m_maxDepthBuffers = m_extractedDepth.Num();
-    m_depthIndex = 0;
-
     m_EncodeDepth = anyViewportExtractsDepth;
 }
 
@@ -172,18 +209,22 @@ void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuil
 {
     check(IsInRenderingThread());
 
-    // Hack that relies on the viewports being rendered in order
-    // TODO need to find a way of associating SceneTexture extraction to nDisplay Viewports - SceneViewExtension?
     // Access Violation on shutdown is being caused by https://d3technologies.atlassian.net/browse/RSP-186
-    GraphBuilder.QueueTextureExtraction(SceneTextures.Depth.Resolve, &m_extractedDepth[m_depthIds[m_depthIndex++]]);
-    if (m_depthIndex >= m_maxDepthBuffers) 
-        m_depthIndex = 0;
+    ViewportIdOrdering* OrderThisFrame = ViewportIdOrderPerFrame.Peek();
+    if (!OrderThisFrame)
+        return;
+
+    const FString CurrentViewportId = OrderThisFrame->Pop(false);
+    GraphBuilder.QueueTextureExtraction(SceneTextures.Depth.Resolve, &m_extractedDepth[CurrentViewportId]);
 }
 
-void FRenderStreamCapturePostProcess::OnPostOpaqueDelegateCallback(FPostOpaqueRenderParameters& RenderParameters)
+void FRenderStreamCapturePostProcess::OnDisplayClusterPostBackbufferUpdate_RenderThread(FRHICommandListImmediate& CmdList, const IDisplayClusterViewportManagerProxy* ViewportProxyManager, FViewport* Viewport)
 {
-    //UE_LOG(LogTemp, Log, TEXT("%p"), RenderParameters.Uid);
-    
+    if (ViewportIdOrdering* OrderThisFrame = ViewportIdOrderPerFrame.Peek(); OrderThisFrame)
+    {
+        OrderThisFrame->Empty();
+        ViewportIdOrderPerFrame.Pop();
+    }
 }
 
 FRenderStreamPostProcessFactory::BasePostProcessPtr FRenderStreamPostProcessFactory::Create(
