@@ -528,6 +528,9 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					WorldViewInfo.ViewToWorld = View->ViewMatrices.GetInvViewMatrix();
 					World->LastRenderTime = World->GetTimeSeconds();
 				}
+
+				Info.RHIFrameNumber = ViewFamily.Scene->GetFrameNumber();
+                UE_LOG(LogRenderStream, Log, TEXT("IYP: Draw frame: %d, tTracked: %f"), Info.RHIFrameNumber, Info.m_frameResponsesMap[Info.RHIFrameNumber].tTracked);
 			}
 
 #if CSV_PROFILER

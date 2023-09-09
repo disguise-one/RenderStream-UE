@@ -165,24 +165,31 @@ namespace RSUCHelpers
         }
         else if (toggle == "D3D12")
         {
+            auto renderPassFence = RHICreateGPUFence(TEXT("RS API Texture Readout"));
+            RHICmdList.WriteGPUFence(renderPassFence);
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Flush"));
+                RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::SenderFrameTypeData data = {};
-            data.dx12.resource = static_cast<ID3D12Resource*>(resource);
-
-            RenderStreamLink::FrameResponseData Response = {};
-            Response.cameraData = &FrameData;
-            {
-                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
-                auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            RHICmdList.EnqueueLambda([resource, Handle, FrameData](const FRHICommandListImmediate& rhiCmdList)
                 {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
-            }
+                    RenderStreamLink::SenderFrameTypeData data = {};
+                    data.dx12.resource = static_cast<ID3D12Resource*>(resource);
+
+                    RenderStreamLink::FrameResponseData Response = {};
+                    Response.cameraData = &FrameData;
+                    {
+                        //SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame"));
+                        auto output = RenderStreamLink::instance().rs_sendFrame(Handle, RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE, data, &Response);
+                        if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+                        {
+                            UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                        }
+                        UE_LOG(LogRenderStream, Log, TEXT("IYP: rs_sendFrame tTracked: %f"), FrameData.tTracked);
+                    }
+                });
         }
         else if (toggle == "Vulkan")
         {

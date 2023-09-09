@@ -66,10 +66,12 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         RenderStreamLink::CameraResponseData frameResponse;
         {
             std::lock_guard<std::mutex> guard(Info.m_frameResponsesLock);
-            if (Info.m_frameResponsesMap.count(GFrameCounterRenderThread)) // Check current frame data exists
+            if (Info.m_frameResponsesMap.count(Info.RHIFrameNumber)) // Check current frame data exists
             {
-                frameResponse = Info.m_frameResponsesMap[GFrameCounterRenderThread];
-                Info.m_frameResponsesMap.erase(GFrameCounterRenderThread);
+                
+                frameResponse = Info.m_frameResponsesMap[Info.RHIFrameNumber];
+                UE_LOG(LogRenderStream, Log, TEXT("IYP: PerformPostProcess frame: %d, tTracked: %f"), Info.RHIFrameNumber, frameResponse.tTracked);
+                Info.m_frameResponsesMap.erase(Info.RHIFrameNumber);
             }
             else
             {
@@ -79,6 +81,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
                 frameResponse.camera.sensorX = 1.f;
                 frameResponse.camera.sensorY = 1.f;
                 frameResponse.camera.focalLength = 1.f;
+                UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Failed to handle frame %d"), Info.RHIFrameNumber);
             }
         }
 
@@ -89,6 +92,12 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         check(Resources.Num() == 1);
         check(Rects.Num() == 1);
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+        auto frameNumber = Info.RHIFrameNumber;
+        RHICmdList.EnqueueLambda([&Info, frameNumber](const FRHICommandListImmediate& _)
+            {
+                std::lock_guard guard(Info.m_frameResponsesLock);
+                Info.m_frameResponsesMap.erase(frameNumber - 2);
+            });
     }
 
     // Uncomment this to restore client display

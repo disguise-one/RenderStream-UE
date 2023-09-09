@@ -423,6 +423,12 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             Info.Camera->SetOwner(Info.Template->GetOwner());
             Info.Camera->AttachToActor(Info.Template->GetAttachParentActor(), FAttachmentTransformRules::KeepWorldTransform);
 
+            URenderStreamChannelDefinition* ChildDefinition = Info.Camera->FindComponentByClass<URenderStreamChannelDefinition>();
+            if (ChildDefinition)
+            {
+                ChildDefinition->StreamName = Name;
+            }
+
             USceneComponent* RootComponent = Info.Template->GetRootComponent();
             if (RootComponent)
                 Info.Camera->SetActorRelativeTransform(Info.Template->GetRootComponent()->GetRelativeTransform());
@@ -595,19 +601,26 @@ void FRenderStreamModule::ApplyCameras(const RenderStreamLink::FrameData& frameD
 
 void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const RenderStreamLink::FrameData& frameData, const RenderStreamLink::CameraData& cameraData)
 {
-    // Each call must always have a frame response, because there will be a corresponding render call.
-    {
-        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
-        uint64 frameCounter = GFrameCounter;
-        info.m_frameResponsesMap[frameCounter] = {frameData.tTracked, cameraData};
-    }
-
+    uint64 frameCounter = 0;
     if (!info.Camera.IsValid())
+    {
+        // Each call must always have a frame response, because there will be a corresponding render call.
+        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+        frameCounter = GFrameNumber;
+        info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
+        UE_LOG(LogRenderStream, Log, TEXT("Starting frame %d with no camera"), frameCounter);
         return;
+    }
 
     // Attach the instanced Camera to the Capture object for this view.
     USceneComponent* SceneComponent = info.Camera->K2_GetRootComponent();
     UCameraComponent* CameraComponent = info.Camera->GetCameraComponent();
+
+    {
+        std::lock_guard<std::mutex> guard(info.m_frameResponsesLock);
+        frameCounter = SceneComponent->GetScene()->GetFrameNumber();
+        info.m_frameResponsesMap[frameCounter] = { frameData.tTracked, cameraData };
+    }
 
     if (cameraData.cameraHandle == 0)  // 2D mapping, just set aspect ratio
     {
@@ -642,6 +655,7 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         float _roll = cameraData.rz;
         FQuat rotationQuat = FQuat::MakeFromEuler(FVector(_roll, _pitch, _yaw));
         SceneComponent->SetRelativeRotation(rotationQuat);
+        UE_LOG(LogRenderStream, Log, TEXT("IYP: ApplyCamera frame: %d, tTracked: %f, rx: %f, ry: %f, rz: %f"), frameCounter, frameData.tTracked, SceneComponent->GetRelativeRotation().Yaw, SceneComponent->GetRelativeRotation().Pitch, SceneComponent->GetRelativeRotation().Roll);
 
         FVector pos;
         pos.X = FUnitConversion::Convert(float(cameraData.z), EUnit::Meters, FRenderStreamModule::distanceUnit());
