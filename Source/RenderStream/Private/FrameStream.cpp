@@ -10,14 +10,14 @@ FFrameStream::~FFrameStream()
 {
 }
 
-void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, RenderStreamLink::CameraResponseData& FrameData, FRHITexture* InSourceTexture, FRHITexture* InDepthTexture, const FIntRect& ViewportRect)
+void FFrameStream::SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdList, RenderStreamLink::CameraResponseData& FrameData, FRHITexture* InSourceTexture, FRHITexture* InDepthTexture, const FIntRect& ViewportRect, const FVector2D TAAJitter)
 {
     float ULeft = (float)ViewportRect.Min.X / (float)InSourceTexture->GetSizeX();
     float URight = (float)ViewportRect.Max.X / (float)InSourceTexture->GetSizeX();
     float VTop = (float)ViewportRect.Min.Y / (float)InSourceTexture->GetSizeY();
     float VBottom = (float)ViewportRect.Max.Y / (float)InSourceTexture->GetSizeY();
 
-    RSUCHelpers::SendFrame(m_handle, m_bufTexture, m_depthBufTexture, RHICmdList, FrameData, InSourceTexture, InDepthTexture, InSourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom });
+    RSUCHelpers::SendFrame(m_handle, m_bufTexture, m_depthBufTexture, RHICmdList, FrameData, InSourceTexture, InDepthTexture, InSourceTexture->GetSizeXY(), { ULeft, URight }, { VTop, VBottom }, FVector2f(TAAJitter));
 
 }
 

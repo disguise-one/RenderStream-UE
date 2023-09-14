@@ -34,14 +34,15 @@ public:
 private:
     void RebuildDepthExtractionTable();
 
-    void OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures);
+    void OnPostOpaque_RenderThread(FPostOpaqueRenderParameters& PostOpaqueParameters);
     
     void OnDisplayClusterPostBackbufferUpdate_RenderThread(FRHICommandListImmediate& CmdList, const IDisplayClusterViewportManagerProxy* ViewportProxyManager, FViewport* Viewport);
 
-    FDelegateHandle ResolvedSceneColorCallbackHandle;
     FDelegateHandle StreamsChangedDelegateHandle;
     FDelegateHandle DisplayClusterPostBackBufferUpdateHandle;
+    FDelegateHandle PostOpaqueDelegateHandle;
     TMap<FString, TRefCountPtr<IPooledRenderTarget>> m_extractedDepth;
+    TMap<FString, FVector2D> m_extractedDepthTAAJitter;
     TArray<FString> m_depthIds;
 
 	TMap<FString, FString> Parameters;

@@ -25,26 +25,11 @@ FString FRenderStreamCapturePostProcess::Type = TEXT("renderstream_capture");
 FRenderStreamCapturePostProcess::FRenderStreamCapturePostProcess(const FString& PostProcessId, const struct FDisplayClusterConfigurationPostprocess* InConfigurationPostProcess)
     : Id(PostProcessId)
 {
-    if (!ResolvedSceneColorCallbackHandle.IsValid())
-    {
-        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
-        {
-            ResolvedSceneColorCallbackHandle = RendererModule->GetResolvedSceneColorCallbacks().AddRaw(this, &FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread);
-        }
-    }
+    
 }
 
 FRenderStreamCapturePostProcess::~FRenderStreamCapturePostProcess() 
 {
-    if (ResolvedSceneColorCallbackHandle.IsValid())
-    {
-        if (IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer")))
-        {
-            RendererModule->GetResolvedSceneColorCallbacks().Remove(ResolvedSceneColorCallbackHandle);
-        }
-
-        ResolvedSceneColorCallbackHandle.Reset();
-    }
 
 }
 
@@ -67,6 +52,8 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
 
     Module->LoadSchemas(*GWorld);
 
+    IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer"));
+
     ViewportManager = InViewportManager;
 
     if (!StreamsChangedDelegateHandle.IsValid())
@@ -77,6 +64,11 @@ bool FRenderStreamCapturePostProcess::HandleStartScene(IDisplayClusterViewportMa
     if (!DisplayClusterPostBackBufferUpdateHandle.IsValid())
     {
         DisplayClusterPostBackBufferUpdateHandle = IDisplayCluster::Get().GetCallbacks().OnDisplayClusterPostBackbufferUpdate_RenderThread().AddRaw(this, &FRenderStreamCapturePostProcess::OnDisplayClusterPostBackbufferUpdate_RenderThread);
+    }
+
+    if (!PostOpaqueDelegateHandle.IsValid() && RendererModule)
+    {
+        RendererModule->RegisterPostOpaqueRenderDelegate(FPostOpaqueRenderDelegate::CreateRaw(this, &FRenderStreamCapturePostProcess::OnPostOpaque_RenderThread));
     }
 
     RebuildDepthExtractionTable();
@@ -99,6 +91,14 @@ void FRenderStreamCapturePostProcess::HandleEndScene(IDisplayClusterViewportMana
     if (IsInCluster() && DisplayClusterPostBackBufferUpdateHandle.IsValid())
     {
         IDisplayCluster::Get().GetCallbacks().OnDisplayClusterPostBackbufferUpdate_RenderThread().Remove(DisplayClusterPostBackBufferUpdateHandle);
+    }
+
+    IRendererModule* RendererModule = FModuleManager::GetModulePtr<IRendererModule>(TEXT("Renderer"));
+
+    if (PostOpaqueDelegateHandle.IsValid() && RendererModule)
+    {
+        RendererModule->RemovePostOpaqueRenderDelegate(PostOpaqueDelegateHandle);
+        PostOpaqueDelegateHandle.Reset();
     }
 }
 
@@ -150,9 +150,9 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
             check(m_extractedDepth[ViewportId]);
         }
 
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], 
-            m_EncodeDepth ? m_extractedDepth[ViewportId]->GetRHI() : nullptr, 
-            Rects[0]
+        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0],
+            m_EncodeDepth ? m_extractedDepth[ViewportId]->GetRHI() : nullptr,
+            Rects[0], m_extractedDepthTAAJitter[ViewportId]
         );
     }
 
@@ -187,6 +187,7 @@ void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
 
     m_extractedDepth.Empty();
     m_depthIds.Empty();
+    m_extractedDepthTAAJitter.Empty();
 
     bool anyViewportExtractsDepth = false;
 
@@ -195,6 +196,7 @@ void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
         const FString& ViewportId = Viewport->GetId();
         m_extractedDepth.Add(ViewportId, TRefCountPtr<IPooledRenderTarget>());
         m_depthIds.Add(ViewportId);
+        m_extractedDepthTAAJitter.Add(ViewportId, FVector2D(0, 0));
         
         if (const auto KnownViewport = Module->ViewportInfos.Find(ViewportId); KnownViewport)
         {
@@ -205,7 +207,7 @@ void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
     m_EncodeDepth = anyViewportExtractsDepth;
 }
 
-void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuilder& GraphBuilder, const FSceneTextures& SceneTextures)
+void FRenderStreamCapturePostProcess::OnPostOpaque_RenderThread(FPostOpaqueRenderParameters& PostOpaqueParameters)
 {
     check(IsInRenderingThread());
 
@@ -215,7 +217,9 @@ void FRenderStreamCapturePostProcess::OnResolvedSceneColor_RenderThread(FRDGBuil
         return;
 
     const FString CurrentViewportId = OrderThisFrame->Pop(false);
-    GraphBuilder.QueueTextureExtraction(SceneTextures.Depth.Resolve, &m_extractedDepth[CurrentViewportId]);
+    
+    m_extractedDepthTAAJitter[CurrentViewportId] = PostOpaqueParameters.View->TemporalJitterPixels;
+    PostOpaqueParameters.GraphBuilder->QueueTextureExtraction(PostOpaqueParameters.DepthTexture, &m_extractedDepth[CurrentViewportId]);
 }
 
 void FRenderStreamCapturePostProcess::OnDisplayClusterPostBackbufferUpdate_RenderThread(FRHICommandListImmediate& CmdList, const IDisplayClusterViewportManagerProxy* ViewportProxyManager, FViewport* Viewport)

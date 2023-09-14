@@ -51,7 +51,7 @@ namespace {
         { }
 
 
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter = FVector2f(0, 0));
     };
 
     class RSResizeDepthCopy : public RSResizeCopy
@@ -63,7 +63,7 @@ namespace {
         RSResizeDepthCopy(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
             : RSResizeCopy(Initializer)
         { }
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter = FVector2f(0, 0));
     };
 
 
@@ -72,6 +72,7 @@ namespace {
 
     BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, )
     SHADER_PARAMETER(FVector2f, UVScale)
+    SHADER_PARAMETER(FVector2f, Jitter)
     SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
     SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
@@ -82,12 +83,13 @@ namespace {
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
     IMPLEMENT_SHADER_TYPE(, RSResizeDepthCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyDepthPS"), SF_Pixel);
 
-    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions)
+    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter)
     {
         RSResizeCopyUB UB;
         {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
             UB.Texture = RGBTexture;
+            UB.Jitter = Jitter;
             UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
         }
 
@@ -96,12 +98,13 @@ namespace {
     }
 
 
-    void RSResizeDepthCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions)
+    void RSResizeDepthCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter)
     {
         RSResizeCopyUB UB;
         {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
             UB.Texture = DepthTexture;
+            UB.Jitter = FVector2f(Jitter.X / (float)DepthTexture->GetSizeX(), Jitter.Y / (float)DepthTexture->GetSizeY());
             UB.UVScale = FVector2f((float)OutputDimensions.X / (float)DepthTexture->GetSizeX(), (float)OutputDimensions.Y / (float)DepthTexture->GetSizeY());
         }
 
@@ -118,7 +121,8 @@ namespace RSUCHelpers
     static void CopyFrameToBuffer(FRHICommandListImmediate& RHICmdList, 
         FTextureRHIRef BufTexture,
         FRHITexture* InTexture,
-        FString DrawName
+        FString DrawName,
+        const FVector2f& Jitter = FVector2f(0, 0)
     )
     {
         // need to copy depth texture into buf texture
@@ -151,7 +155,7 @@ namespace RSUCHelpers
             TShaderMapRef<ShaderType> ConvertShader(ShaderMap);
             GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
             SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
-            ConvertShader->SetParameters(RHICmdList, InTexture, InTexture->GetSizeXY());
+            ConvertShader->SetParameters(RHICmdList, InTexture, InTexture->GetSizeXY(), Jitter);
             
 
             auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
@@ -178,14 +182,15 @@ namespace RSUCHelpers
         FRHITexture* InDepthTexture,
         FIntPoint Point,
         FVector2f CropU,
-        FVector2f CropV)
+        FVector2f CropV,
+        const FVector2f& TAAJitter = FVector2f(0, 0))
     {
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame With Depth"));
         CopyFrameToBuffer<RSResizeCopy>(RHICmdList, BufImageTexture, InSourceTexture, "RS Image Blit");
 
         if (InDepthTexture)
         {
-            CopyFrameToBuffer<RSResizeDepthCopy>(RHICmdList, BufDepthTexture, InDepthTexture, "RS Depth Blit");
+            CopyFrameToBuffer<RSResizeDepthCopy>(RHICmdList, BufDepthTexture, InDepthTexture, "RS Depth Blit", TAAJitter);
         }
 
 

@@ -17,7 +17,7 @@ public:
         RenderStreamLink::CameraResponseData& FrameData,
         FRHITexture* InSourceTexture,
         FRHITexture* InDepthTexture,
-        const FIntRect& ViewportRect);
+        const FIntRect& ViewportRect, const FVector2D TAAJitter = FVector2D(0,0));
 
     bool Setup(const FString& Name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt, bool requiresDepth);
     void Update(const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt, bool requiresDepth);
