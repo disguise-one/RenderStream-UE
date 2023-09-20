@@ -83,9 +83,16 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         TArray<FRHITexture2D*> Resources;
         TArray<FIntRect> Rects;
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::OutputFrameTargetableResource, Resources, Rects);
-        check(Resources.Num() == 1);
-        check(Rects.Num() == 1);
-        Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+        if (Resources.Num() == 0)
+        {
+            UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Frame response error - no Resource returned from render thread"));
+        }
+        else if (Rects.Num() == 0)
+        {
+            UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Frame response error - no Rects returned from render thread"));
+        }
+        else
+            Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
     }
 
     // Uncomment this to restore client display
