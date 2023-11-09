@@ -14,6 +14,7 @@
 
 bool FRenderStreamValidation::ValidateProjectSettings()
 {
+
     FMessageLog RSV("RenderStreamValidation");
     RSV.SuppressLoggingToOutputLog(true);
     bool IssuesFound = false;
@@ -63,6 +64,19 @@ bool FRenderStreamValidation::ValidateProjectSettings()
             });
         RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("Ray tracing enabled in project settings. May cause seams if using clustered rendering")))
             ->AddToken(FActionToken::Create(FText::FromString("Fix"), FText::FromString("FixRayTracing"), FixRayTracing));
+    }
+
+    FModuleManager& ModuleManager = FModuleManager::Get();
+    if (ModuleManager.IsModuleLoaded("PixelStreaming"))
+    {
+        IssuesFound = true;
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("PixelStreaming plugin enabled in project, this causes black screen output with mesh mappings.")));
+    }
+
+    if (ModuleManager.IsModuleLoaded("EncoderAMF") || ModuleManager.IsModuleLoaded("EncoderNVENC"))
+    {
+        IssuesFound = true;
+        RSV.Warning()->AddToken(FTextToken::Create(FText::FromString("HardwareEncoders plugin enabled in project, this causes black screen output with mesh mappings.")));
     }
 
     return IssuesFound;
