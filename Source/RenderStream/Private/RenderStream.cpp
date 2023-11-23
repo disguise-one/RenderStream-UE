@@ -72,6 +72,7 @@
 #include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
 
 #include "GameMapsSettings.h"
+#include "Engine/GameInstance.h"
 #include "Engine/ObjectLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
@@ -796,8 +797,8 @@ void FRenderStreamModule::OnBeginFrame()
     ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
     if (RootActor && settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
     {
-        RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.bIsEnabled = true;
-        RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.OCIOConfiguration = settings->OCIOConfig;
+        RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.bIsEnabled = true;
+        RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.ColorConfiguration = settings->OCIOConfig.ColorConfiguration;
     }
 }
 
