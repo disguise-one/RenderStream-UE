@@ -99,6 +99,12 @@ void URenderStreamViewportClient::Init(struct FWorldContext& WorldContext, UGame
     if (bIsNDisplayClusterMode)
 	{
 		// r.CompositionForceRenderTargetLoad
+		IConsoleVariable* const MaxTextureDimension = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.OverrideMaxTextureDimension"));
+		if (MaxTextureDimension)
+		{
+			MaxTextureDimension->Set(int32(16384));
+		}
+
 		IConsoleVariable* const ForceLoadCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CompositionForceRenderTargetLoad"));
 		if (ForceLoadCVar)
 		{

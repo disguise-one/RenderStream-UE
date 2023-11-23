@@ -117,6 +117,15 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     // We can't create a stream on the render thread, so our only option is to not do anything if the stream doesn't exist here.
     if (Stream)
     {
+        auto Size = ViewportProxy->GetRenderSettings_RenderThread().Rect.Size();
+        if (Size.GetMin() <= 0)
+        {
+            auto Resolution = Stream->Resolution();
+            UE_LOG(LogRenderStream, Error, TEXT("Viewport of zero size detected in '%s : %s' with id '%s' %dx%d, expected size %dx%d"),
+                *Stream->Name(), *Stream->Channel(), *ViewportId, Size.X, Size.Y, Resolution.X, Resolution.Y);
+            return;
+        }
+
         auto& Info = Module->GetViewportInfo(ViewportId);
         RenderStreamLink::CameraResponseData frameResponse;
         {
@@ -142,14 +151,18 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         TArray<FIntRect> Rects;
         // NOTE: If you get a black screen on the stream when updating the plugin to a new unreal version try changing the EDisplayClusterViewportResourceType enum.
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
-        check(Resources.Num() == 1);
-        check(Rects.Num() == 1);
-
+        
         if (m_EncodeDepth)
         {
             check(m_extractedDepth[ViewportId]);
         }
 
+        
+        if (Resources.Num() != 1 || Rects.Num() != 1)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("Missing viewport output in '%s : %s' with id '%s'"), *Stream->Name(), *Stream->Channel(), *ViewportId);
+            return;
+        }
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0],
             m_EncodeDepth ? m_extractedDepth[ViewportId]->GetRHI() : nullptr,
             Rects[0], m_extractedDepthTAAJitter[ViewportId]
