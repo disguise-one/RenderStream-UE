@@ -152,20 +152,24 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         // NOTE: If you get a black screen on the stream when updating the plugin to a new unreal version try changing the EDisplayClusterViewportResourceType enum.
         ViewportProxy->GetResourcesWithRects_RenderThread(EDisplayClusterViewportResourceType::InputShaderResource, Resources, Rects);
         
-        if (m_EncodeDepth)
-        {
-            check(m_extractedDepth[ViewportId]);
-        }
-
-        
         if (Resources.Num() != 1 || Rects.Num() != 1)
         {
             UE_LOG(LogRenderStream, Error, TEXT("Missing viewport output in '%s : %s' with id '%s'"), *Stream->Name(), *Stream->Channel(), *ViewportId);
             return;
         }
+
+        FScopeLock lock(&m_extractedDepthLock);
+        FRHITexture* depthPtr = nullptr;
+        if (m_EncodeDepth)
+        {
+            if (m_extractedDepth.Contains(ViewportId))
+                depthPtr = m_extractedDepth[ViewportId]->GetRHI();
+            else
+                UE_LOG(LogRenderStreamPostProcess, Error, TEXT("No extracted depth available for '%s : %s' with id '%s'"), *Stream->Name(), *Stream->Channel(), *ViewportId);
+        }
+
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0],
-            m_EncodeDepth ? m_extractedDepth[ViewportId]->GetRHI() : nullptr,
-            Rects[0], m_extractedDepthTAAJitter[ViewportId]
+            depthPtr, Rects[0], depthPtr ? m_extractedDepthTAAJitter[ViewportId] : FVector2D(0.f, 0.f)
         );
     }
 
@@ -176,6 +180,9 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
 void FRenderStreamCapturePostProcess::HandleBeginNewFrame(IDisplayClusterViewportManager* InViewportManager, FDisplayClusterRenderFrame& InOutRenderFrame)
 {
     ViewportIdOrdering OrderThisFrame;
+
+    bool shouldRebuildExtractionTable = false;
+
     for (auto&& Target : InOutRenderFrame.RenderTargets)
     {
         for (auto&& Family : Target.ViewFamilies)
@@ -184,11 +191,23 @@ void FRenderStreamCapturePostProcess::HandleBeginNewFrame(IDisplayClusterViewpor
             {
                 check(View.Viewport);
                 OrderThisFrame.Add(View.Viewport->GetId());
+                if (!m_extractedDepth.Contains(OrderThisFrame.Last()))
+                {
+                    shouldRebuildExtractionTable = true;
+                    UE_LOG(LogRenderStreamPostProcess, Error, TEXT("View %s has no corresponding depth extraction buffer"), *OrderThisFrame.Last());
+                }
             }
         }
     }
+
+    if (OrderThisFrame.IsEmpty())
+        UE_LOG(LogRenderStreamPostProcess, Error, TEXT("No Viewports listed in OrderThisFrame"));
+    
     Algo::Reverse(OrderThisFrame);
     ViewportIdOrderPerFrame.Enqueue(OrderThisFrame);
+    
+    if (shouldRebuildExtractionTable)
+        RebuildDepthExtractionTable();
 }
 
 void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
@@ -198,11 +217,15 @@ void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
 
+    FScopeLock lock(&m_extractedDepthLock);
+
     m_extractedDepth.Empty();
     m_depthIds.Empty();
     m_extractedDepthTAAJitter.Empty();
 
     bool anyViewportExtractsDepth = false;
+
+    UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Rebuilding DepthExtractionTable..."));
 
     for (auto Viewport : ViewportManager->GetViewports())
     {
@@ -215,9 +238,11 @@ void FRenderStreamCapturePostProcess::RebuildDepthExtractionTable()
         {
             anyViewportExtractsDepth |= (*KnownViewport)->ShouldExtractDepth;
         }
+        UE_LOG(LogRenderStreamPostProcess, Log, TEXT("Adding Viewport %s"), *ViewportId);
     }
 
     m_EncodeDepth = anyViewportExtractsDepth;
+    UE_LOG(LogRenderStreamPostProcess, Log, TEXT("DepthExtraction Active: %d"), m_EncodeDepth);
 }
 
 void FRenderStreamCapturePostProcess::OnPostOpaque_RenderThread(FPostOpaqueRenderParameters& PostOpaqueParameters)
@@ -231,8 +256,16 @@ void FRenderStreamCapturePostProcess::OnPostOpaque_RenderThread(FPostOpaqueRende
 
     const FString CurrentViewportId = OrderThisFrame->Pop(false);
     
-    m_extractedDepthTAAJitter[CurrentViewportId] = PostOpaqueParameters.View->TemporalJitterPixels;
-    PostOpaqueParameters.GraphBuilder->QueueTextureExtraction(PostOpaqueParameters.DepthTexture, &m_extractedDepth[CurrentViewportId]);
+    FScopeLock lock(&m_extractedDepthLock);
+    if (m_extractedDepth.Contains(CurrentViewportId))
+    {
+        m_extractedDepthTAAJitter[CurrentViewportId] = PostOpaqueParameters.View->TemporalJitterPixels;
+        PostOpaqueParameters.GraphBuilder->QueueTextureExtraction(PostOpaqueParameters.DepthTexture, &m_extractedDepth[CurrentViewportId]);
+    }
+    else
+    {
+        UE_LOG(LogRenderStreamPostProcess, Error, TEXT("Viewport %s is not in ExtractedDepthTable! No extraction queued"), *CurrentViewportId);
+    }
 }
 
 void FRenderStreamCapturePostProcess::OnDisplayClusterPostBackbufferUpdate_RenderThread(FRHICommandListImmediate& CmdList, const IDisplayClusterViewportManagerProxy* ViewportProxyManager, FViewport* Viewport)
