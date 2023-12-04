@@ -49,6 +49,7 @@ private:
 	FString Id;
 	static FString Type;
     bool m_EncodeDepth = false;
+    mutable FCriticalSection m_extractedDepthLock;
 
     IDisplayClusterViewportManager* ViewportManager; // Not owned by this class
 
