@@ -10,7 +10,7 @@
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
-#include "CinematicCamera/Public/CineCameraComponent.h"
+#include "CineCameraComponent.h"
 
 #include "Math/UnitConversion.h"
 #include "RenderStream.h"
@@ -20,7 +20,7 @@
 #include "FrameStream.h"
 
 #include "RenderStreamChannelDefinition.h"
-#include "..\Public\RenderStreamProjectionPolicy.h"
+#include "RenderStreamProjectionPolicy.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamPolicy);
 

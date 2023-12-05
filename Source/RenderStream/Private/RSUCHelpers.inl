@@ -2,7 +2,7 @@
 
 #include "RenderStreamLink.h"
 
-#include "Engine/Public/HardwareInfo.h"
+#include "HardwareInfo.h"
 
 #include "D3D12RHIBridge.h"
 
@@ -19,7 +19,7 @@
 #include "ShaderParameterUtils.h"
 #include "RenderCommandFence.h"
 
-#include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 
 #include <array>
 #include <VulkanResources.h>
@@ -63,7 +63,6 @@ namespace {
         RSResizeDepthCopy(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
             : RSResizeCopy(Initializer)
         { }
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter = FVector2f(0, 0));
     };
 
 
@@ -94,24 +93,10 @@ namespace {
         }
 
         TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
-        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyUB>(), Data);
+        FRHIBatchedShaderParameters Params;
+        SetUniformBufferParameter(Params, GetUniformBufferParameter<RSResizeCopyUB>(), Data);
+        CommandList.SetBatchedShaderParameters(CommandList.GetBoundPixelShader(), Params);
     }
-
-
-    void RSResizeDepthCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> DepthTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter)
-    {
-        RSResizeCopyUB UB;
-        {
-            UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
-            UB.Texture = DepthTexture;
-            UB.Jitter = FVector2f(Jitter.X / (float)DepthTexture->GetSizeX(), Jitter.Y / (float)DepthTexture->GetSizeY());
-            UB.UVScale = FVector2f((float)OutputDimensions.X / (float)DepthTexture->GetSizeX(), (float)OutputDimensions.Y / (float)DepthTexture->GetSizeY());
-        }
-
-        TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
-        SetUniformBufferParameter(CommandList, CommandList.GetBoundPixelShader(), GetUniformBufferParameter<RSResizeCopyUB>(), Data);
-    }
-
 }
 
 namespace RSUCHelpers
@@ -304,7 +289,7 @@ namespace RSUCHelpers
                     throw;
                 }
 
-                FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(BufTexture);
+                FVulkanTexture* VulkanTexture = ResourceCast(BufTexture);
                 auto point2 = VulkanTexture->GetSizeXY();
 
                 RenderStreamLink::SenderFrame data = {};

@@ -46,6 +46,7 @@
 
 #include "DisplayClusterEnums.h"
 #include "DisplayClusterSceneViewExtensions.h"
+#include "Render/Viewport/RenderFrame/DisplayClusterRenderFrame.h"
 //#include "Misc/DisplayClusterGlobals.h"
 /// DisplayClusterViewportClient.cpp copy-pasta
 
@@ -55,7 +56,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewport.h"
-#include "Engine/Public/SceneManagement.h"
+#include "SceneManagement.h"
 
 //#include "Config/DisplayClusterConfigManager.h"
 
@@ -199,13 +200,14 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 	static const auto DisplayClusterLumenPerView = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.LumenPerView"));
 	static const auto DisplayClusterSortViews = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.SortViews"));
 	static const auto DisplayClusterSingleRender = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.SingleRender"));
+	static const auto DisplayClusterDebugDraw = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.DebugDraw"));
 
-    ////////////////////////////////
-    // For any operation mode other than 'Cluster' we use default UGameViewportClient::Draw pipeline
-    /// !!!! disguise customizations - we must always use this method.
-    const bool bIsNDisplayClusterMode = true; //(GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
-    /// !!!! disguise customizations
-	
+	////////////////////////////////
+	// For any operation mode other than 'Cluster' we use default UGameViewportClient::Draw pipeline
+	/// !!!! disguise customizations - we must always use this method.
+	const bool bIsNDisplayClusterMode = true; //(GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
+	/// !!!! disguise customizations
+
 	// Get nDisplay stereo device
 	IDisplayClusterRenderDevice* const DCRenderDevice = bIsNDisplayClusterMode ? static_cast<IDisplayClusterRenderDevice* const>(GEngine->StereoRenderingDevice.Get()) : nullptr;
 
@@ -294,15 +296,22 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 		return;
 	}
 
+	IDisplayClusterViewportManager* RenderFrameViewportManager = RenderFrame.GetViewportManager();
+	if (!RenderFrameViewportManager)
+	{
+		// skip rendering: Can't find render manager
+		return;
+	}
+
 	// Handle special viewports game-thread logic at frame begin
 	DCRenderDevice->InitializeNewFrame();
 
-	for (FDisplayClusterRenderFrame::FFrameRenderTarget& DCRenderTarget : RenderFrame.RenderTargets)
+	for (FDisplayClusterRenderFrameTarget& DCRenderTarget : RenderFrame.RenderTargets)
 	{
-		for (FDisplayClusterRenderFrame::FFrameViewFamily& DCViewFamily : DCRenderTarget.ViewFamilies)
+		for (FDisplayClusterRenderFrameTargetViewFamily& DCViewFamily : DCRenderTarget.ViewFamilies)
 		{
 			// Create the view family for rendering the world scene to the viewport's render target
-			ViewFamilies.Add(new FSceneViewFamilyContext(RenderFrame.ViewportManager->CreateViewFamilyConstructionValues(
+			ViewFamilies.Add(new FSceneViewFamilyContext(RenderFrameViewportManager->CreateViewFamilyConstructionValues(
 				DCRenderTarget,
 				MyWorld->Scene,
 				EngineShowFlags,
@@ -312,7 +321,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 			bool bIsFamilyVisible = false;
 
 			// Configure family
-			RenderFrame.ViewportManager->ConfigureViewFamily(DCRenderTarget, DCViewFamily, ViewFamily);
+			RenderFrameViewportManager->ConfigureViewFamily(DCRenderTarget, DCViewFamily, ViewFamily);
 
 #if WITH_EDITOR
 			if (GIsEditor)
@@ -366,15 +375,15 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 			FAudioDeviceHandle RetrievedAudioDevice = MyWorld->GetAudioDevice();
 			TArray<FSceneView*> Views;
 
-			for (FDisplayClusterRenderFrame::FFrameView& DCView : DCViewFamily.Views)
+			for (FDisplayClusterRenderFrameTargetView& DCView : DCViewFamily.Views)
 			{
 				const FDisplayClusterViewport_Context ViewportContext = DCView.Viewport->GetContexts()[DCView.ContextNum];
 
 				/// !!!! disguise customizations
-				auto& Info = FRenderStreamModule::Get()->GetViewportInfo(DCView.Viewport->GetId());
+				auto & Info = FRenderStreamModule::Get()->GetViewportInfo(DCView.Viewport->GetId());
 				if (Info.PlayerId != -1)
 				{
-					APlayerController* PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Info.PlayerId);
+					APlayerController * PolicyController = UGameplayStatics::GetPlayerControllerFromID(World, Info.PlayerId);
 					if (PolicyController)
 						LocalPlayer = PolicyController->GetLocalPlayer();
 				}
@@ -383,9 +392,9 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				// Calculate the player's view information.
 				FVector		ViewLocation;
 				FRotator	ViewRotation;
-				FSceneView* View = LocalPlayer->CalcSceneView(&ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoViewIndex);
+				FSceneView* View = RenderFrameViewportManager->CalcSceneView(LocalPlayer, &ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoViewIndex);
 
-				if (View && !DCView.ShouldRenderSceneView())
+				if (View && !DCView.IsViewportContextCanBeRendered())
 				{
 					ViewFamily.Views.Remove(View);
 
@@ -398,8 +407,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					Views.Add(View);
 
 					/// !!!! disguise customizations
-                    UpdateView(&ViewFamily, View, Info);
-                    /// !!!! disguise customizations
+					UpdateView(&ViewFamily, View, Info);
+					/// !!!! disguise customizations
 
 					// Apply viewport context settings to view (crossGPU, visibility, etc)
 					DCView.Viewport->SetupSceneView(DCView.ContextNum, World, ViewFamily, *View);
@@ -450,7 +459,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					View->State->AddVirtualShadowMapCache(MyWorld->Scene);
 
 					// Enable per-view Lumen scene
-					if (DisplayClusterForceCopyCrossGPU->GetInt())
+					if (DisplayClusterLumenPerView->GetInt())
 					{
 						View->State->AddLumenSceneData(MyWorld->Scene);
 					}
@@ -533,26 +542,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					WorldViewInfo.ViewProjectionMatrix = View->ViewMatrices.GetViewProjectionMatrix();
 					WorldViewInfo.ViewToWorld = View->ViewMatrices.GetInvViewMatrix();
 					World->LastRenderTime = World->GetTimeSeconds();
-
-					// Render the player's HUD.
-					if (PlayerController->MyHUD)
-					{
-						DebugCanvasObject->SceneView = View;
-						PlayerController->MyHUD->SetCanvas(CanvasObject, DebugCanvasObject);
-
-						PlayerController->MyHUD->PostRender();
-
-						// Put these pointers back as if a blueprint breakpoint hits during HUD PostRender they can
-						// have been changed
-						CanvasObject->Canvas	  = SceneCanvas;
-						DebugCanvasObject->Canvas = DebugCanvas;
-
-						// A side effect of PostRender is that the playercontroller could be destroyed
-						if (IsValid(PlayerController))
-						{
-							PlayerController->MyHUD->SetCanvas(NULL, NULL);
-						}
-					}
 				}
 			}
 
@@ -742,12 +731,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				}
 			}
 		}
-
-		for (FSceneViewFamilyContext* ViewFamilyContext : ViewFamilies)
-		{
-			delete ViewFamilyContext;
-		}
-		ViewFamilies.Empty();
 	}
 	else
 	{
@@ -794,7 +777,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 		SceneCanvas->Flush_GameThread();
 
 		// After all render target rendered call nDisplay frame rendering
-		RenderFrame.ViewportManager->RenderFrame(InViewport);
+		RenderFrameViewportManager->RenderFrame(InViewport);
 
 		OnDrawn().Broadcast();
 
@@ -826,11 +809,25 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 #endif
 		}
 
+		if (DisplayClusterDebugDraw->GetInt() && !ViewFamilies.IsEmpty())
+		{
+			UDebugDrawService::Draw(ViewFamilies.Last()->EngineShowFlags, InViewport, const_cast<FSceneView*>(ViewFamilies.Last()->Views[0]), DebugCanvas, DebugCanvasObject);
+		}
+
 		// Render the console absolutely last because developer input is was matter the most.
 		if (ViewportConsole)
 		{
 			ViewportConsole->PostRender_Console(DebugCanvasObject);
 		}
+	}
+
+	if (!ViewFamilies.IsEmpty())
+	{
+		for (FSceneViewFamilyContext* ViewFamilyContext : ViewFamilies)
+		{
+			delete ViewFamilyContext;
+		}
+		ViewFamilies.Empty();
 	}
 
 	OnEndDraw().Broadcast();

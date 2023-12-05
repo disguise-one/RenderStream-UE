@@ -10,9 +10,9 @@
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
 #include "RenderStreamSettings.h"
-#include "Engine/Public/TextureResource.h"
+#include "TextureResource.h"
 
-#include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
+#include "ProfilingDebugging/RealtimeGPUProfiler.h"
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
@@ -676,7 +676,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                             RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
                         }
 
-                        FVulkanTexture* VulkanTexture = FVulkanTexture::Cast(rtResource->TextureRHI->GetTexture2D());
+                        FVulkanTexture* VulkanTexture = ResourceCast(rtResource->TextureRHI->GetTexture2D());
                         auto point2 = VulkanTexture->GetSizeXY();
 
                         data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
