@@ -45,7 +45,10 @@ bool FRenderStreamProjectionPolicy::HandleStartScene(class IDisplayClusterViewpo
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     check(Module);
     if (!Module->StreamPool)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("Abort start scene handler, stream pool not initialized."));
         return false;
+    }
 
     auto Stream = Module->StreamPool->GetStream(ViewportId);
     if (Stream)
@@ -98,6 +101,7 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
 
     if (!AssignedCamera)
     {
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to find camera assigned to viewport '%s'"), *ViewportId);
         return false;
     }
 
