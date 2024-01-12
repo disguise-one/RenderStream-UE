@@ -409,7 +409,7 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
         Info.Template = ChannelCamera;
         if (Info.Template.IsValid())
         {
-            UE_LOG(LogRenderStream, Log, TEXT("Channel '%s' currently mapped to camera '%s'"), *Channel, *ChannelCamera->GetName());
+            UE_LOG(LogRenderStream, Log, TEXT("Channel '%s' on viewport '%s' currently mapped to camera '%s'"), *Channel, *Name, *ChannelCamera->GetName());
 
             URenderStreamChannelDefinition* Definition = Info.Template->FindComponentByClass<URenderStreamChannelDefinition>();
             if (Definition)
@@ -480,8 +480,10 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
 
 bool FRenderStreamModule::PopulateStreamPool()
 {
-    if (!StreamPool)
+    if (!StreamPool) {
+        UE_LOG(LogRenderStream, Log, TEXT("Abort populating stream pool, not initialized."));
         return false;
+    }
 
     if (RenderStreamLink::instance().isAvailable())
     {
@@ -686,8 +688,10 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
 
 void FRenderStreamModule::OnPostEngineInit()
 {
-    if (!IsInCluster())
+    if (!IsInCluster()) {
+        UE_LOG(LogRenderStream, Log, TEXT("Abort post engine init, not in cluster"));
         return;
+    }
 
     int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
 
