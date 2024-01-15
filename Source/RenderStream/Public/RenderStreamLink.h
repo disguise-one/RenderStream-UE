@@ -28,7 +28,7 @@ typedef uint64_t VkDeviceSize;
 typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
-#define RS_PLUGIN_VERSION "RS2.0_UE5.3_DepthReprojection"
+#define RS_PLUGIN_VERSION "RS3.0_UE5.3"
 
 class RenderStreamLink
 {
@@ -358,8 +358,8 @@ public:
 
 #pragma pack(pop)
 
-#define RENDER_STREAM_VERSION_MAJOR 2
-#define RENDER_STREAM_VERSION_MINOR 1
+#define RENDER_STREAM_VERSION_MAJOR 3
+#define RENDER_STREAM_VERSION_MINOR 0
 
     enum UseDX12SharedHeapFlag
     {
