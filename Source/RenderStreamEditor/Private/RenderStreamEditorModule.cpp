@@ -142,12 +142,13 @@ void CreateFieldInternal(FRenderStreamExposedParameterEntry& parameter, FString 
 {
     FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
     FString displayName = displayName_ + (suffix.IsEmpty() ? "" : " " + suffix);
-
+    
     if (options.Num() > 0)
     {
         min = 0;
         max = options.Num() - 1;
         step = 1;
+
     }
 
     parameter.Group = group;
@@ -193,7 +194,8 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         parameter.displayName = _strdup(TCHAR_TO_UTF8(*entry.DisplayName));
         parameter.key = _strdup(TCHAR_TO_UTF8(*entry.Key));
         parameter.type = RenderStreamParameterTypeToLink(entry.Type);
-        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER)
+
+        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER || parameter.type == RenderStreamLink::RS_PARAMETER_EVENT)
         {
             parameter.defaults.number.min = entry.Min;
             parameter.defaults.number.max = entry.Max;
@@ -247,7 +249,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                 const FString Name = FuncIt->GetName();
                 const FString Category = "Custom Events";
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
+                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event, 0.f, 1.f, .1f, 0.f);
             }
         }
     }
