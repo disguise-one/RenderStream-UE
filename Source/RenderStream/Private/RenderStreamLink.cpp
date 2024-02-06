@@ -183,6 +183,7 @@ bool RenderStreamLink::loadExplicit()
 
     LOAD_FN(rs_getFrameCamera);
     LOAD_FN(rs_sendFrame2);
+    LOAD_FN(rs_sendFrameWithDepth);
 
     LOAD_FN(rs_releaseImage2);
 

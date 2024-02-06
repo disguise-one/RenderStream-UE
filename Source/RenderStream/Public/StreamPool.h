@@ -12,7 +12,7 @@ class FStreamPool
 {
 public:
     // add a stream to the pool for anything to get
-    bool AddNewStreamToPool(const FString& StreamName, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);
+    bool AddNewStreamToPool(const FString& StreamName, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt, bool requiresDepth);
 
     // get the stream by name
     FFrameStreamPtr GetStream(const FString& desiredStreamName);

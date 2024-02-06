@@ -686,6 +686,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     Schema.schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
     Schema.schema.pluginVersion = _strdup(RS_PLUGIN_VERSION);
     Schema.schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
+    Schema.schema.flags = RenderStreamLink::RS_DEPTHSUPPORT;
     Schema.schema.channels.nChannels = uint32_t(Channels.size());
     Schema.schema.channels.channels = static_cast<const char**>(malloc(Schema.schema.channels.nChannels * sizeof(const char*)));
     auto It = Channels.begin();

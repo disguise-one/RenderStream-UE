@@ -13,25 +13,29 @@ public:
     FFrameStream();
     ~FFrameStream();
 
-    void SendFrame_RenderingThread(FRHICommandListImmediate & RHICmdList, 
-                                   RenderStreamLink::CameraResponseData& FrameData,
-                                   FRHITexture* InSourceTexture,
-                                   const FIntRect& ViewportRect);
+    void SendFrame_RenderingThread(FRHICommandListImmediate& RHICmdList,
+        RenderStreamLink::CameraResponseData& FrameData,
+        FRHITexture* InSourceTexture,
+        FRHITexture* InDepthTexture,
+        const FIntRect& ViewportRect, const FVector2D TAAJitter = FVector2D(0,0));
 
-    bool Setup(const FString& Name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);
-    void Update(const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt);
+    bool Setup(const FString& Name, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt, bool requiresDepth);
+    void Update(const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt, bool requiresDepth);
 
     const FString& Name() const { return m_streamName;}
     const FString& Channel() const { return m_channel; }
     const RenderStreamLink::ProjectionClipping& Clipping() const { return m_clipping; }
     FIntPoint Resolution() const { return m_resolution; }
     RenderStreamLink::StreamHandle Handle() const { return m_handle; }
+    bool RequiresDepth() const { return m_requiresDepth; }
 
 private:
     FString m_streamName;
     FString m_channel;
     RenderStreamLink::ProjectionClipping m_clipping;
     FTextureRHIRef m_bufTexture;
+    FTextureRHIRef m_depthBufTexture;
     FIntPoint m_resolution;
     RenderStreamLink::StreamHandle m_handle;
+    bool m_requiresDepth;
 };

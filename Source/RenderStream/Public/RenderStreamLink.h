@@ -28,7 +28,7 @@ typedef uint64_t VkDeviceSize;
 typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
-#define RS_PLUGIN_VERSION "RS2.0-UE5.3-v0"
+#define RS_PLUGIN_VERSION "RS3.0_UE5.3"
 
 class RenderStreamLink
 {
@@ -46,6 +46,8 @@ public:
 
         RS_FMT_RGBA8,
         RS_FMT_RGBX8,
+
+        RS_FMT_R32F
     };
 
     enum RS_ERROR
@@ -103,6 +105,12 @@ public:
         REMOTEPARAMETER_READ_ONLY = 2
     };
 
+    enum STREAMDESCRIPTION_FLAGS
+    {
+        STREAMDESCRIPTION_NO_FLAGS = 0,
+        STREAMDESCRIPTION_REQUIRES_DEPTH = 1,
+    };
+
     enum SenderFrameType
     {
         RS_FRAMETYPE_HOST_MEMORY,
@@ -112,7 +120,7 @@ public:
         RS_FRAMETYPE_VULKAN_TEXTURE,
         RS_FRAMETYPE_UNKNOWN
     };
-
+    
     typedef uint64_t StreamHandle;
     typedef uint64_t CameraHandle;
     typedef void (*logger_t)(const char*);
@@ -235,6 +243,7 @@ public:
         ProjectionClipping clipping;
         const char* mappingName;
         int32_t iFragment;
+        int flags;
     } StreamDescription;
 
     typedef struct
@@ -325,12 +334,18 @@ public:
         const char** channels;
     } Channels;
 
+    enum SchemaConfigFlags
+    {
+        RS_DEPTHSUPPORT = 0x01
+    };
+
     typedef struct
     {
         const char* engineName;
         const char* engineVersion;
         const char* pluginVersion;
         const char* info;
+        int flags;
         Channels channels;
         Scenes scenes;
     } Schema;
@@ -343,7 +358,7 @@ public:
 
 #pragma pack(pop)
 
-#define RENDER_STREAM_VERSION_MAJOR 2
+#define RENDER_STREAM_VERSION_MAJOR 3
 #define RENDER_STREAM_VERSION_MINOR 0
 
     enum UseDX12SharedHeapFlag
@@ -443,6 +458,8 @@ private:
 
     typedef RS_ERROR rs_getFrameCameraFn(StreamHandle streamHandle, /*Out*/CameraData* outCameraData);  // returns the CameraData for this stream, or RS_ERROR_NOTFOUND if no camera data is available for this stream on this frame
     typedef RS_ERROR rs_sendFrameFn(StreamHandle streamHandle, const SenderFrame* data, const void* frameData); // publish a frame buffer which was generated from the associated tracking and timing information.
+
+    typedef RS_ERROR rs_sendFrameWithDepthFn(StreamHandle streamHandle, const SenderFrame* data, const SenderFrame* depth, const void* frameData);
 
     typedef RS_ERROR rs_releaseImageFn(const SenderFrame* image); // release any references to image (e.g. before deletion)
 
@@ -572,6 +589,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getSkeletonJointPosesFn* rs_getSkeletonJointPoses = nullptr;
     rs_getFrameCameraFn* rs_getFrameCamera = nullptr;
     rs_sendFrameFn* rs_sendFrame2 = nullptr;
+    rs_sendFrameWithDepthFn* rs_sendFrameWithDepth = nullptr;
     rs_releaseImageFn* rs_releaseImage2 = nullptr;
     rs_logToD3Fn* rs_logToD3 = nullptr;
     rs_sendProfilingDataFn* rs_sendProfilingData = nullptr;

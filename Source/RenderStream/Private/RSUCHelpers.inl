@@ -51,7 +51,18 @@ namespace {
         { }
 
 
-        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions);
+        void SetParameters(FRHICommandList& RHICmdList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter = FVector2f(0, 0));
+    };
+
+    class RSResizeDepthCopy : public RSResizeCopy
+    {
+        DECLARE_EXPORTED_SHADER_TYPE(RSResizeDepthCopy, Global, /* RenderStream */);
+    public:
+        RSResizeDepthCopy() { }
+
+        RSResizeDepthCopy(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+            : RSResizeCopy(Initializer)
+        { }
     };
 
 
@@ -60,19 +71,24 @@ namespace {
 
     BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, )
     SHADER_PARAMETER(FVector2f, UVScale)
+    SHADER_PARAMETER(FVector2f, Jitter)
     SHADER_PARAMETER_TEXTURE(Texture2D, Texture)
     SHADER_PARAMETER_SAMPLER(SamplerState, Sampler)
     END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
+    
+
     IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(RSResizeCopyUB, "RSResizeCopyUB");
     IMPLEMENT_SHADER_TYPE(, RSResizeCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyPS"), SF_Pixel);
+    IMPLEMENT_SHADER_TYPE(, RSResizeDepthCopy, TEXT("/" RS_PLUGIN_NAME "/Private/copy.usf"), TEXT("RSCopyDepthPS"), SF_Pixel);
 
-    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions)
+    void RSResizeCopy::SetParameters(FRHICommandList& CommandList, TRefCountPtr<FRHITexture> RGBTexture, const FIntPoint& OutputDimensions, const FVector2f& Jitter)
     {
         RSResizeCopyUB UB;
         {
             UB.Sampler = TStaticSamplerState<SF_Point>::GetRHI();
             UB.Texture = RGBTexture;
+            UB.Jitter = Jitter;
             UB.UVScale = FVector2f((float)OutputDimensions.X / (float)RGBTexture->GetSizeX(), (float)OutputDimensions.Y / (float)RGBTexture->GetSizeY());
         }
 
@@ -81,28 +97,27 @@ namespace {
         SetUniformBufferParameter(Params, GetUniformBufferParameter<RSResizeCopyUB>(), Data);
         CommandList.SetBatchedShaderParameters(CommandList.GetBoundPixelShader(), Params);
     }
-
 }
 
 namespace RSUCHelpers
 {
-    static void SendFrame(const RenderStreamLink::StreamHandle Handle,
-        FTextureRHIRef& BufTexture,
-        FRHICommandListImmediate& RHICmdList,
-        RenderStreamLink::CameraResponseData FrameData,
-        FRHITexture* InSourceTexture,
-        FIntPoint Point,
-        FVector2f CropU,
-        FVector2f CropV)
+
+    template <typename ShaderType>
+    static void CopyFrameToBuffer(FRHICommandListImmediate& RHICmdList, 
+        FTextureRHIRef BufTexture,
+        FRHITexture* InTexture,
+        FString DrawName,
+        const FVector2f& Jitter = FVector2f(0, 0)
+    )
     {
-        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
+        // need to copy depth texture into buf texture
+        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, *DrawName);
         // convert the source with a draw call
         FGraphicsPipelineStateInitializer GraphicsPSOInit;
         FRHITexture* RenderTarget = BufTexture.GetReference();
         FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::DontLoad_Store);
 
         {
-            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Blit"));
             RHICmdList.BeginRenderPass(RPInfo, TEXT("MediaCapture"));
 
             RHICmdList.Transition(FRHITransitionInfo(BufTexture, ERHIAccess::CopySrc | ERHIAccess::ResolveSrc, ERHIAccess::RTV));
@@ -121,18 +136,17 @@ namespace RSUCHelpers
             GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
             GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
 
-            TShaderMapRef<RSResizeCopy> ConvertShader(ShaderMap);
+            
+            TShaderMapRef<ShaderType> ConvertShader(ShaderMap);
             GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
             SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit, 0);
-            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
-            ConvertShader->SetParameters(RHICmdList, InSourceTexture, Point);
+            ConvertShader->SetParameters(RHICmdList, InTexture, InTexture->GetSizeXY(), Jitter);
+            
 
+            auto streamTexSize = BufTexture->GetTexture2D()->GetSizeXY();
             // draw full size quad into render target
-            float ULeft = CropU.X;
-            float URight = CropU.Y;
-            float VTop = CropV.X;
-            float VBottom = CropV.Y;
-            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer(ULeft, URight, VTop, VBottom);
+
+            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer();
             RHICmdList.SetStreamSource(0, VertexBuffer, 0);
 
             // set viewport to RT size
@@ -142,9 +156,37 @@ namespace RSUCHelpers
 
             RHICmdList.EndRenderPass();
         }
+    }
+
+    static void SendFrame(const RenderStreamLink::StreamHandle Handle,
+        FTextureRHIRef& BufImageTexture,
+        FTextureRHIRef& BufDepthTexture,
+        FRHICommandListImmediate& RHICmdList,
+        RenderStreamLink::CameraResponseData FrameData,
+        FRHITexture* InSourceTexture,
+        FRHITexture* InDepthTexture,
+        FIntPoint Point,
+        FVector2f CropU,
+        FVector2f CropV,
+        const FVector2f& TAAJitter = FVector2f(0, 0))
+    {
+        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame With Depth"));
+        CopyFrameToBuffer<RSResizeCopy>(RHICmdList, BufImageTexture, InSourceTexture, "RS Image Blit");
+
+        if (InDepthTexture)
+        {
+            CopyFrameToBuffer<RSResizeDepthCopy>(RHICmdList, BufDepthTexture, InDepthTexture, "RS Depth Blit", TAAJitter);
+        }
+
 
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS API Block"));
-        void* resource = BufTexture->GetTexture2D()->GetNativeResource();
+        void* imgResource = BufImageTexture->GetTexture2D()->GetNativeResource();
+        void* depthResource = nullptr;
+
+        if (InDepthTexture)
+        {
+            depthResource = BufDepthTexture->GetTexture2D()->GetNativeResource();
+        }
 
         auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
         if (toggle == "D3D11")
@@ -156,14 +198,28 @@ namespace RSUCHelpers
 
             RenderStreamLink::SenderFrame data = {};
             data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
-            data.dx11.resource = static_cast<ID3D11Resource*>(resource);
+            data.dx11.resource = static_cast<ID3D11Resource*>(imgResource);
+
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
-
-            auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
-            if (output != RenderStreamLink::RS_ERROR_SUCCESS)
+            
+            RenderStreamLink::RS_ERROR sendResult;
+            if (depthResource != nullptr)
             {
-                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                RenderStreamLink::SenderFrame depth = {};
+                depth.type = data.type;
+                depth.dx11.resource = static_cast<ID3D11Resource*>(depthResource);
+                
+                sendResult = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
+            }
+            else
+            {
+                sendResult = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
+            }
+
+            if (sendResult != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), sendResult);
             }
         }
         else if (toggle == "D3D12")
@@ -175,17 +231,30 @@ namespace RSUCHelpers
 
             RenderStreamLink::SenderFrame data = {};
             data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
-            data.dx12.resource = static_cast<ID3D12Resource*>(resource);
+            data.dx12.resource = static_cast<ID3D12Resource*>(imgResource);
 
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
+
+            RenderStreamLink::RS_ERROR sendResult;
+            if (depthResource != nullptr)
+            {
+                RenderStreamLink::SenderFrame depth = {};
+                depth.type = data.type;
+                depth.dx12.resource = static_cast<ID3D12Resource*>(depthResource);
+
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrameWithDepth"));
+                sendResult = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
+            }
+            else
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
-                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-                {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
+                sendResult = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
+            }
+
+            if (sendResult != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), sendResult);
             }
         }
         else if (toggle == "Vulkan")
@@ -195,9 +264,12 @@ namespace RSUCHelpers
                 RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
             }
 
-            RenderStreamLink::RSPixelFormat fmt = RenderStreamLink::RS_FMT_INVALID;
-            switch (BufTexture->GetFormat())
+            auto setupVkResource = [](FTextureRHIRef& BufTexture) -> RenderStreamLink::SenderFrame
             {
+
+                RenderStreamLink::RSPixelFormat fmt = RenderStreamLink::RS_FMT_INVALID;
+                switch (BufTexture->GetFormat())
+                {
                 case EPixelFormat::PF_B8G8R8A8:
                     fmt = RenderStreamLink::RS_FMT_BGRA8;
                     break;
@@ -210,38 +282,57 @@ namespace RSUCHelpers
                 case EPixelFormat::PF_R8G8B8A8:
                     fmt = RenderStreamLink::RS_FMT_RGBA8;
                     break;
+                case EPixelFormat::PF_R32_FLOAT:
+                    fmt = RenderStreamLink::RS_FMT_R32F;
                 default:
                     UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported format."));
-                    return;
-            }
+                    throw;
+                }
 
-            FVulkanTexture* VulkanTexture = ResourceCast(BufTexture);
-            auto point2 = VulkanTexture->GetSizeXY();
+                FVulkanTexture* VulkanTexture = ResourceCast(BufTexture);
+                auto point2 = VulkanTexture->GetSizeXY();
 
-            RenderStreamLink::SenderFrame data = {};
-            data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
-            data.vk.memory = VulkanTexture->GetAllocationHandle();
-            data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
-            data.vk.format = fmt;
-            data.vk.width = uint32_t(point2.X);
-            data.vk.height = uint32_t(point2.Y);
+                RenderStreamLink::SenderFrame data = {};
+                data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
+                data.vk.memory = VulkanTexture->GetAllocationHandle();
+                data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
+                data.vk.format = fmt;
+                data.vk.width = uint32_t(point2.X);
+                data.vk.height = uint32_t(point2.Y);
+                
+                return data;
+
+            };
             // TODO: semaphores
-            
+
+            RenderStreamLink::SenderFrame data = setupVkResource(BufImageTexture);
             RenderStreamLink::FrameResponseData Response = {};
             Response.cameraData = &FrameData;
+
+            RenderStreamLink::RS_ERROR sendResult;
+            if (depthResource != nullptr)
+            {
+                RenderStreamLink::SenderFrame depth = setupVkResource(BufDepthTexture);
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrameWithDepth"));
+                sendResult = RenderStreamLink::instance().rs_sendFrameWithDepth(Handle, &data, &depth, &Response);
+            }
+            else
             {
                 SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("rs_sendFrame2"));
-                auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
-                if (output != RenderStreamLink::RS_ERROR_SUCCESS)
-                {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
-                }
+                sendResult = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
+            }
+
+            if (sendResult != RenderStreamLink::RS_ERROR_SUCCESS)
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), sendResult);
             }
         }
         else
         {
             UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
         }
+
+
     }
 
     static bool CreateStreamResources(/*InOut*/ FTextureRHIRef& BufTexture,
@@ -260,6 +351,7 @@ namespace RSUCHelpers
             { DXGI_FORMAT_R32G32B32A32_FLOAT, EPixelFormat::PF_A32B32G32R32F}, // RS_FMT_RGBA16 
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBA8
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBX8
+            { DXGI_FORMAT_R32_FLOAT, EPixelFormat::PF_R32_FLOAT },             // RS_FMT_R32F
         };
         const auto format = formatMap[rsFormat];
 

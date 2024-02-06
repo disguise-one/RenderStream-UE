@@ -33,6 +33,7 @@ bool IsInCluster();
 bool IsDX11();
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnActorSpawned, AActor*);
+DECLARE_MULTICAST_DELEGATE(FOnRenderStreamStreamsChanged);
 
 struct FRenderStreamViewportInfo
 {
@@ -40,7 +41,8 @@ struct FRenderStreamViewportInfo
     TWeakObjectPtr<ACameraActor> Camera = nullptr;
     int32_t PlayerId = -1;
     RenderStreamLink::CameraHandle CameraHandleLast = 0;
-    
+    bool ShouldExtractDepth;
+
     std::mutex m_frameResponsesLock;
     std::map<uint64, RenderStreamLink::CameraResponseData> m_frameResponsesMap;
 };
@@ -108,4 +110,6 @@ public:
     TMap<FName, RenderStreamLink::FSkeletalLayout> SkeletalLayouts;
     TMap<FName, RenderStreamLink::FSkeletalPose> SkeletalPoses;
     mutable FOnActorSpawned OnActorSpawnedDelegate;
+
+    FOnRenderStreamStreamsChanged OnStreamsChangedDelegate;
 };
