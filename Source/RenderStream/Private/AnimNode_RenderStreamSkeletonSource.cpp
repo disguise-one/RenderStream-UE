@@ -491,7 +491,8 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
                 // Apply position
                 const int32 SourceParentIndex = SourceParentIndices[SourceIndex];
                 const FTransform& MeshToSourceParent = MeshToSourceSpaceTransforms[SourceParentIndex];  // Position is transformed into parent coordinate space
-                const FVector SourcePosition = MeshToSourceParent.Inverse().TransformVector(SourceBoneTransform.GetTranslation()); // Position to apply from the source data
+                const FTransform SourceInitialTransform(SourceInitialPoseRotations[SourceIndex]);  // Transform due to initial rotation of joint
+                const FVector SourcePosition = (SourceInitialTransform * MeshToSourceParent.Inverse()).TransformVector(SourceBoneTransform.GetTranslation()); // Position to apply from the source data
                 const FVector MeshPosition = OutPose[MeshIndex].GetTranslation();  // Position to apply for the initial mesh pose
                 OutPose[MeshIndex].SetTranslation(MeshPosition + SourcePosition);
             }
