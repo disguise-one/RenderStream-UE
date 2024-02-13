@@ -310,25 +310,6 @@ void FRenderStreamModule::ApplyScene(uint32_t sceneId)
     m_sceneSelector->ApplyScene(*GWorld, sceneId);
 }
 
-EUnit FRenderStreamModule::distanceUnit()
-{
-    // Unreal defaults to centimeters so we might as well do the same
-    static EUnit ret = EUnit::Unspecified;
-    if (ret == EUnit::Unspecified)
-    {
-        ret = EUnit::Centimeters;
-
-        FString ValueReceived;
-        if (!GConfig->GetString(TEXT("/Script/UnrealEd.EditorProjectAppearanceSettings"), TEXT("DistanceUnits"), ValueReceived, GEditorIni))
-            return ret;
-
-        TOptional<EUnit> currentUnit = FUnitConversion::UnitFromString(*ValueReceived);
-        if (currentUnit.IsSet())
-            ret = currentUnit.GetValue();
-    }
-    return ret;
-}
-
 bool UpdateViewport(FFrameStreamPtr Stream)
 {
     FString const& Name = Stream->Name();

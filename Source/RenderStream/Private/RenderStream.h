@@ -68,7 +68,6 @@ protected:
     TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
 
 public:
-    static EUnit distanceUnit();
     bool PopulateStreamPool();
     void ConfigureStream(FFrameStreamPtr Stream);
 
