@@ -1,3 +1,8 @@
+# RS2.0-UE5.2-v2
+Compatible with disguise designer version r25.0 and above.
+* Fix for skeleton joint offsets not being applied in correct direction
+* Fix for skeleton origin and joint offsets incorrect scale when project units not cm
+
 # RS2.0-UE5.2-v1
 Compatible with disguise designer version r25.0 and above.
 * Fix for "Failed to load schema" log spam when using Streaming Levels
