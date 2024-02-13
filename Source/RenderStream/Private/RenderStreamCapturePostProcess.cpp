@@ -256,7 +256,7 @@ void FRenderStreamCapturePostProcess::OnPostOpaque_RenderThread(FPostOpaqueRende
 
     // Access Violation on shutdown is being caused by https://d3technologies.atlassian.net/browse/RSP-186
     ViewportIdOrdering* OrderThisFrame = ViewportIdOrderPerFrame.Peek();
-    if (!OrderThisFrame)
+    if (!OrderThisFrame || OrderThisFrame->IsEmpty())
         return;
 
     const FString CurrentViewportId = OrderThisFrame->Pop(false);
