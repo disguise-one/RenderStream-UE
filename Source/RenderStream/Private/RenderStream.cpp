@@ -496,12 +496,16 @@ bool FRenderStreamModule::PopulateStreamPool()
         } while (res == RenderStreamLink::RS_ERROR_BUFFER_OVERFLOW && iterations < MAX_TRIES);
         
         if (res != RenderStreamLink::RS_ERROR_SUCCESS)
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("Failed to populate stream pool."));
             return false;
+        }
 
         const RenderStreamLink::StreamDescriptions* header = nBytes >= sizeof(RenderStreamLink::StreamDescriptions) ? reinterpret_cast<const RenderStreamLink::StreamDescriptions*>(descMem.data()) : nullptr;
         const size_t numStreams = header ? header->nStreams : 0;
         TArray<FStreamInfo> streamInfoArray;
         
+        UE_LOG(LogRenderStream, Log, TEXT("Populating stream pool (%d):", numStreams));
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
@@ -602,7 +606,10 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
     }
 
     if (!info.Camera.IsValid())
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to find assigned camera when applying data"));
         return;
+    }
 
     // Attach the instanced Camera to the Capture object for this view.
     USceneComponent* SceneComponent = info.Camera->K2_GetRootComponent();

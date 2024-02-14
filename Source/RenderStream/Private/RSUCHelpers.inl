@@ -161,7 +161,7 @@ namespace RSUCHelpers
             auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
             if (output != RenderStreamLink::RS_ERROR_SUCCESS)
             {
-                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame for handle '%d': %d"), Handle, output);
             }
         }
         else if (toggle == "D3D12")
@@ -182,7 +182,7 @@ namespace RSUCHelpers
                 auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
                 if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame for handle '%d': %d"), Handle, output);
                 }
             }
         }
@@ -232,7 +232,7 @@ namespace RSUCHelpers
                 auto output = RenderStreamLink::instance().rs_sendFrame2(Handle, &data, &Response);
                 if (output != RenderStreamLink::RS_ERROR_SUCCESS)
                 {
-                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame: %d"), output);
+                    UE_LOG(LogRenderStream, Log, TEXT("Failed to send frame for handle '%d': %d"), Handle, output);
                 }
             }
         }

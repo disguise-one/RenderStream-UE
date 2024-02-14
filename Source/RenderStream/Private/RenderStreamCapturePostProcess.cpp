@@ -62,6 +62,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
     // We can't create a stream on the render thread, so our only option is to not do anything if the stream doesn't exist here.
     if (Stream)
     {
+        UE_LOG(LogRenderStream, Log, TEXT("Preparing Viewport with id '%s' for send"), *ViewportId);
         auto Size = ViewportProxy->GetRenderSettings_RenderThread().Rect.Size();
         if (Size.GetMin() <= 0)
         {
@@ -102,6 +103,10 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         }
 
         Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+    }
+    else
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("Stream for Viewport with id '%s' not found"), *ViewportId);
     }
 
     // Uncomment this to restore client display

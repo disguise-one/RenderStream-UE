@@ -394,6 +394,8 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					Views.Add(View);
 
 					/// !!!! disguise customizations
+					auto ViewportID = DCView.Viewport->GetId();
+					UE_LOG(LogRenderStream, Log, TEXT("Updating view for '%s'"), *ViewportID);
                     UpdateView(&ViewFamily, View, Info);
                     /// !!!! disguise customizations
 
@@ -836,8 +838,11 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
 void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info)
 {
-    if (!Info.Template.IsValid())
-        return;
+	if (!Info.Template.IsValid())
+	{
+		UE_LOG(LogRenderStream, Warning, TEXT("Camera template invalid"));
+		return;
+	}
 
     TSet<FPrimitiveComponentId> Collection;
     const ACameraActor* Camera = Info.Template.Get();

@@ -98,9 +98,11 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
 
     if (!AssignedCamera)
     {
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to find assigned camera for viewport '%s'"), *ViewportId);
         return false;
     }
 
+    UE_LOG(LogRenderStream, Log, TEXT("Returning projection matrix for viewport '%s'"), *ViewportId);
     FMatrix PrjMatrix;
     if (AssignedCamera->ProjectionMode == ECameraProjectionMode::Orthographic)
     {
