@@ -505,7 +505,7 @@ bool FRenderStreamModule::PopulateStreamPool()
         const size_t numStreams = header ? header->nStreams : 0;
         TArray<FStreamInfo> streamInfoArray;
         
-        UE_LOG(LogRenderStream, Log, TEXT("Populating stream pool (%d):", numStreams));
+        UE_LOG(LogRenderStream, Log, TEXT("Populating stream pool (%d):"), numStreams);
         for (size_t i = 0; i < numStreams; ++i)
         {
             const RenderStreamLink::StreamDescription& description = header->streams[i];
