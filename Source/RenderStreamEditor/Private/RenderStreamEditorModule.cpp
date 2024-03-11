@@ -35,7 +35,8 @@ DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
-const FString CacheFolder = TEXT("/" RS_PLUGIN_NAME "/Cache");
+const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
+const FString ContentFolder = TEXT("/Game");
 
 void FRenderStreamEditorModule::StartupModule()
 {
@@ -60,6 +61,7 @@ void FRenderStreamEditorModule::StartupModule()
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.AddRaw(this, &FRenderStreamEditorModule::OnObjectPostEditChange);
 }
 
 void FRenderStreamEditorModule::ShutdownModule()
@@ -75,6 +77,7 @@ void FRenderStreamEditorModule::ShutdownModule()
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
+    FCoreUObjectDelegates::OnObjectPropertyChanged.RemoveAll(this);
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
 
@@ -133,7 +136,7 @@ void CreateFieldInternal(FRenderStreamExposedParameterEntry& parameter, FString 
 
 void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min, float max, float step, float defaultValue, TArray<FString> options = {})
 {
-    check(type == RenderStreamParameterType::Float);
+    check(type == RenderStreamParameterType::Float || type == RenderStreamParameterType::Event);
     CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, min, max, step, FString::SanitizeFloat(defaultValue), options);
 }
 
@@ -204,6 +207,18 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
 {
     if (!Root)
         return;
+
+    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    {
+        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        {
+            const FString Name = FuncIt->GetName();
+            const FString Category = "Custom Events";
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
+        }
+    }
+
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
     {
         const FProperty* Property = *PropIt;
@@ -321,22 +336,52 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
     }
 }
 
-void GenerateScene(RenderStreamLink::RemoteParameters& SceneParameters, const URenderStreamChannelCacheAsset* cache, const URenderStreamChannelCacheAsset* persistent)
+void FetchLevelCaches(
+    TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
+    TArray<const URenderStreamChannelCacheAsset*>& Levels,
+    const URenderStreamChannelCacheAsset* Parent)
 {
-    FString sceneName = FPackageName::GetShortName(cache->Level.GetAssetPathName());
+    Levels.Push(Parent);
+    for (FSoftObjectPath Path : Parent->SubLevels)
+    {
+        URenderStreamChannelCacheAsset* const* Cache = LevelParams.Find(Path);
+        if (Cache != nullptr && !Levels.Contains(*Cache))
+            FetchLevelCaches(LevelParams, Levels, *Cache);
+    }
+}
+
+void GenerateScene(
+    TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
+    RenderStreamLink::RemoteParameters& SceneParameters, 
+    const URenderStreamChannelCacheAsset* Cache, 
+    const URenderStreamChannelCacheAsset* Persistent)
+{
+    FString sceneName = FPackageName::GetShortName(Cache->Level.GetAssetPathName());
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
-    const uint32_t nParams = (persistent ? persistent->ExposedParams.Num() : 0) + cache->ExposedParams.Num();
+   TArray<const URenderStreamChannelCacheAsset*> Levels;
+    if (Persistent != nullptr)
+        Levels.Push(Persistent);
+
+    FetchLevelCaches(LevelParams, Levels, Cache);
+
+    uint32_t nParams = 0;
+    for (auto Level : Levels)
+        nParams += Level->ExposedParams.Num();
+
+    UE_LOG(LogRenderStreamEditor, Log, 
+    TEXT("Scene: %s, Number of levels: %i, Number of Exposed Params: %i"), 
+    UTF8_TO_TCHAR(SceneParameters.name), Levels.Num(), nParams);
+
     SceneParameters.nParameters = nParams;
     SceneParameters.parameters = static_cast<RenderStreamLink::RemoteParameter*>(malloc(nParams * sizeof(RenderStreamLink::RemoteParameter)));
-
+    
     size_t offset = 0;
-    if (persistent)
+    for (auto Level : Levels)
     {
-        ConvertFields(SceneParameters.parameters, persistent->ExposedParams);
-        offset += persistent->ExposedParams.Num();
+        ConvertFields(SceneParameters.parameters + offset, Level->ExposedParams);
+        offset += Level->ExposedParams.Num();
     }
-    ConvertFields(SceneParameters.parameters + offset, cache->ExposedParams);
 
     UE_LOG(LogRenderStreamEditor, Log, TEXT("Generated schema for scene: %s"), UTF8_TO_TCHAR(SceneParameters.name));
 }
@@ -398,9 +443,12 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->ExposedParams.Empty();
     GenerateParameters(Cache->ExposedParams, Level->GetLevelScriptActor());
 
-    Cache->SubLevels.Empty();
-    for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
-        Cache->SubLevels.Add(SubLevel->GetWorldAsset()->GetPackage()->GetPathName());
+    if (Level->IsPersistentLevel())
+    {
+        Cache->SubLevels.Empty();
+        for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
+            Cache->SubLevels.Add(SubLevel->GetWorldAsset()->GetPackage()->GetPathName());
+    }
 
     // Save the Cache.
     UPackage* Package = Cache->GetPackage();
@@ -440,7 +488,7 @@ void UpdateChannelCache()
     // Loop over all levels and make sure caches exist for them.
     TArray<FAssetData> LevelAssets;
     const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
-    LevelLibrary->LoadAssetDataFromPath("/Game/");
+    LevelLibrary->LoadAssetDataFromPath(ContentFolder);
     LevelLibrary->GetAssetDataList(LevelAssets);
     for (FAssetData const& Asset : LevelAssets)
     {
@@ -531,7 +579,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         {
             Schema.schema.scenes.nScenes = 1;
             Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
-            GenerateScene(*Schema.schema.scenes.scenes, MainMap, nullptr);
+            GenerateScene(LevelParams, *Schema.schema.scenes.scenes, MainMap, nullptr);
         }
         else
         {
@@ -551,12 +599,12 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
             RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
 
-            GenerateScene(*SceneParameters++, MainMap, nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, MainMap, nullptr);
             for (FSoftObjectPath Path : MainMap->SubLevels)
             {
                 URenderStreamChannelCacheAsset** Cache = LevelParams.Find(Path);
                 if (Cache != nullptr)
-                    GenerateScene(*SceneParameters++, *Cache, MainMap);
+                    GenerateScene(LevelParams, *SceneParameters++, *Cache, MainMap);
             }
         }
         else
@@ -588,7 +636,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
         {
             const URenderStreamChannelCacheAsset** Entry = LevelParents.Find(Cache);
-            GenerateScene(*SceneParameters++, Cache, Entry != nullptr ? *Entry : nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, Cache, Entry != nullptr ? *Entry : nullptr);
         }
 
         break;
@@ -630,6 +678,16 @@ void FRenderStreamEditorModule::OnBeginFrame()
 void FRenderStreamEditorModule::OnPostEngineInit()
 {
     RegisterSettings();
+}
+
+void FRenderStreamEditorModule::OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent)
+{
+    if (Object && Object->HasAnyFlags(RF_ClassDefaultObject))
+    {
+        // we only care if default objects have been changed eg. project settings objects like UGameMapSettings
+        // add include/exclude filters here if required
+        DirtyAssetMetadata = true;
+    }
 }
 
 void FRenderStreamEditorModule::RegisterSettings()

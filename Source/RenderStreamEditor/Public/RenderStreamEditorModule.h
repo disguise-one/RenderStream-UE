@@ -28,6 +28,7 @@ private:
     void OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses);
 
     void OnPostEngineInit();
+    void OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
 
     void RegisterSettings();
     void UnregisterSettings();
