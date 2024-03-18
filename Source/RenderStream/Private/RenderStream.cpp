@@ -4,12 +4,12 @@
 #include "RenderStreamLink.h"
 
 #include "RenderStreamSettings.h"
-#include "RenderStreamStatus.h"
 #include "RenderStreamSceneSelector.h"
 #include "SceneSelector_None.h"
 #include "SceneSelector_StreamingLevels.h"
 #include "SceneSelector_Maps.h"
 
+#include "GenericPlatform/GenericPlatformMath.h"
 #include "Core/Public/Modules/ModuleManager.h"
 #include "CoreUObject/Public/Misc/PackageName.h"
 #include "Misc/CoreDelegates.h"
@@ -23,6 +23,7 @@
 
 #include "Interfaces/IPluginManager.h"
 #include "IDisplayCluster.h"
+#include "DisplayClusterConfigurationTypes.h"
 #include "Cluster/DisplayClusterClusterEvent.h"
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/IDisplayClusterRenderManager.h"
@@ -38,6 +39,7 @@
 
 #include "RenderStreamLogOutputDevice.h"
 #include "RenderStreamStats.h"
+#include "GameFramework/DefaultPawn.h"
 
 #include <map>
 #include <string>
@@ -62,6 +64,15 @@
 #include "Camera/CameraComponent.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
+
+
+
+#include "Game/IDisplayClusterGameManager.h" 
+#include "DisplayClusterRootActor.h" 
+#include "DisplayClusterConfiguration/Public/DisplayClusterConfigurationTypes.h" 
+
+#include "GameMapsSettings.h"
+#include "Engine/ObjectLibrary.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -149,12 +160,10 @@ void FRenderStreamModule::StartupModule()
     AddShaderSourceDirectoryMapping("/" RS_PLUGIN_NAME, ShaderDirectory);
 
     // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-    RenderStreamStatus().InputOutput("Initialising stream", "Waiting for data from d3", RSSTATUS_ORANGE);
 
     if (!RenderStreamLink::instance().loadExplicit())
     {
         UE_LOG(LogRenderStream, Error, TEXT ("Failed to load RenderStream DLL - d3 not installed?"));
-        RenderStreamStatus().InputOutput("Error", "Failed to load RenderStream DLL - d3 not installed?", RSSTATUS_RED);
     }
     else
     {
@@ -167,13 +176,11 @@ void FRenderStreamModule::StartupModule()
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
             {
                 UE_LOG(LogRenderStream, Error, TEXT("Unsupported RenderStream library, expected version %i.%i"), RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
-                RenderStreamStatus().InputOutput("Error", "Unsupported RenderStream library", RSSTATUS_RED);
                 RenderStreamLink::instance().unloadExplicit();
                 return;
             }
 
             UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
-            RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
             RenderStreamLink::instance().unloadExplicit();
             return;
         }
@@ -184,6 +191,10 @@ void FRenderStreamModule::StartupModule()
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
         FCoreDelegates::OnEndFrame.AddRaw(this, &FRenderStreamModule::OnEndFrame);
         FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
+
+        FWorldDelegates::OnStartGameInstance.AddRaw(this, &FRenderStreamModule::GameInstanceStarted);
+        FCoreDelegates::ApplicationWillTerminateDelegate.AddRaw(this, &FRenderStreamModule::AppWillTerminate);
+        
         Monitor.Open();
     }
 
@@ -242,6 +253,9 @@ void FRenderStreamModule::ShutdownModule()
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
 
+    FWorldDelegates::OnStartGameInstance.RemoveAll(this);
+    FCoreDelegates::ApplicationWillTerminateDelegate.RemoveAll(this);
+
     // This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
     // we call this function before unloading the module.
     if (!RenderStreamLink::instance ().unloadExplicit ())
@@ -295,32 +309,63 @@ EUnit FRenderStreamModule::distanceUnit()
     return ret;
 }
 
-void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
+bool UpdateViewport(FFrameStreamPtr Stream)
 {
     FString const& Name = Stream->Name();
     IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::Get().GetClusterMgr();
     IDisplayClusterRenderManager* RenderMgr = IDisplayCluster::Get().GetRenderMgr();
 
-    const IDisplayClusterConfigManager* const ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
+    IDisplayClusterConfigManager* ConfigMgr = IDisplayCluster::Get().GetConfigMgr();
     check(ConfigMgr);
 
-    const UDisplayClusterConfigurationViewport* Viewport = ConfigMgr->GetLocalViewport(Name);
-    if (!Viewport)
+    UDisplayClusterConfigurationData* Config = ConfigMgr->GetConfig();
+    check(Config);
+
+    UDisplayClusterConfigurationClusterNode** Node = Config->Cluster->Nodes.Find(ConfigMgr->GetLocalNodeId());
+    if (!Node)
+        return false;
+
+    bool Found = false;
+    int Width = 0;
+    int Height = 0;
+    for (auto Pair : (*Node)->Viewports)
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created without corresponding viewport"), *Name);
-        return;
+        if (Pair.Key == Name)
+        {
+            auto Resolution = Stream->Resolution();
+
+            // We don't care about the offset as we intercept before it is combined.
+            //Viewport->Region.X = 0;
+            //Viewport->Region.Y = 0;
+            Pair.Value->Region.W = Resolution.X;
+            Pair.Value->Region.H = Resolution.Y;
+            Found = true;
+            UE_LOG(LogRenderStream, Log, TEXT("Viewport '%s' resized to (%d, %d)"), *Name, Resolution.X, Resolution.Y);
+        }
+
+        Width = FGenericPlatformMath::Max(Width, Pair.Value->Region.X + Pair.Value->Region.W);
+        Height = FGenericPlatformMath::Max(Height, Pair.Value->Region.Y + Pair.Value->Region.H);
     }
 
-    const FIntPoint Offset(Viewport->Region.X, Viewport->Region.Y);
-    const FIntPoint Resolution(Viewport->Region.W, Viewport->Region.H);
+    Width = FGenericPlatformMath::Max(Width, 1);
+    Height = FGenericPlatformMath::Max(Height, 1);
+    (*Node)->WindowRect.W = Width;
+    (*Node)->WindowRect.H = Height;
+    return Found;
+}
+
+void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
+{
+    FString const& Name = Stream->Name();
     if (!Stream)
     {
         UE_LOG(LogRenderStream, Warning, TEXT("Policy '%s' created for unknown stream"), *Name);
-    }
-    if (Stream && Stream->Resolution() != Resolution)
-    {
-        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created with incorrect resolution: %dx%d vs expected %dx%d"), *Name, Resolution.X, Resolution.Y, Stream->Resolution().X, Stream->Resolution().Y);
         return;
+    }
+
+    if (!UpdateViewport(Stream))
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Policy '%s' created without corresponding viewport"), *Name);
     }
 
     FRenderStreamViewportInfo& Info = GetViewportInfo(Name);
@@ -336,7 +381,7 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             URenderStreamChannelDefinition* Definition = Info.Template->FindComponentByClass<URenderStreamChannelDefinition>();
             if (Definition)
             {
-                const bool DefaultVisible = Definition->DefaultVisibility == EVisibilty::Visible;
+                const bool DefaultVisible = Definition->DefaultVisibility == EChannelVisibilty::Visible;
                 const TSet<TSoftObjectPtr<AActor>> Actors = DefaultVisible ? Definition->Hidden : Definition->Visible;
                 const FString TypeString = DefaultVisible ? "visible" : "hidden";
                 UE_LOG(LogRenderStreamPolicy, Log, TEXT("%d cameras registered to channel, filtering %d actors, default visibility '%s'"),
@@ -360,7 +405,8 @@ void FRenderStreamModule::ConfigureStream(FFrameStreamPtr Stream)
             APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, Info.PlayerId);
             if (!Controller)
             {
-                Controller = UGameplayStatics::CreatePlayer(GWorld);
+                if (GWorld)
+                    Controller = UGameplayStatics::CreatePlayer(GWorld);
                 if (Controller)
                     Info.PlayerId = UGameplayStatics::GetPlayerControllerID(Controller);
                 else
@@ -424,7 +470,7 @@ bool FRenderStreamModule::PopulateStreamPool()
             const FString Channel(description.channel);
             const RenderStreamLink::ProjectionClipping clipping = description.clipping;
             const FBox2D Region(FVector2D(clipping.left, clipping.top), FVector2D(clipping.right, clipping.bottom));
-            streamInfoArray.Push({ Channel, Name, Region });
+            streamInfoArray.Push({ Channel, Name, Region, Resolution });
 
             auto Stream = StreamPool->GetStream(Name);
             if (!Stream)  // Stream does not already exist in pool
@@ -433,6 +479,11 @@ bool FRenderStreamModule::PopulateStreamPool()
                 UE_LOG(LogRenderStream, Log, TEXT("Discovered new stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
                 StreamPool->AddNewStreamToPool(Name, Resolution, Channel, description.clipping, description.handle, description.format);
                 Stream = StreamPool->GetStream(Name);
+            }
+            else
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Updating stream %s at %dx%d"), *Name, Resolution.X, Resolution.Y);
+                Stream->Update(Resolution, Channel, description.clipping, description.handle, description.format);
             }
 
             ConfigureStream(Stream);
@@ -519,11 +570,23 @@ void FRenderStreamModule::ApplyCameraData(FRenderStreamViewportInfo& info, const
         pos.Z = FUnitConversion::Convert(float(cameraData.y), EUnit::Meters, FRenderStreamModule::distanceUnit());
         SceneComponent->SetRelativeLocation(pos);
     }
+
+    // Detect camera switch and apply flag if switching (allows switches while using e.g. motion blur, TAA etc.)
+    if (cameraData.cameraHandle != info.CameraHandleLast)
+    {
+        APlayerController* Controller = UGameplayStatics::GetPlayerControllerFromID(GWorld, info.PlayerId);
+        if (Controller)
+        {
+            APlayerCameraManager* Manager = Controller->PlayerCameraManager;
+            if (Manager)
+                Manager->SetGameCameraCutThisFrame();
+        }
+        info.CameraHandleLast = cameraData.cameraHandle;
+    }
 }
 
 void FRenderStreamModule::OnPostEngineInit()
 {
-
     int errCode = RenderStreamLink::RS_ERROR_SUCCESS;
 
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -547,13 +610,9 @@ void FRenderStreamModule::OnPostEngineInit()
     if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
     {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to initialise RenderStream library error code %d"), errCode);
-        RenderStreamStatus().InputOutput("Error", "Unable to initialise RenderStream library", RSSTATUS_RED);
         RenderStreamLink::instance().unloadExplicit();
         return;
     }
-
-
-
 
     StreamPool = MakeUnique<FStreamPool>();
 
@@ -580,7 +639,34 @@ void FRenderStreamModule::OnPostEngineInit()
         m_sceneSelector = std::make_unique<SceneSelector_None>();
     }
 
+}
 
+void FRenderStreamModule::GameInstanceStarted(UGameInstance* Instance)
+{
+    m_gameInstanceStarted = true;
+}
+
+void FRenderStreamModule::AppWillTerminate()
+{
+    RenderStreamLink& link = RenderStreamLink::instance();
+    if (!m_gameInstanceStarted && IsInCluster() && link.isAvailable())
+    {
+        // Something went wrong during launch, check some stuff for troubleshooting and report
+        const UGameMapsSettings* GameMapsSettings = GetDefault<UGameMapsSettings>();
+        const FString& DefaultMap = GameMapsSettings->GetGameDefaultMap();
+
+        TArray<FAssetData> MapAssets;
+        const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
+        MapLibrary->LoadAssetDataFromPath("/Game/");
+        MapLibrary->GetAssetDataList(MapAssets);
+
+        FAssetData* Found = MapAssets.FindByPredicate([&DefaultMap](const FAssetData& Asset) { return Asset.PackageName.ToString() == DefaultMap; });
+        if (!Found)
+        {
+            // The Game Default Map set cannot be loaded because it doesn't exist
+            UE_LOG(LogRenderStream, Error, TEXT("Uneal Cannot load the Game Default Map '%s' because it no longer exists. This must be corrected by the user by either updating the project settings or supplying a command line argument in d3 specifying a map override eg. '/Game/Maps/MyMap.umap'."), *DefaultMap);
+        }
+    }
 }
 
 void FRenderStreamModule::OnSystemError()
@@ -602,6 +688,15 @@ void FRenderStreamModule::OnBeginFrame()
     const bool IsController = !ClusterMgr || !ClusterMgr->IsSlave();
     if (IsController)
         m_syncFrame.ControllerReceive();
+
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+
+    ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
+    if (RootActor && settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
+    {
+        RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.bIsEnabled = true;
+        RootActor->GetConfigData()->StageSettings.AllViewportsOCIOConfiguration.OCIOConfiguration = settings->OCIOConfig;
+    }
 }
 
 void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason ReasonForChange)
@@ -632,6 +727,7 @@ void FRenderStreamModule::OnModulesChanged(FName ModuleName, EModuleChangeReason
                 UE_LOG(LogRenderStream, Warning, TEXT("Couldn't register <%s> post process factory"), FRenderStreamProjectionPolicy::RenderStreamPolicyType);
             }
         }
+
     }
 }
 
@@ -680,7 +776,36 @@ void FRenderStreamModule::OnPostLoadMapWithWorld(UWorld* InWorld)
         }
     }
 
+    if (InWorld)
+    {
+        FOnActorSpawned::FDelegate ActorSpawnedDelegate = FOnActorSpawned::FDelegate::CreateRaw(this, &FRenderStreamModule::OnActorSpawned);
+        InWorld->AddOnActorSpawnedHandler(ActorSpawnedDelegate);
+        HideDefaultPawns();
+    }
+
     EnableStats();
+}
+
+void FRenderStreamModule::OnActorSpawned(AActor* InActor)
+{
+    if (dynamic_cast<ADefaultPawn*>(InActor))
+    {
+        // For some reason it doesn't work to just set InActor hidden.
+        // We also need to loop over all default pawns and make sure they are hidden
+        InActor->SetActorHiddenInGame(true);
+        HideDefaultPawns();
+    }
+}
+
+void FRenderStreamModule::HideDefaultPawns()
+{
+    if (GWorld)
+    {
+        TArray<AActor*> FoundDefaultPawns;
+        UGameplayStatics::GetAllActorsOfClass(GWorld, ADefaultPawn::StaticClass(), FoundDefaultPawns);
+        for (AActor* DefaultPawn : FoundDefaultPawns)
+            DefaultPawn->SetActorHiddenInGame(true);
+    }
 }
 
 #if STATS

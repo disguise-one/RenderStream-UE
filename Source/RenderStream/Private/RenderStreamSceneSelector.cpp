@@ -6,11 +6,34 @@
 #include <malloc.h>
 #include <algorithm>
 #include "RenderStream.h"
+#include "RenderStreamHelper.h"
 #include "RSUCHelpers.inl"
 
 #include "RenderCore/Public/ProfilingDebugging/RealtimeGPUProfiler.h"
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
+
+void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * Level) const
+{
+    if (Level)
+    {
+        auto Actor = Level->GetLevelScriptActor();
+        if (Actor && !Actors.Contains(Actor))
+            Actors.Push(Level->GetLevelScriptActor());
+
+        if (Level->IsPersistentLevel())
+        {
+            auto World = Level->GetWorld();
+            for (ULevelStreaming* SubLevel : World->GetStreamingLevels())
+                if (SubLevel->GetLoadedLevel() != Level)
+                    GetAllLevels(Actors, SubLevel->GetLoadedLevel());
+
+            for (ULevel* SubLevel : World->GetLevels())
+                if (SubLevel != Level)
+                    GetAllLevels(Actors, SubLevel);
+        }
+    }
+}
 
 const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
 {
@@ -89,7 +112,7 @@ static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamL
     return true;
 }
 
-bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, std::initializer_list<const AActor*> Actors) const
+bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, TArray<AActor*> Actors) const
 {
     size_t offset = 0;
 
@@ -109,7 +132,9 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
 
     if (offset < sceneParameters.nParameters)
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Unexpected extra parameters in schema"));
+        UE_LOG(LogRenderStream, Error,
+            TEXT("Unexpected extra parameters in schema (nactors = %d, offset = %d, nparams = %d)"), 
+            Actors.Num(), offset, sceneParameters.nParameters);
         return false;
     }
 
@@ -155,6 +180,18 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
         else if (const FIntProperty* IntProperty = CastField<const FIntProperty>(Property))
         {
             UE_LOG(LogRenderStream, Log, TEXT("Exposed int property: %s"), *Name);
+            if (numParameters < nParameters + 1)
+            {
+                UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                return SIZE_MAX;
+            }
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+                return SIZE_MAX;
+            ++nParameters;
+        }
+        else if (const FDoubleProperty* DoubleProperty = CastField<const FDoubleProperty>(Property))
+        {
+            UE_LOG(LogRenderStream, Log, TEXT("Exposed float property: %s"), *Name);
             if (numParameters < nParameters + 1)
             {
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
@@ -282,10 +319,11 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
         }
     }
 
+    UE_LOG(LogRenderStream, Log, TEXT("Exposed level '%s' with %d parameters"), *Root->GetName(), nParameters);
     return nParameters;
 }
 
-void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, std::initializer_list<AActor*> Actors) const
+void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, TArray<AActor*> Actors) const
 {
     if (sceneId >= Schema().scenes.nScenes)
     {
@@ -381,7 +419,8 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             continue;
 
         if (Property->HasAnyCastFlags(FBoolProperty::StaticClassCastFlagsPrivate() | FByteProperty::StaticClassCastFlagsPrivate() 
-                                      | FIntProperty::StaticClassCastFlagsPrivate() | FFloatProperty::StaticClassCastFlagsPrivate()))
+                                      | FIntProperty::StaticClassCastFlagsPrivate() | FFloatProperty::StaticClassCastFlagsPrivate()
+                                      | FDoubleProperty::StaticClassCastFlagsPrivate()))
         {
             if (iFloat >= nFloatVals)
             {
@@ -409,6 +448,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 const float v = floatValues[iFloat];
                 FloatProperty->SetPropertyValue_InContainer(Root, v);
             }
+            else if (FDoubleProperty* DoubleProperty = CastField<FDoubleProperty>(Property))
+            {
+                const float v = floatValues[iFloat];
+                DoubleProperty->SetPropertyValue_InContainer(Root, v);
+            }
             ++iFloat;
         }
         else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
@@ -418,9 +462,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             const UScriptStruct* col = TBaseStructure<FColor>::Get();
             const UScriptStruct* linCol = TBaseStructure<FLinearColor>::Get();
             const UScriptStruct* trans = TBaseStructure<FTransform>::Get();
+            const UScriptStruct* rot = TBaseStructure<FRotator>::Get();
             const size_t inc = StructProperty->Struct == vec ? 3
                                 : StructProperty->Struct == col || StructProperty->Struct == linCol ? 4
                                 : StructProperty->Struct == trans ? 16
+                                : StructProperty->Struct == rot ? 3
                                 : 0;
             if (iFloat + (inc - 1) >= nFloatVals)
             {
@@ -446,17 +492,22 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             else if (StructProperty->Struct == trans)
             {
                 static const FMatrix YUpMatrix(FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f));
-                static const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
 
-                const FMatrix m(
+                FMatrix m(
                     FPlane(floatValues[iFloat + 0], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]),
                     FPlane(floatValues[iFloat + 4], floatValues[iFloat + 5], floatValues[iFloat + 6], floatValues[iFloat + 7]),
                     FPlane(floatValues[iFloat + 8], floatValues[iFloat + 9], floatValues[iFloat + 10], floatValues[iFloat + 11]),
                     FPlane(floatValues[iFloat + 12], floatValues[iFloat + 13], floatValues[iFloat + 14], floatValues[iFloat + 15])
                 );
-                FTransform v(YUpMatrix * m * YUpMatrixInv);
-                v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+
+                FTransform v = d3ToUEHelpers::Convertd3TransformToUE(m, YUpMatrix);
+
                 StructProperty->CopyCompleteValue(StructAddress, &v);
+            }
+            else if (StructProperty->Struct == rot)
+            {
+                FRotator r(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
+                StructProperty->CopyCompleteValue(StructAddress, &r);
             }
             iFloat += inc;
         }

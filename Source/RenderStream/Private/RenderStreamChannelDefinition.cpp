@@ -112,10 +112,11 @@ TWeakObjectPtr<ACameraActor> URenderStreamChannelDefinition::GetChannelCamera(co
 }
 
 URenderStreamChannelDefinition::URenderStreamChannelDefinition()
-    : DefaultVisibility(EVisibilty::Visible)
+    : DefaultVisibility(EChannelVisibilty::Visible)
     , ShowFlags(EShowFlagInitMode::ESFIM_Game)
     , Registered(false)
-{}
+{
+}
 
 void URenderStreamChannelDefinition::ResetDefaultVisibility(AActor* Actor)
 {
@@ -139,7 +140,7 @@ void URenderStreamChannelDefinition::SetVisibility(AActor* Actor, bool IsVisible
 
 bool URenderStreamChannelDefinition::GetVisibility(AActor* Actor) const
 {
-    return DefaultVisibility == EVisibilty::Visible
+    return DefaultVisibility == EChannelVisibilty::Visible
         ? !Hidden.Contains(Actor)
         : Visible.Contains(Actor);
 }
@@ -236,8 +237,8 @@ void URenderStreamChannelDefinition::BeginPlay()
 
 void URenderStreamChannelDefinition::EndPlay(const EEndPlayReason::Type Reason)
 {
-    Super::EndPlay(Reason);
     UnregisterCamera();
+    Super::EndPlay(Reason);
 }
 
 void URenderStreamChannelDefinition::AddCameraInstance(TWeakObjectPtr<ACameraActor> Camera)

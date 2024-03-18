@@ -730,10 +730,10 @@ void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FScen
     const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
     if (Definition != nullptr)
     {
-        // This only really works if we have a single view per view family which is currently the case in nDisplay.
+        EngineShowFlags = Definition->ShowFlags;
         ViewFamily->EngineShowFlags = Definition->ShowFlags;
-        View->bCameraMotionBlur = Definition->EnableCameraMotionBlur;
-        const TSet<TSoftObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EVisibilty::Visible ? Definition->Hidden : Definition->Visible;
+        View->bCameraMotionBlur = Definition->ShowFlags.MotionBlur;
+        const TSet<TSoftObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EChannelVisibilty::Visible ? Definition->Hidden : Definition->Visible;
         for (const TSoftObjectPtr<AActor> Actor : Actors)
         {
             if (Actor.IsValid())
@@ -745,7 +745,7 @@ void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FScen
             }
         }
 
-        if (Definition->DefaultVisibility == EVisibilty::Visible)
+        if (Definition->DefaultVisibility == EChannelVisibilty::Visible)
             View->HiddenPrimitives = Collection;
         else
             View->ShowOnlyPrimitives = Collection;

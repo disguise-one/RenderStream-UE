@@ -1,7 +1,6 @@
 #include "SyncFrameData.h"
 
 #include "RenderStreamLink.h"
-#include "RenderStreamStatus.h"
 #include "RenderStream.h"
 #include "RenderStreamStats.h"
 #include "RenderStreamEventHandler.h"
@@ -88,6 +87,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         return;
     }
 
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::ControllerReceive()"));
     SCOPE_CYCLE_COUNTER(STAT_AwaitFrame);
     const double StartTime = FPlatformTime::Seconds();
     const RenderStreamLink::RS_ERROR Ret = RenderStreamLink::instance().rs_awaitFrameData(500, &m_frameData);
@@ -119,9 +119,6 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         {
             UE_LOG(LogRenderStream, Error, TEXT("Error awaiting frame data error %d"), Ret);
         }
-
-        if (m_frameDataValid)
-            RenderStreamStatus().Input("Stopped receiving data from d3", RSSTATUS_ORANGE);
         m_frameDataValid = false; // TODO: Mark timecode as invalid only after some multiple of the expected incoming framerate.
     }
     else
@@ -129,7 +126,6 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         if (!m_frameDataValid)
         {
             RenderStreamLink::instance().rs_setNewStatusMessage("");
-            RenderStreamStatus().Input("Receiving data from d3", RSSTATUS_GREEN);
         }
 
         // Force a fixed time-step on the controller, followers will sync it via nDisplay
@@ -159,6 +155,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
 
 void FRenderStreamSyncFrameData::FollowerReceive() const
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::FollowerReceive()"));
     SCOPE_CYCLE_COUNTER(STAT_ReceiveFrame);
     const double StartTime = FPlatformTime::Seconds();
     RenderStreamLink::instance().rs_setFollower(1);
@@ -201,6 +198,7 @@ void FRenderStreamSyncFrameData::FollowerReceive() const
 
 void FRenderStreamSyncFrameData::Apply() const
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::Apply()"));
     FRenderStreamModule* Module = FRenderStreamModule::Get();
     Module->ApplyScene(m_frameData.scene);
     Module->ApplyCameras(m_frameData);

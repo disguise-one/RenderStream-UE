@@ -35,11 +35,16 @@ bool FFrameStream::Setup(const FString& name, const FIntPoint& Resolution, const
 
     if (m_handle == 0) {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to create stream"));
-        RenderStreamStatus().Output("Error: Unable to create stream", RSSTATUS_RED);
         return false;
     }
     UE_LOG(LogRenderStream, Log, TEXT("Created stream '%s'"), *m_streamName);
-    RenderStreamStatus().Output("Connected to stream", RSSTATUS_GREEN);
     
     return true;
+}
+
+void FFrameStream::Update(const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt)
+{
+    // Todo: Do we need to destroy the handle?
+    m_handle = 0;
+    Setup(m_streamName, Resolution, Channel, Clipping, Handle, Fmt);
 }
