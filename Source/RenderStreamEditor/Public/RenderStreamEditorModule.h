@@ -27,12 +27,8 @@ private:
     void OnBeginFrame();
     void OnPostSaveWorld(uint32 SaveFlags, UWorld* World, bool bSuccess);
     void OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses);
-
     void OnPostEngineInit();
     void OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
-
-    void OnObjectPostEditChange(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
-
     void OnShutdownPostPackagesSaved();
 
     void RegisterSettings();
