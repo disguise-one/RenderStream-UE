@@ -274,7 +274,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 0.001f, v);
         }
-        else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Property)) 
+        else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Property))
         {
             const float v = FloatProperty->GetPropertyValue_InContainer(Root);
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed float property: %s is %f"), *Name, v);
@@ -283,7 +283,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Float, Min, Max, 0.001f, v);
         }
-        else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property)) 
+        else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property))
         {
             const void* StructAddress = StructProperty->ContainerPtrToValuePtr<void>(Root);
             if (StructProperty->Struct == TBaseStructure<FVector>::Get())
@@ -480,7 +480,14 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     {
         Cache->SubLevels.Empty();
         for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
-            Cache->SubLevels.Add(SubLevel->GetWorldAsset()->GetPackage()->GetPathName());
+        {
+            auto WorldAsset = SubLevel->GetWorldAsset();
+            if (WorldAsset == nullptr) {
+                continue;
+            }
+
+            Cache->SubLevels.Add(WorldAsset->GetPackage()->GetPathName());
+        }
     }
 
     // Save the Cache.
@@ -488,6 +495,13 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(Cache);
     const FString PackageFileName = FPackageName::LongPackageNameToFilename(CacheFolder + LevelPath, FPackageName::GetAssetPackageExtension());
+<<<<<<< HEAD
+=======
+    FSavePackageArgs args;
+    args.TopLevelFlags = EObjectFlags::RF_Public | EObjectFlags::RF_Standalone;
+    args.bSlowTask = false;
+    args.bForceByteSwapping = true;
+>>>>>>> 457b59e (Actually find and load the levels in the project when saving so wew can generate missing channel caches.)
     bool bSaved = UPackage::SavePackage(
         Package,
         Cache,
@@ -500,6 +514,10 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
         SAVE_NoError
     );
 
+    if (!bSaved) {
+        UE_LOG(LogRenderStreamEditor, Warning, TEXT("Failed to save cache for level: %s"), *LevelPath);
+    }
+
     return Cache;
 }
 
@@ -511,22 +529,15 @@ bool RemoveInvalidCacheEntries()
     ObjectLibrary->GetObjects(ChannelCaches);
 
     TArray<FAssetData> Assets;
-    const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
-    LevelLibrary->LoadAssetDataFromPath(ContentFolder);
-    LevelLibrary->GetAssetDataList(Assets);
-
-    TArray<FAssetData> MapAssets;
     const auto MapLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
     MapLibrary->LoadAssetDataFromPath(ContentFolder);
-    MapLibrary->GetAssetDataList(MapAssets);
-
-    Assets.Append(MapAssets);
+    MapLibrary->GetAssetDataList(Assets);
 
     TArray<UObject*> ObjectsToDelete;
 
     auto IsInvalidCacheAsset = [&Assets, &ObjectsToDelete](URenderStreamChannelCacheAsset* CacheAsset) {
         bool Invalid = false;
-        
+
         FString CachedPath = CacheAsset->Level.ToString();
         auto MatchesCached = [&CachedPath](const FAssetData& Asset) {
             const FString PackageName = Asset.PackageName.ToString();
@@ -568,15 +579,17 @@ void UpdateChannelCache()
 
     // Loop over all levels and make sure caches exist for them.
     TArray<FAssetData> LevelAssets;
-    const auto LevelLibrary = UObjectLibrary::CreateLibrary(ULevel::StaticClass(), false, true);
+    const auto LevelLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
     LevelLibrary->LoadAssetDataFromPath(ContentFolder);
     LevelLibrary->GetAssetDataList(LevelAssets);
     for (FAssetData const& Asset : LevelAssets)
     {
         // Create the required caches if they don't exist.
         URenderStreamChannelCacheAsset* Cache;
-        if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache))
-            Cache = UpdateLevelChannelCache(Cast<ULevel>(Asset.FastGetAsset(true)));
+        if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
+            auto world = Cast<UWorld>(Asset.FastGetAsset(true));
+            Cache = UpdateLevelChannelCache(world->GetLevel(0));
+        }
     }
 }
 
@@ -753,7 +766,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir) && shemeSCState.bIsAdded)
         fileIsCheckedOut = SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
 
-    if(SourceControlHelpers::IsEnabled() && !fileIsCheckedOut)
+    if (SourceControlHelpers::IsEnabled() && !fileIsCheckedOut)
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Schema file failed to check out."));
 
     if (RenderStreamLink::instance().rs_saveSchema(TCHAR_TO_UTF8(*FPaths::GetProjectFilePath()), &Schema.schema) != RenderStreamLink::RS_ERROR_SUCCESS)
@@ -801,7 +814,9 @@ void FRenderStreamEditorModule::OnObjectPostEditChange(UObject* Object, FPropert
     {
         // we only care if default objects have been changed eg. project settings objects like UGameMapSettings
         // add include/exclude filters here if required
-        DirtyAssetMetadata = true;
+        if (Object->IsA<UGameMapsSettings>() || Object->IsA<URenderStreamSettings>()) {
+            DirtyAssetMetadata = true;
+        }
     }
 }
 
@@ -813,6 +828,7 @@ void FRenderStreamEditorModule::OnShutdownPostPackagesSaved()
         // if however the metadata is dirty in this callback it means the editor is closing and won't tick again
         // therefore this is our last chance to generate metadata during this runtime, if we don't our metadata may be made stale
         GenerateAssetMetadata();
+        DirtyAssetMetadata = false;
     }
 }
 
