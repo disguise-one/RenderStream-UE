@@ -94,6 +94,7 @@ void FRenderStreamEditorModule::ShutdownModule()
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
     FCoreUObjectDelegates::OnObjectPropertyChanged.RemoveAll(this);
     FEditorDelegates::OnShutdownPostPackagesSaved.RemoveAll(this);
+
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
 
@@ -159,7 +160,7 @@ void CreateFieldInternal(FRenderStreamExposedParameterEntry& parameter, FString 
 
 void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min, float max, float step, float defaultValue, TArray<FString> options = {})
 {
-    check(type == RenderStreamParameterType::Float);
+    check(type == RenderStreamParameterType::Float || type == RenderStreamParameterType::Event);
     CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, min, max, step, FString::SanitizeFloat(defaultValue), options);
 }
 
@@ -230,6 +231,18 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
 {
     if (!Root)
         return;
+
+    for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+    {
+        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        {
+            const FString Name = FuncIt->GetName();
+            const FString Category = "Custom Events";
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
+        }
+    }
+
     for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
     {
         const FProperty* Property = *PropIt;
@@ -391,7 +404,9 @@ void GenerateScene(
     FString sceneName = FPackageName::GetShortName(Cache->Level.GetAssetPathName());
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
-    TArray<const URenderStreamChannelCacheAsset*> Levels;
+
+   TArray<const URenderStreamChannelCacheAsset*> Levels;
+
     if (Persistent != nullptr)
         Levels.Push(Persistent);
 
@@ -475,7 +490,6 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->ExposedParams.Empty();
     GenerateParameters(Cache->ExposedParams, Level->GetLevelScriptActor());
 
-    // We can only know the sublevels of the persistent level.
     if (Level->IsPersistentLevel())
     {
         Cache->SubLevels.Empty();
@@ -683,10 +697,8 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             }
 
             Schema.schema.scenes.nScenes = 1;
-            Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(
-                malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
-            RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
-            GenerateScene(LevelParams, *SceneParameters++, MainMap, nullptr);
+            Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
+            GenerateScene(LevelParams, *Schema.schema.scenes.scenes, MainMap, nullptr);
         }
         else
         {
