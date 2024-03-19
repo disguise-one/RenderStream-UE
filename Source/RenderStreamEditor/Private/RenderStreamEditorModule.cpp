@@ -579,7 +579,10 @@ void UpdateChannelCache()
         URenderStreamChannelCacheAsset* Cache;
         if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
             auto world = Cast<UWorld>(Asset.FastGetAsset(true));
-            Cache = UpdateLevelChannelCache(world->GetLevel(0));
+            if (world->GetNumLevels() > 0)
+            {
+                Cache = UpdateLevelChannelCache(world->GetLevel(0));
+            }
         }
     }
 }
