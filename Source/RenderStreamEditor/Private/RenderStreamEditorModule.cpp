@@ -493,13 +493,6 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Package->MarkPackageDirty();
     FAssetRegistryModule::AssetCreated(Cache);
     const FString PackageFileName = FPackageName::LongPackageNameToFilename(CacheFolder + LevelPath, FPackageName::GetAssetPackageExtension());
-<<<<<<< HEAD
-=======
-    FSavePackageArgs args;
-    args.TopLevelFlags = EObjectFlags::RF_Public | EObjectFlags::RF_Standalone;
-    args.bSlowTask = false;
-    args.bForceByteSwapping = true;
->>>>>>> 457b59e (Actually find and load the levels in the project when saving so wew can generate missing channel caches.)
     bool bSaved = UPackage::SavePackage(
         Package,
         Cache,
