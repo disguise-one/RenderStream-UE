@@ -6,7 +6,7 @@ namespace d3ToUEHelpers
 {
     FTransform Convertd3TransformToUE(FMatrix& d3Mat, const FMatrix& YUpMatrix)
     {
-        CONTEXT();
+        // CONTEXT();
 
         //Change of basis vectors
         const FMatrix YUpMatrixInv(YUpMatrix.Inverse());

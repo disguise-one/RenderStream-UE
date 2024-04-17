@@ -5,7 +5,7 @@
 #include <malloc.h>
 #include "RenderStream.h"
 #include "RenderStreamHelper.h"
-#include "RSUCHelpers.inl"
+// #include "RSUCHelpers.inl"
 #include "RenderStreamSettings.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
@@ -13,6 +13,16 @@
 #include "TextureResource.h"
 
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
+
+#include "Engine/Level.h"
+#include "Engine/World.h"
+#include "UObject/TextProperty.h"
+
+#include "VulkanRHIPrivate.h"
+#include "VulkanRHIBridge.h"
+#include "VulkanResources.h"
+
+#include "HardwareInfo.h"
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 

@@ -12,8 +12,6 @@
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
-namespace
-{
     inline static bool SortAlphabeticallyByLocalizedText(const FString& ip1, const FString& ip2)
     {
         FText LocalizedText1;
@@ -24,21 +22,6 @@ namespace
 
         return LocalizedText1.ToString() < LocalizedText2.ToString();
     }
-
-    class FDefinitionCustomization final : public IDetailCustomization
-    {
-    public:
-        // IDetailCustomization interface
-        virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-        void CustomizeShowFlagSettings(IDetailCategoryBuilder& CategoryBuilder, TSharedPtr<IPropertyHandle> InShowFlagSettingsProperty);
-        void CustomizeVisibility(IDetailLayoutBuilder& DetailBuilder, TSharedPtr<IPropertyHandle> Property);
-
-    private:
-        ECheckBoxState OnGetDisplayCheckState(FString ShowFlagName) const;
-        void OnShowFlagCheckStateChanged(ECheckBoxState InNewRadioState, FString FlagName);
-
-        TSharedPtr<IPropertyHandle> ShowFlagSettingsProperty;
-    };
 
     void FDefinitionCustomization::CustomizeShowFlagSettings(IDetailCategoryBuilder& CategoryBuilder, TSharedPtr<IPropertyHandle> InShowFlagSettingsProperty)
     {
@@ -382,13 +365,6 @@ namespace
         }
     }
 
-    class FSettingsCustomization final : public IDetailCustomization
-    {
-    public:
-        // IDetailCustomization interface
-        virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-    };
-
     class SSceneSelectionCombo : public SCompoundWidget
     {
     public:
@@ -508,16 +484,6 @@ namespace
                 ];
         }
     }
-}
 
-TSharedRef<IDetailCustomization> MakeDefinitionCustomizationInstance()
-{
-    return MakeShareable(new FDefinitionCustomization);
-}
-
-TSharedRef<IDetailCustomization> MakeSettingsCustomizationInstance()
-{
-    return MakeShareable(new FSettingsCustomization);
-}
 
 #undef LOCTEXT_NAMESPACE

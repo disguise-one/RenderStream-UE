@@ -60,7 +60,7 @@
 #include "HardwareInfo.h"
 #include "RenderStreamEventHandler.h"
 
-#include "RSUCHelpers.inl"
+// #include "RSUCHelpers.inl"
 #include "Camera/CameraComponent.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
@@ -75,6 +75,10 @@
 #include "Engine/GameInstance.h"
 #include "Engine/ObjectLibrary.h"
 #include <ID3D12DynamicRHI.h>
+
+#include "VulkanRHIPrivate.h"
+#include "VulkanRHIBridge.h"
+#include "VulkanResources.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -266,7 +270,7 @@ void FRenderStreamModule::ShutdownModule()
 
             if (!RenderMgr->UnregisterPostProcessFactory(FRenderStreamPostProcessFactory::RenderStreamPostProcessType))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> post process factory"), *FRenderStreamPostProcessFactory::RenderStreamPostProcessType);
+                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the renderstream_capture post process factory"));
             }
         }
     }

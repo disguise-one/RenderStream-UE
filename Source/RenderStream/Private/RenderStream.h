@@ -19,6 +19,8 @@
 #include "StreamPool.h"
 #include "SyncFrameData.h"
 
+#include "Camera/CameraActor.h"
+
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStream, Log, All);
 
 class UCameraComponent;

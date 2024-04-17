@@ -11,6 +11,8 @@
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
 
+#include "Engine/World.h"
+
 class UCameraComponent;
 class UWorld;
 class FRenderStreamModule;
