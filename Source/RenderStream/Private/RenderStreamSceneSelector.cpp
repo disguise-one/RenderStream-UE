@@ -5,7 +5,6 @@
 #include <malloc.h>
 #include "RenderStream.h"
 #include "RenderStreamHelper.h"
-// #include "RSUCHelpers.inl"
 #include "RenderStreamSettings.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"

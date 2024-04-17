@@ -60,7 +60,6 @@
 #include "HardwareInfo.h"
 #include "RenderStreamEventHandler.h"
 
-// #include "RSUCHelpers.inl"
 #include "Camera/CameraComponent.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
@@ -270,7 +269,7 @@ void FRenderStreamModule::ShutdownModule()
 
             if (!RenderMgr->UnregisterPostProcessFactory(FRenderStreamPostProcessFactory::RenderStreamPostProcessType))
             {
-                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the renderstream_capture post process factory"));
+                UE_LOG(LogRenderStream, Warning, TEXT("An error occurred during un-registering the <%s> post process factory"), FRenderStreamPostProcessFactory::RenderStreamPostProcessType);
             }
         }
     }
