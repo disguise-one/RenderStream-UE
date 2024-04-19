@@ -6,6 +6,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/PackageName.h"
 #include "Engine/Level.h"
+#include "Engine/LevelScriptActor.h"
 
 static ULevelStreaming* findStreamingLevelByName(const UWorld& World, const FString& FindName)
 {
@@ -30,7 +31,7 @@ bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const Re
     }
 
     // If there's a persistent level with blueprints, include that in all scenes as common properties.
-    AActor* persistentRoot = reinterpret_cast<AActor*>(World.PersistentLevel->GetLevelScriptActor());
+    AActor* persistentRoot = static_cast<AActor*>(World.PersistentLevel->GetLevelScriptActor());
 
     m_specs.resize(Schema.scenes.nScenes);
     for (uint32_t i = 0; i < Schema.scenes.nScenes; ++i)
@@ -84,7 +85,7 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
         return;
     }
 
-    AActor* persistentRoot = reinterpret_cast<AActor*>(World.PersistentLevel->GetLevelScriptActor());
+    AActor* persistentRoot = static_cast<AActor*>(World.PersistentLevel->GetLevelScriptActor());
 
     if (spec.streamingLevel == nullptr && spec.persistentRoot == persistentRoot) // base level
     {
@@ -105,7 +106,7 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
                 {
                     streamingLevel->SetShouldBeVisible(true);
 
-                    ApplyParameters(sceneId, { reinterpret_cast<AActor*>(spec.persistentRoot), reinterpret_cast<AActor*>(streamingLevel->GetLevelScriptActor()) });
+                    ApplyParameters(sceneId, { static_cast<AActor*>(spec.persistentRoot), static_cast<AActor*>(streamingLevel->GetLevelScriptActor()) });
                 }
             }
             else if (spec.streamingLevel != nullptr)
@@ -121,7 +122,7 @@ bool SceneSelector_StreamingLevels::ValidateLevel(uint32_t sceneId)
     RenderStreamLink::RemoteParameters& parameters = Schema().scenes.scenes[sceneId];
     const SchemaSpec& spec = m_specs[sceneId];
     UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorStreamingLevels: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
-    AActor* levelRoot = spec.streamingLevel ? reinterpret_cast<AActor*>(spec.streamingLevel->GetLevelScriptActor()) : nullptr;
+    AActor* levelRoot = spec.streamingLevel ? static_cast<AActor*>(spec.streamingLevel->GetLevelScriptActor()) : nullptr;
     if (!ValidateParameters(parameters, { spec.persistentRoot, levelRoot }, levelRoot == nullptr))
     {
         UE_LOG(LogRenderStream, Error, TEXT("Failed to validate schema for %s"), UTF8_TO_TCHAR(parameters.name));

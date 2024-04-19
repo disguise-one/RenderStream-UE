@@ -65,6 +65,7 @@
 #include "Slate/SceneViewport.h"
 #include "IDisplayClusterCallbacks.h"
 #include "UObject/UObjectGlobals.h"
+#include "UObject/Package.h"
 
 URenderStreamViewportClient::URenderStreamViewportClient(FVTableHelper& Helper)
     : Super(Helper)
@@ -83,10 +84,10 @@ static UCanvas* GetCanvasByName(FName CanvasName)
 	UCanvas** FoundCanvas = CanvasMap.Find(CanvasName);
 	if (!FoundCanvas)
 	{
-		UCanvas* CanvasObject = FindObject<UCanvas>(reinterpret_cast<UObject*>(GetTransientPackage()), *CanvasName.ToString());
+		UCanvas* CanvasObject = FindObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), *CanvasName.ToString());
 		if (!CanvasObject)
 		{
-			CanvasObject = NewObject<UCanvas>(reinterpret_cast<UObject*>(GetTransientPackage()), CanvasName);
+			CanvasObject = NewObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), CanvasName);
 			CanvasObject->AddToRoot();
 		}
 
@@ -175,65 +176,6 @@ ULocalPlayer* URenderStreamViewportClient::SetupInitialLocalPlayer(FString& OutE
     return Super::SetupInitialLocalPlayer(OutError);
 }
 
-// Debug feature to synchronize and force all external resources to be transferred cross GPU at the end of graph execution.
-// May be useful for testing cross GPU synchronization logic.
-int32 GDisplayClusterForceCopyCrossGPU = 0;
-static FAutoConsoleVariableRef CVarDisplayClusterForceCopyCrossGPU(
-	TEXT("DC.ForceCopyCrossGPU"),
-	GDisplayClusterForceCopyCrossGPU,
-	TEXT("Force cross GPU copy of all resources after each view render.  Bad for perf, but may be useful for debugging."),
-	ECVF_RenderThreadSafe
-);
-
-int32 GDisplayClusterShowStats = 0;
-static FAutoConsoleVariableRef CVarDisplayClusterShowStats(
-	TEXT("DC.Stats"),
-	GDisplayClusterShowStats,
-	TEXT("Show per-view profiling stats for display cluster rendering."),
-	ECVF_RenderThreadSafe
-);
-
-int32 GDisplayClusterSingleRender = 1;
-static FAutoConsoleVariableRef CVarDisplayClusterSingleRender(
-	TEXT("DC.SingleRender"),
-	GDisplayClusterSingleRender,
-	TEXT("Render Display Cluster view families in a single scene render."),
-	ECVF_RenderThreadSafe
-);
-
-int32 GDisplayClusterSortViews = 1;
-static FAutoConsoleVariableRef CVarDisplayClusterSortViews(
-	TEXT("DC.SortViews"),
-	GDisplayClusterSortViews,
-	TEXT("Enable sorting of views by decreasing pixel count and decreasing GPU index.  Adds determinism, and tends to run inners first, which helps with scheduling, improving perf (default: enabled)."),
-	ECVF_RenderThreadSafe
-);
-
-int32 GDisplayClusterLumenPerView = 1;
-static FAutoConsoleVariableRef CVarDisplayClusterLumenPerView(
-	TEXT("DC.LumenPerView"),
-	GDisplayClusterLumenPerView,
-	TEXT("Separate Lumen scene cache allocated for each View.  Reduces artifacts where views affect one another, at a cost in GPU memory."),
-	ECVF_RenderThreadSafe
-);
-
-int32 GDisplayClusterDebugDraw = 1;
-static FAutoConsoleVariableRef CVarDisplayClusterDebugDraw(
-	TEXT("DC.DebugDraw"),
-	GDisplayClusterDebugDraw,
-	TEXT("Enable debug draw for nDisplay views.  Debug draw features are separately enabled, and default to off, this just provides an additional global toggle."),
-	ECVF_RenderThreadSafe
-);
-
-// Replaces FApp::HasFocus
-bool GDisplayClusterReplaceHasFocusFunction = true;
-static FAutoConsoleVariableRef CVarDisplayClusterReplaceHasFocusFunction(
-	TEXT("DC.ReplaceHasFocusFunction"),
-	GDisplayClusterReplaceHasFocusFunction,
-	TEXT("Replaces the function that FApp::HasFocus() uses, to mitigate OS stalls that happen in some systems."),
-	ECVF_ReadOnly
-);
-
 struct FCompareViewFamilyBySizeAndGPU
 {
 	FORCEINLINE bool operator()(const FSceneViewFamilyContext& A, const FSceneViewFamilyContext& B) const
@@ -276,7 +218,11 @@ public:
 	virtual int32 DrawStatsHUD(FCanvas* InCanvas, int32 InX, int32 InY) override
 	{
 #if GPUPROFILERTRACE_ENABLED
-		if (GDisplayClusterShowStats)
+		/// !!!! disguise customizations
+		static const auto DisplayClusterShowStats =  IConsoleManager::Get().FindConsoleVariable(TEXT("DC.ShowStats"));
+		/// !!!! disguise customizations
+		
+		if (DisplayClusterShowStats->GetInt())
 		{
 			// Get GPU perf results
 			TArray<FRealtimeGPUProfilerDescriptionResult> PerfResults;
@@ -430,6 +376,14 @@ private:
 
 void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 {
+	/// !!!! disguise customizations
+	static const auto DisplayClusterForceCopyCrossGPU = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.ForceCopyCrossGPU"));
+	static const auto DisplayClusterLumenPerView = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.LumenPerView"));
+	static const auto DisplayClusterSortViews = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.SortViews"));
+	static const auto DisplayClusterSingleRender = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.SingleRender"));
+	static const auto DisplayClusterDebugDraw = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.DebugDraw"));
+	/// !!!! disguise customizations
+
 	////////////////////////////////
 	// For any operation mode other than 'Cluster' we use default UGameViewportClient::Draw pipeline
 	/// !!!! disguise customizations - we must always use this method.
@@ -684,7 +638,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					View->CameraConstrainedViewRect = View->UnscaledViewRect;
 
 					// Enable per-view Lumen scene
-					if (GDisplayClusterLumenPerView)
+					if (DisplayClusterLumenPerView->GetInt())
 					{
 						View->State->AddLumenSceneData(MyWorld->Scene);
 					}
@@ -878,7 +832,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				ViewFamily.bIsHDR = GetWindow().IsValid() ? GetWindow().Get()->GetIsHDR() : false;
 
 #if WITH_MGPU
-				ViewFamily.bForceCopyCrossGPU = GDisplayClusterForceCopyCrossGPU != 0;
+				ViewFamily.bForceCopyCrossGPU = DisplayClusterForceCopyCrossGPU->GetInt() != 0;
 #endif
 
 				ViewFamily.ProfileDescription = DCViewFamily.Views[0].Viewport->GetId();
@@ -912,7 +866,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 		if (ViewFamilies.Num() > 1)
 		{
 #if WITH_MGPU
-			if (GDisplayClusterSortViews)
+			if (DisplayClusterSortViews->GetInt())
 			{
 				ViewFamilies.StableSort(FCompareViewFamilyBySizeAndGPU());
 			}
@@ -932,7 +886,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 			}
 		}
 
-		if (GDisplayClusterSingleRender)
+		if (DisplayClusterSingleRender->GetInt())
 		{
 			GetRendererModule().BeginRenderingViewFamilies(
 				SceneCanvas, TArrayView<FSceneViewFamily*>((FSceneViewFamily**)(ViewFamilies.GetData()), ViewFamilies.Num()));
@@ -1028,7 +982,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 #endif
 		}
 
-		if (GDisplayClusterDebugDraw && !ViewFamilies.IsEmpty())
+		if (DisplayClusterDebugDraw->GetInt() && !ViewFamilies.IsEmpty())
 		{
 			UDebugDrawService::Draw(ViewFamilies.Last()->EngineShowFlags, InViewport, const_cast<FSceneView*>(ViewFamilies.Last()->Views[0]), DebugCanvas, DebugCanvasObject);
 		}
