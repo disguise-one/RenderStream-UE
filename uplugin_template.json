@@ -49,6 +49,10 @@
 		{
 			"Name": "nDisplay",
 			"Enabled": true
+		},
+		{
+			"Name": "ConcertSyncClient",
+			"Enabled": true
 		}
 	]
 }
