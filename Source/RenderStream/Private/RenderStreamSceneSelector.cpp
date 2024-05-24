@@ -498,7 +498,8 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 int oldValue = m_floatValuesLast.size() > iFloat ? m_floatValuesLast[iFloat] : 0;
                 int newValue = floatValues[iFloat];
                 if (newValue > oldValue) // value increment signals an invoke
-                {                           // TODO: should we invoke once per increment? e.g. oldValue == 0, newValue == 5 => 1 invoke or 5 invokes?
+                {
+                    // TODO: should we invoke once per increment? e.g. oldValue == 0, newValue == 5 => 1 invoke or 5 invokes?
                     uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
                     FFrame Frame = FFrame(Root, *FuncIt, Buffer);
                     FuncIt->Invoke(Root, Frame, Buffer);
