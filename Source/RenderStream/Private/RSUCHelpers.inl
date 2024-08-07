@@ -215,6 +215,9 @@ namespace RSUCHelpers
                 case EPixelFormat::PF_R8G8B8A8:
                     fmt = RenderStreamLink::RS_FMT_RGBA8;
                     break;
+                case EPixelFormat::PF_A32B32G32R32F:
+                    fmt = RenderStreamLink::RS_FMT_RGBA32F;
+                    break;
                 default:
                     UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported format."));
                     return;
