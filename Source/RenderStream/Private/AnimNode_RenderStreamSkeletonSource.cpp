@@ -176,9 +176,9 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
 
     // Transform root pose to UE coordinate system
     const FVector RootPos(
-        FUnitConversion::Convert(Pose->rootPosition.Z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(Pose->rootPosition.X, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(Pose->rootPosition.Y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+        FUnitConversion::Convert(Pose->rootPosition.Z, EUnit::Meters, EUnit::Centimeters),
+        FUnitConversion::Convert(Pose->rootPosition.X, EUnit::Meters, EUnit::Centimeters),
+        FUnitConversion::Convert(Pose->rootPosition.Y, EUnit::Meters, EUnit::Centimeters));
     const FQuat RootRotation = FQuat(Pose->rootOrientation.Z, Pose->rootOrientation.X, Pose->rootOrientation.Y, Pose->rootOrientation.W)
         * FQuat::MakeFromRotator(FRotator(0, 90, 0));  // Apply 90 degree yaw to account for skeleton default orientation
 
@@ -268,9 +268,9 @@ FTransform ToUnrealTransform(const RenderStreamLink::Transform& transform)
 {
     // Standard d3 to Unreal coordinate system transform
     const FVector pos(
-        FUnitConversion::Convert(transform.z, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(transform.x, EUnit::Meters, FRenderStreamModule::distanceUnit()),
-        FUnitConversion::Convert(transform.y, EUnit::Meters, FRenderStreamModule::distanceUnit()));
+        FUnitConversion::Convert(transform.z, EUnit::Meters, EUnit::Centimeters),
+        FUnitConversion::Convert(transform.x, EUnit::Meters, EUnit::Centimeters),
+        FUnitConversion::Convert(transform.y, EUnit::Meters, EUnit::Centimeters));
     const FQuat rotation(transform.rz, transform.rx, transform.ry, transform.rw);
     const FTransform JointPoseUE(rotation, pos);
 
@@ -493,7 +493,8 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
                 // Apply position
                 const int32 SourceParentIndex = SourceParentIndices[SourceIndex];
                 const FTransform& MeshToSourceParent = MeshToSourceSpaceTransforms[SourceParentIndex];  // Position is transformed into parent coordinate space
-                const FVector SourcePosition = MeshToSourceParent.Inverse().TransformVector(SourceBoneTransform.GetTranslation()); // Position to apply from the source data
+                const FTransform SourceInitialTransform(SourceInitialPoseRotations[SourceIndex]);  // Transform due to initial rotation of joint
+                const FVector SourcePosition = (SourceInitialTransform * MeshToSourceParent.Inverse()).TransformVector(SourceBoneTransform.GetTranslation()); // Position to apply from the source data
                 const FVector MeshPosition = OutPose[MeshIndex].GetTranslation();  // Position to apply for the initial mesh pose
                 OutPose[MeshIndex].SetTranslation(MeshPosition + SourcePosition);
             }

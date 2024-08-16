@@ -92,6 +92,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
     SCOPE_CYCLE_COUNTER(STAT_AwaitFrame);
     const double StartTime = FPlatformTime::Seconds();
     const RenderStreamLink::RS_ERROR Ret = RenderStreamLink::instance().rs_awaitFrameData(500, &m_frameData);
+    FApp::SetUseFixedTimeStep(true);
 
     if (Ret == RenderStreamLink::RS_ERROR_STREAMS_CHANGED)
     {
@@ -144,7 +145,6 @@ void FRenderStreamSyncFrameData::ControllerReceive()
 
         LastTrackedTime = m_frameData.tTracked;
 
-        FApp::SetUseFixedTimeStep(true);
         FApp::SetFixedDeltaTime(DeltaSeconds);
 
         m_frameDataValid = true;
@@ -160,6 +160,7 @@ void FRenderStreamSyncFrameData::FollowerReceive() const
     SCOPE_CYCLE_COUNTER(STAT_ReceiveFrame);
     const double StartTime = FPlatformTime::Seconds();
     RenderStreamLink::instance().rs_setFollower(1);
+    FApp::SetUseFixedTimeStep(true);
 
     FollowerReceive(m_streamsChanged, m_isQuitting);
 
