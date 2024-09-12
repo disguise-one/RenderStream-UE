@@ -622,9 +622,14 @@ void UpdateChannelCache()
         URenderStreamChannelCacheAsset* Cache;
         if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
             auto world = Cast<UWorld>(Asset.FastGetAsset(true));
-            if (world->GetNumLevels() > 0)
+			UE_LOG(LogRenderStreamEditor, Verbose, TEXT("Caching level: %s"), *Asset.GetFullName());
+            if (world != nullptr && world->GetNumLevels() > 0)
             {
                 Cache = UpdateLevelChannelCache(world->GetLevel(0));
+            }
+            else
+            {
+				UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to load level: %s. Open and re-save this level to attempt fixing the issue."), *Asset.GetFullName());
             }
         }
     }
