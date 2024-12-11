@@ -36,6 +36,7 @@
 #include <string>
 #include <vector>
 
+#include "FileHelpers.h"
 #include "GameMapsSettings.h"
 
 #include "MessageLog/Public/MessageLogInitializationOptions.h"
@@ -483,6 +484,43 @@ URenderStreamChannelCacheAsset* GetOrCreateCache(ULevel* Level)
     return Cache;
 }
 
+bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
+{
+    TArray<UPackage*> Packages;
+    for (auto& Level : Levels)
+    {
+	    URenderStreamChannelCacheAsset* Cache = GetOrCreateCache(Level);
+		UPackage* Package = Cache->GetPackage();
+        Packages.Add(Package);
+    }
+
+    TArray<UPackage*> checkedOutPackages;
+    TArray<UPackage*> alreadyWriteablePackages;
+    const bool checkoutNotCancelled = FEditorFileUtils::PromptToCheckoutPackages(false, Packages, &checkedOutPackages, &alreadyWriteablePackages);
+	const bool allPackagesWriteable = Packages.Num() == checkedOutPackages.Num() + alreadyWriteablePackages.Num();
+
+    return checkoutNotCancelled && allPackagesWriteable;
+}
+
+bool CheckOutLevelChannelCaches(TArray<ULevelStreaming*> StreamingLevels)
+{
+	
+    TArray<ULevel*> Levels;
+    for (const auto& StreamingLevel : StreamingLevels)
+        if (StreamingLevel->IsLevelLoaded())
+            Levels.Add(StreamingLevel->GetLoadedLevel());
+
+    return CheckOutLevelChannelCaches(Levels);
+}
+
+bool CheckOutLevelChannelCaches(ULevel* Level)
+{
+    TArray<ULevel*> Levels;
+	Levels.Add(Level);
+
+    return CheckOutLevelChannelCaches(Levels);
+}
+
 URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
 {
     URenderStreamChannelCacheAsset* Cache = GetOrCreateCache(Level);
@@ -531,12 +569,13 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     args.TopLevelFlags = EObjectFlags::RF_Public | EObjectFlags::RF_Standalone;
     args.bSlowTask = false;
     args.bForceByteSwapping = true;
-    bool bSaved = UPackage::SavePackage(
-        Package,
-        Cache,
-        *PackageFileName,
-        args
-    );
+
+	const bool bSaved = UPackage::SavePackage(
+		Package,
+		Cache,
+		*PackageFileName,
+		args
+	);
 
     if (!bSaved) {
         UE_LOG(LogRenderStreamEditor, Warning, TEXT("Failed to save cache for level: %s"), *LevelPath);
@@ -584,39 +623,65 @@ bool RemoveInvalidCacheEntries()
     return RemoveCount > 0;
 }
 
-void UpdateChannelCache()
+TArray<ULevel*> BuildRequiredLevelsList()
 {
-    RemoveInvalidCacheEntries();
+    TArray<ULevel*> Levels;
 
     UWorld* World = GEditor->GetEditorWorldContext().World();
     for (ULevel* Level : World->GetLevels())
     {
         if (Level)
-            UpdateLevelChannelCache(Level);
+        {
+            Levels.Add(Level);
+        }
     }
 
     for (const ULevelStreaming* StreamingLevel : World->GetStreamingLevels())
     {
         if (StreamingLevel->IsLevelLoaded())
-            UpdateLevelChannelCache(StreamingLevel->GetLoadedLevel());
+        {
+            ULevel* Level = StreamingLevel->GetLoadedLevel();
+            Levels.Add(Level);
+        }
     }
 
-    // Loop over all levels and make sure caches exist for them.
     TArray<FAssetData> LevelAssets;
     const auto LevelLibrary = UObjectLibrary::CreateLibrary(UWorld::StaticClass(), false, true);
     LevelLibrary->LoadAssetDataFromPath(ContentFolder);
     LevelLibrary->GetAssetDataList(LevelAssets);
     for (FAssetData const& Asset : LevelAssets)
     {
-        // Create the required caches if they don't exist.
         URenderStreamChannelCacheAsset* Cache;
         if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
             auto world = Cast<UWorld>(Asset.FastGetAsset(true));
-            if (world->GetNumLevels() > 0)
+            if (world != nullptr && world->GetNumLevels() > 0)
             {
-                Cache = UpdateLevelChannelCache(world->GetLevel(0));
+                Levels.Add(world->GetLevel(0));
+            }
+            else
+            {
+				UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to load level: %s. Open and re-save this level to attempt fixing the issue."), *Asset.GetFullName());
             }
         }
+    }
+
+    return Levels;
+}
+
+void UpdateChannelCache()
+{
+    RemoveInvalidCacheEntries();
+    const TArray<ULevel*> Levels = BuildRequiredLevelsList();
+    if (!CheckOutLevelChannelCaches(Levels))
+    {
+		UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to check out level cache files. The RenderStream schema will not be updated!"));
+        return;
+    }
+
+    for (ULevel* Level : Levels)
+    {
+		UE_LOG(LogRenderStreamEditor, Verbose, TEXT("Caching level: %s"), *Level->GetFullName());
+        UpdateLevelChannelCache(Level);
     }
 }
 
