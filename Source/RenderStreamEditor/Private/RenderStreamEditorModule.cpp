@@ -502,25 +502,6 @@ bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
     return checkoutNotCancelled && allPackagesWriteable;
 }
 
-bool CheckOutLevelChannelCaches(TArray<ULevelStreaming*> StreamingLevels)
-{
-	
-    TArray<ULevel*> Levels;
-    for (const auto& StreamingLevel : StreamingLevels)
-        if (StreamingLevel->IsLevelLoaded())
-            Levels.Add(StreamingLevel->GetLoadedLevel());
-
-    return CheckOutLevelChannelCaches(Levels);
-}
-
-bool CheckOutLevelChannelCaches(ULevel* Level)
-{
-    TArray<ULevel*> Levels;
-	Levels.Add(Level);
-
-    return CheckOutLevelChannelCaches(Levels);
-}
-
 URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
 {
     URenderStreamChannelCacheAsset* Cache = GetOrCreateCache(Level);
