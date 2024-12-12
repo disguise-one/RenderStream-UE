@@ -7,7 +7,7 @@ class UWorld;
 class AActor;
 
 // Select a scene within the project, provide and apply parameters.
-class RenderStreamSceneSelector
+class RENDERSTREAM_API RenderStreamSceneSelector
 {
 public:
     virtual ~RenderStreamSceneSelector();
@@ -22,6 +22,10 @@ public:
     };
 
     SchemaStatus SchemaStatus() const;
+
+public: // static helpers
+    static TArray<UFunction*> GetEvents(const AActor* rootActor);
+    static TArray<FProperty*> GetProperties(const AActor* rootActor);
 
 protected:
     const RenderStreamLink::Schema& Schema() const;
