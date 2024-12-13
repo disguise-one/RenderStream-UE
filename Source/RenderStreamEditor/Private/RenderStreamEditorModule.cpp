@@ -407,11 +407,11 @@ void FetchLevelCaches(
     TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
     TArray<const URenderStreamChannelCacheAsset*>& Levels,
     const URenderStreamChannelCacheAsset* Parent,
-    bool isPersistentLevel)
+    bool needToFetchSublevels)
 {
     Levels.Push(Parent);
 
-    if (isPersistentLevel)
+    if (!needToFetchSublevels)
         return;
 
     for (FSoftObjectPath Path : Parent->SubLevels)
@@ -431,11 +431,15 @@ void GenerateScene(
     FString sceneName = Cache->GetName();
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+    bool isStreamingLevelSceneSelector = settings->SceneSelector == ERenderStreamSceneSelector::StreamingLevels;
+
     TArray<const URenderStreamChannelCacheAsset*> Levels;
-    if (Persistent)
+    if (Persistent && isStreamingLevelSceneSelector) // add persistent level's parameters to sublevels for Streaming level only
         Levels.Push(Persistent);
 
-    FetchLevelCaches(LevelParams, Levels, Cache, !Persistent);
+    bool needToFetchSublevels = settings->SceneSelector == ERenderStreamSceneSelector::None;
+    FetchLevelCaches(LevelParams, Levels, Cache, needToFetchSublevels);
 
     uint32_t nParams = 0;
     for (auto Level : Levels)
