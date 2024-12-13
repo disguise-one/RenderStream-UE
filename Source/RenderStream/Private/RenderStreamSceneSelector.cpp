@@ -121,18 +121,20 @@ void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 }
 
 
-static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamLink::RemoteParameterType expectedType, const RenderStreamLink::RemoteParameter& parameter)
+static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamLink::RemoteParameterType expectedType, const TArray<RenderStreamLink::RemoteParameter>& parameterCache)
 {
     const FString key = key_ + (undecoratedSuffix.IsEmpty() ? "" : "_" + undecoratedSuffix);
-    
-    if (key != parameter.key || expectedType != parameter.type)
+
+    for (const auto& parameter : parameterCache)
     {
-        UE_LOG(LogRenderStream, Error, 
-            TEXT("Parameter mismatch - Expected parameter with key %s and type %s, got parameter with key %s and type %s."), 
-            UTF8_TO_TCHAR(parameter.key), UTF8_TO_TCHAR(RenderStreamLink::ParamTypeToName(parameter.type)), *key, UTF8_TO_TCHAR(RenderStreamLink::ParamTypeToName(expectedType)));
-        return false;
+	    if (key == parameter.key && expectedType == parameter.type)
+	        return true;
     }
-    return true;
+    
+    UE_LOG(LogRenderStream, Error, 
+        TEXT("Parameter not found - Expected parameter with key %s and type %s, but found no match in the cache."), 
+        *key, UTF8_TO_TCHAR(RenderStreamLink::ParamTypeToName(expectedType)));
+	return false;
 }
 
 bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors, bool ignoreParameterCount) const
@@ -170,6 +172,10 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
 
+    TArray<RenderStreamLink::RemoteParameter> parameterCache;
+    for (size_t index = 0; index < numParameters; ++index)
+	    parameterCache.Add(parameters[index]);
+
     if (settings->GenerateEvents)
     {
         for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
@@ -177,13 +183,13 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
             if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
             {
                 const FString Name = FuncIt->GetName();
-                UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s"), *Name);
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s, cached version %s"), *Name, UTF8_TO_TCHAR(parameters[nParameters].key));
                 if (numParameters < nParameters + 1)
                 {
                     UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameters[nParameters]))
+                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameterCache))
                     return SIZE_MAX;
                 ++nParameters;
             }
@@ -206,7 +212,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -218,7 +224,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -230,7 +236,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -242,7 +248,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -254,7 +260,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters]))
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 return SIZE_MAX;
             ++nParameters;
         }
@@ -269,9 +275,9 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "x", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
-                    !validateField(Name, "y", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
-                    !validateField(Name, "z", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]))
+                if (!validateField(Name, "x", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "y", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "z", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 {
                     return SIZE_MAX;
                 }
@@ -285,10 +291,10 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "r", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
-                    !validateField(Name, "g", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
-                    !validateField(Name, "b", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]) ||
-                    !validateField(Name, "a", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 3]))
+                if (!validateField(Name, "r", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "g", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "b", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "a", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 {
                     return SIZE_MAX;
                 }
@@ -302,10 +308,10 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "r", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
-                    !validateField(Name, "g", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
-                    !validateField(Name, "b", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]) ||
-                    !validateField(Name, "a", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 3]))
+                if (!validateField(Name, "r", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "g", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "b", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "a", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 {
                     return SIZE_MAX;
                 }
@@ -319,7 +325,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                validateField(Name, "", RenderStreamLink::RS_PARAMETER_TRANSFORM, parameters[nParameters]);
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_TRANSFORM, parameterCache);
                 ++nParameters;
             }
             else if (StructProperty->Struct == TBaseStructure<FRotator>::Get())
@@ -330,9 +336,9 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                if (!validateField(Name, "yaw", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 0]) ||
-                    !validateField(Name, "pitch", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 1]) ||
-                    !validateField(Name, "roll", RenderStreamLink::RS_PARAMETER_NUMBER, parameters[nParameters + 2]))
+                if (!validateField(Name, "yaw", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "pitch", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache) ||
+                    !validateField(Name, "roll", RenderStreamLink::RS_PARAMETER_NUMBER, parameterCache))
                 {
                     return SIZE_MAX;
                 }
@@ -355,7 +361,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameters[nParameters]);
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameterCache);
                 ++nParameters;
             }
             else
@@ -376,7 +382,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                     return SIZE_MAX;
                 }
-                validateField(Name, "", RenderStreamLink::RS_PARAMETER_SKELETON, parameters[nParameters]);
+                validateField(Name, "", RenderStreamLink::RS_PARAMETER_SKELETON, parameterCache);
                 ++nParameters;
             }
         }
@@ -388,7 +394,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                 UE_LOG(LogRenderStream, Error, TEXT("Properties for %s not exposed in schema"), *Name);
                 return SIZE_MAX;
             }
-            validateField(Name, "", RenderStreamLink::RS_PARAMETER_TEXT, parameters[nParameters]);
+            validateField(Name, "", RenderStreamLink::RS_PARAMETER_TEXT, parameterCache);
             ++nParameters;
         }
         else
@@ -471,6 +477,21 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
+size_t RenderStreamSceneSelector::GetIndexFromCache(const TArray<RenderStreamLink::RemoteParameter>& parameterCache, const FString key)
+{
+    for (size_t index = 0; index < parameterCache.Num(); ++index)
+    {
+        if (key == parameterCache[index].key)
+        {
+            return index;
+        }
+    }
+
+    UE_LOG(LogRenderStream, Error, TEXT("Parameter not found in the cache"));
+
+    return -1;
+}
+
 void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -495,6 +516,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     size_t iText = 0;
     size_t iPose = 0;
 
+    TArray<RenderStreamLink::RemoteParameter> parameterCache;
+    for (size_t index = 0; index < nParams; ++index)
+	    parameterCache.Add((*ppParams)[index]);
+
     const float* floatValues = *ppFloatValues;
     const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
 
@@ -506,8 +531,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         {
             if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
             {
-                int oldValue = m_floatValuesLast.size() > iFloat ? m_floatValuesLast[iFloat] : 0;
-                int newValue = floatValues[iFloat];
+                const size_t floatIndex = GetIndexFromCache(parameterCache, *FuncIt->GetName());
+
+                int oldValue = m_floatValuesLast.size() > floatIndex ? m_floatValuesLast[floatIndex] : 0;
+                int newValue = floatValues[floatIndex];
                 if (newValue > oldValue) // value increment signals an invoke
                 {
                     // TODO: should we invoke once per increment? e.g. oldValue == 0, newValue == 5 => 1 invoke or 5 invokes?
@@ -527,13 +554,17 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         if (!Property->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || Property->HasAllPropertyFlags(CPF_DisableEditOnInstance))
             continue;
 
+        const size_t floatIndex = GetIndexFromCache(parameterCache, Property->GetName());
+
         if (Property->IsA(FBoolProperty::StaticClass()) ||
             Property->IsA(FByteProperty::StaticClass()) ||
             Property->IsA(FIntProperty::StaticClass()) ||
             Property->IsA(FFloatProperty::StaticClass()) ||
             Property->IsA(FDoubleProperty::StaticClass()))
         {
-            if (iFloat >= nFloatVals)
+            
+
+            if (floatIndex >= nFloatVals)
             {
                 UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read float value from disguise that is out of range. Does the metadata need to be regenerated?"));
                 continue;
@@ -541,27 +572,27 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
             if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
             {
-                const bool v = bool(floatValues[iFloat]);
+                const bool v = bool(floatValues[floatIndex]);
                 BoolProperty->SetPropertyValue_InContainer(Root, v);
             }
             else if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
             {
-                const uint8 v = uint8(floatValues[iFloat]);
+                const uint8 v = uint8(floatValues[floatIndex]);
                 ByteProperty->SetPropertyValue_InContainer(Root, v);
             }
             else if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
             {
-                const int32 v = int(floatValues[iFloat]);
+                const int32 v = int(floatValues[floatIndex]);
                 IntProperty->SetPropertyValue_InContainer(Root, v);
             }
             else if (FFloatProperty* FloatProperty = CastField<FFloatProperty>(Property))
             {
-                const float v = floatValues[iFloat];
+                const float v = floatValues[floatIndex];
                 FloatProperty->SetPropertyValue_InContainer(Root, v);
             }
             else if (FDoubleProperty* DoubleProperty = CastField<FDoubleProperty>(Property))
             {
-                const float v = floatValues[iFloat];
+                const float v = floatValues[floatIndex];
                 DoubleProperty->SetPropertyValue_InContainer(Root, v);
             }
             ++iFloat;
@@ -587,17 +618,17 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
             if (StructProperty->Struct == vec)
             {
-                FVector v(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
+                FVector v(floatValues[floatIndex], floatValues[floatIndex + 1], floatValues[floatIndex + 2]);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
             }
             else if (StructProperty->Struct == col)
             {
-                FColor v(floatValues[iFloat] * 255, floatValues[iFloat + 1] * 255, floatValues[iFloat + 2] * 255, floatValues[iFloat + 3] * 255);
+                FColor v(floatValues[floatIndex] * 255, floatValues[floatIndex + 1] * 255, floatValues[floatIndex + 2] * 255, floatValues[floatIndex + 3] * 255);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
             }
             else if (StructProperty->Struct == linCol)
             {
-                FLinearColor v(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]);
+                FLinearColor v(floatValues[floatIndex], floatValues[floatIndex + 1], floatValues[floatIndex + 2], floatValues[floatIndex + 3]);
                 StructProperty->CopyCompleteValue(StructAddress, &v);
             }
             else if (StructProperty->Struct == trans)
@@ -605,10 +636,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 static const FMatrix YUpMatrix(FVector(0.0f, 0.0f, 1.0f), FVector(1.0f, 0.0f, 0.0f), FVector(0.0f, 1.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f));
 
                 FMatrix m(
-                    FPlane(floatValues[iFloat + 0], floatValues[iFloat + 1], floatValues[iFloat + 2], floatValues[iFloat + 3]),
-                    FPlane(floatValues[iFloat + 4], floatValues[iFloat + 5], floatValues[iFloat + 6], floatValues[iFloat + 7]),
-                    FPlane(floatValues[iFloat + 8], floatValues[iFloat + 9], floatValues[iFloat + 10], floatValues[iFloat + 11]),
-                    FPlane(floatValues[iFloat + 12], floatValues[iFloat + 13], floatValues[iFloat + 14], floatValues[iFloat + 15])
+                    FPlane(floatValues[floatIndex + 0], floatValues[floatIndex + 1], floatValues[floatIndex + 2], floatValues[floatIndex + 3]),
+                    FPlane(floatValues[floatIndex + 4], floatValues[floatIndex + 5], floatValues[floatIndex + 6], floatValues[floatIndex + 7]),
+                    FPlane(floatValues[floatIndex + 8], floatValues[floatIndex + 9], floatValues[floatIndex + 10], floatValues[floatIndex + 11]),
+                    FPlane(floatValues[floatIndex + 12], floatValues[floatIndex + 13], floatValues[floatIndex + 14], floatValues[floatIndex + 15])
                 );
 
                 FTransform v = d3ToUEHelpers::Convertd3TransformToUE(m, YUpMatrix);
@@ -617,7 +648,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             }
             else if (StructProperty->Struct == rot)
             {
-                FRotator r(floatValues[iFloat], floatValues[iFloat + 1], floatValues[iFloat + 2]);
+                FRotator r(floatValues[floatIndex], floatValues[floatIndex + 1], floatValues[floatIndex + 2]);
                 StructProperty->CopyCompleteValue(StructAddress, &r);
             }
             iFloat += inc;
