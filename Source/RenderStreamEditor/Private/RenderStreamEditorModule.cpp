@@ -406,14 +406,19 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
 void FetchLevelCaches(
     TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
     TArray<const URenderStreamChannelCacheAsset*>& Levels,
-    const URenderStreamChannelCacheAsset* Parent)
+    const URenderStreamChannelCacheAsset* Parent,
+    bool isPersistentLevel)
 {
     Levels.Push(Parent);
+
+    if (isPersistentLevel)
+        return;
+
     for (FSoftObjectPath Path : Parent->SubLevels)
     {
         URenderStreamChannelCacheAsset* const* Cache = LevelParams.Find(Path);
         if (Cache != nullptr && !Levels.Contains(*Cache))
-            FetchLevelCaches(LevelParams, Levels, *Cache);
+            FetchLevelCaches(LevelParams, Levels, *Cache, false);
     }
 }
 
@@ -427,10 +432,10 @@ void GenerateScene(
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
     TArray<const URenderStreamChannelCacheAsset*> Levels;
-    if (Persistent != nullptr)
+    if (Persistent)
         Levels.Push(Persistent);
 
-    FetchLevelCaches(LevelParams, Levels, Cache);
+    FetchLevelCaches(LevelParams, Levels, Cache, !Persistent);
 
     uint32_t nParams = 0;
     for (auto Level : Levels)
