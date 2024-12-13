@@ -489,8 +489,8 @@ bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
     TArray<UPackage*> Packages;
     for (auto& Level : Levels)
     {
-	    URenderStreamChannelCacheAsset* Cache = GetOrCreateCache(Level);
-		UPackage* Package = Cache->GetPackage();
+        URenderStreamChannelCacheAsset* Cache = GetOrCreateCache(Level);
+        UPackage* Package = Cache->GetPackage();
         Packages.Add(Package);
     }
 
@@ -551,12 +551,12 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     args.bSlowTask = false;
     args.bForceByteSwapping = true;
 
-	const bool bSaved = UPackage::SavePackage(
-		Package,
-		Cache,
-		*PackageFileName,
-		args
-	);
+    const bool bSaved = UPackage::SavePackage(
+        Package,
+        Cache,
+        *PackageFileName,
+        args
+    );
 
     if (!bSaved) {
         UE_LOG(LogRenderStreamEditor, Warning, TEXT("Failed to save cache for level: %s"), *LevelPath);
