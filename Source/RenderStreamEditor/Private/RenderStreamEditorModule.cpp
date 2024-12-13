@@ -417,7 +417,7 @@ void FetchLevelCaches(
     {
         URenderStreamChannelCacheAsset* const* Cache = LevelParams.Find(Path);
         if (Cache != nullptr && !Levels.Contains(*Cache))
-            FetchLevelCaches(LevelParams, Levels, *Cache, false);
+            FetchLevelCaches(LevelParams, Levels, *Cache, true);
     }
 }
 
