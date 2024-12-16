@@ -22,6 +22,7 @@
 #include "RenderStreamChannelCacheAsset.h"
 #include "RenderStreamChannelDefinition.h"
 #include "RenderStreamCustomization.h"
+#include "RenderStreamSceneSelector.h"
 #include "RenderStreamSettings.h"
 #include "RenderStreamValidation.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -251,28 +252,20 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
     if (settings->GenerateEvents)
     {
-        for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+        for (UFunction* func : RenderStreamSceneSelector::GetEvents(Root))
         {
-            if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
-            {
-                const FString Name = FuncIt->GetName();
-                const FString Category = "Custom Events";
-                UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
-                CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
-            }
+            const FString Name = func->GetName();
+            const FString Category = "Custom Events";
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed custom event: %s"), *Name);
+            CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Event);
         }
     }
 
-    for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
+    for (FProperty* Property : RenderStreamSceneSelector::GetProperties(Root))
     {
-        const FProperty* Property = *PropIt;
         const FString Name = Property->GetName();
         const FString Category = Property->GetMetaData("Category");
-        if (!Property->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || Property->HasAllPropertyFlags(CPF_DisableEditOnInstance))
-        {
-            UE_LOG(LogRenderStreamEditor, Verbose, TEXT("Unexposed property: %s"), *Name);
-        }
-        else if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
+        if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
         {
             const bool v = BoolProperty->GetPropertyValue_InContainer(Root);
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed bool property: %s is %d"), *Name, v);
@@ -416,14 +409,19 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
 void FetchLevelCaches(
     TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
     TArray<const URenderStreamChannelCacheAsset*>& Levels,
-    const URenderStreamChannelCacheAsset* Parent)
+    const URenderStreamChannelCacheAsset* Parent,
+    bool needToFetchSublevels)
 {
     Levels.Push(Parent);
+
+    if (!needToFetchSublevels)
+        return;
+
     for (FSoftObjectPath Path : Parent->SubLevels)
     {
         URenderStreamChannelCacheAsset* const* Cache = LevelParams.Find(Path);
         if (Cache != nullptr && !Levels.Contains(*Cache))
-            FetchLevelCaches(LevelParams, Levels, *Cache);
+            FetchLevelCaches(LevelParams, Levels, *Cache, true);
     }
 }
 
@@ -436,11 +434,15 @@ void GenerateScene(
     FString sceneName = Cache->GetName();
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+    bool isStreamingLevelSceneSelector = settings->SceneSelector == ERenderStreamSceneSelector::StreamingLevels;
+
     TArray<const URenderStreamChannelCacheAsset*> Levels;
-    if (Persistent != nullptr)
+    if (Persistent && isStreamingLevelSceneSelector) // add persistent level's parameters to sublevels for Streaming level only
         Levels.Push(Persistent);
 
-    FetchLevelCaches(LevelParams, Levels, Cache);
+    bool needToFetchSublevels = settings->SceneSelector == ERenderStreamSceneSelector::None;
+    FetchLevelCaches(LevelParams, Levels, Cache, needToFetchSublevels);
 
     uint32_t nParams = 0;
     for (auto Level : Levels)

@@ -58,6 +58,50 @@ enum RenderStreamSceneSelector::SchemaStatus RenderStreamSceneSelector::SchemaSt
     return SchemaStatus::Loaded;
 }
 
+TArray<UFunction*> RenderStreamSceneSelector::GetEvents(const AActor* rootActor)
+{
+    TArray<UFunction*> out;
+
+    for (TFieldIterator<UFunction> FuncIt(rootActor->GetClass()); FuncIt; ++FuncIt)
+    {
+        if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+        {
+            out.Add(*FuncIt);
+        }
+    }
+
+    // The events seem to be iterated in a random order depending on whether we are in editor or game mode.
+    // The sort key doesn't matter, it just needs to be consistent.
+    out.Sort([](const UFunction& a, const UFunction& b) {
+        return a.GetName() < b.GetName();
+    });
+
+    return out;
+}
+
+TArray<FProperty*> RenderStreamSceneSelector::GetProperties(const AActor* rootActor)
+{
+    TArray<FProperty*> out;
+    for (TFieldIterator<FProperty> PropIt(rootActor->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
+    {
+        if (!PropIt->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || PropIt->HasAllPropertyFlags(CPF_DisableEditOnInstance))
+        {
+            continue;
+        }
+
+        out.Add(*PropIt);
+    }
+
+    // While no properties have been reported to be produced out of order, due to the issue with iterating functions
+    // in `GetEvents`, it seems sensible to sort properties in a consistent (alphabetical) order, too.
+    // The sort key doesn't matter, it just needs to be consistent.
+    out.Sort([](const FProperty& a, const FProperty& b) {
+        return a.GetName() < b.GetName();
+    });
+
+    return out;
+}
+
 const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
 {
     if (!m_schemaMem.empty())
@@ -172,33 +216,25 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
 
     if (settings->GenerateEvents)
     {
-        for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+        for (UFunction* func : GetEvents(Root))
         {
-            if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+            const FString Name = func->GetName();
+            UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s"), *Name);
+            if (numParameters < nParameters + 1)
             {
-                const FString Name = FuncIt->GetName();
-                UE_LOG(LogRenderStream, Log, TEXT("Exposed custom event: %s"), *Name);
-                if (numParameters < nParameters + 1)
-                {
-                    UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
-                    return SIZE_MAX;
-                }
-                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameters[nParameters]))
-                    return SIZE_MAX;
-                ++nParameters;
+                UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                return SIZE_MAX;
             }
+            if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_EVENT, parameters[nParameters]))
+                return SIZE_MAX;
+            ++nParameters;
         }
     }
 
-    for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt; ++PropIt)
+    for (FProperty* Property : RenderStreamSceneSelector::GetProperties(Root))
     {
-        const FProperty* Property = *PropIt;
         const FString Name = Property->GetName();
-        if (!Property->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || Property->HasAllPropertyFlags(CPF_DisableEditOnInstance))
-        {
-            UE_LOG(LogRenderStream, Verbose, TEXT("Unexposed property: %s"), *Name);
-        }
-        else if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
+        if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property))
         {
             UE_LOG(LogRenderStream, Log, TEXT("Exposed bool property: %s"), *Name);
             if (numParameters < nParameters + 1)
@@ -460,18 +496,19 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     // These are updated by ApplyParameters to allow each actor to operate on the next set of data.
     const RenderStreamLink::RemoteParameter* paramsPtr = params.parameters;
     const float* floatValuesPtr = floatValues.data();
+    size_t textValues = 0;
     const RenderStreamLink::ImageFrameData* imageValuesPtr = imageValues.data();
     for (AActor* actor : Actors)
     {
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
-        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size());
+        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size(), textValues);
     }
 
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
-void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals)
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals, size_t& textValues)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
     struct
@@ -492,7 +529,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     size_t iParam = 0;
     size_t iFloat = 0;
     size_t iImage = 0;
-    size_t iText = 0;
     size_t iPose = 0;
 
     const float* floatValues = *ppFloatValues;
@@ -502,31 +538,24 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
     if (settings->GenerateEvents)
     {
-        for (TFieldIterator<UFunction> FuncIt(Root->GetClass()); FuncIt; ++FuncIt)
+        for (UFunction* func : GetEvents(Root))
         {
-            if (FuncIt->HasAnyFunctionFlags(FUNC_BlueprintEvent) && FuncIt->HasAnyFunctionFlags(FUNC_BlueprintCallable))
+            int oldValue = m_floatValuesLast.size() > iFloat ? m_floatValuesLast[iFloat] : 0;
+            int newValue = floatValues[iFloat];
+            if (newValue > oldValue) // value increment signals an invoke
             {
-                int oldValue = m_floatValuesLast.size() > iFloat ? m_floatValuesLast[iFloat] : 0;
-                int newValue = floatValues[iFloat];
-                if (newValue > oldValue) // value increment signals an invoke
-                {
-                    // TODO: should we invoke once per increment? e.g. oldValue == 0, newValue == 5 => 1 invoke or 5 invokes?
-                    uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(FuncIt->ParmsSize));
-                    FFrame Frame = FFrame(Root, *FuncIt, Buffer);
-                    FuncIt->Invoke(Root, Frame, Buffer);
-                    UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
-                }
-                ++iFloat;
+                // TODO: should we invoke once per increment? e.g. oldValue == 0, newValue == 5 => 1 invoke or 5 invokes?
+                uint8* Buffer = static_cast<uint8*>(FMemory_Alloca(func->ParmsSize));
+                FFrame Frame = FFrame(Root, func, Buffer);
+                func->Invoke(Root, Frame, Buffer);
+                UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
             }
+            ++iFloat;
         }
     }
 
-    for (TFieldIterator<FProperty> PropIt(Root->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropIt && iParam < nParams; ++PropIt)
+    for (FProperty* Property : RenderStreamSceneSelector::GetProperties(Root))
     {
-        FProperty* Property = *PropIt;
-        if (!Property->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) || Property->HasAllPropertyFlags(CPF_DisableEditOnInstance))
-            continue;
-
         if (Property->IsA(FBoolProperty::StaticClass()) ||
             Property->IsA(FByteProperty::StaticClass()) ||
             Property->IsA(FIntProperty::StaticClass()) ||
@@ -725,11 +754,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
         {
             const char* cString = nullptr;
-            if (RenderStreamLink::instance().rs_getFrameText(specHash, iText, &cString) == RenderStreamLink::RS_ERROR_SUCCESS)
+            if (RenderStreamLink::instance().rs_getFrameText(specHash, textValues, &cString) == RenderStreamLink::RS_ERROR_SUCCESS)
             {
                 TextProperty->SetPropertyValue_InContainer(Root, FText::FromString(UTF8_TO_TCHAR(cString)));
             }
-            ++iText;
+            ++textValues;
         }
         ++iParam;
     }
