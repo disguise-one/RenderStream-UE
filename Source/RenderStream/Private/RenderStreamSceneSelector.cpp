@@ -451,18 +451,19 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     // These are updated by ApplyParameters to allow each actor to operate on the next set of data.
     const RenderStreamLink::RemoteParameter* paramsPtr = params.parameters;
     const float* floatValuesPtr = floatValues.data();
+    size_t textValues = 0;
     const RenderStreamLink::ImageFrameData* imageValuesPtr = imageValues.data();
     for (AActor* actor : Actors)
     {
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
-        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size());
+        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size(), textValues);
     }
 
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
-void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals)
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals, size_t& textValues)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
     struct
@@ -483,7 +484,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     size_t iParam = 0;
     size_t iFloat = 0;
     size_t iImage = 0;
-    size_t iText = 0;
     size_t iPose = 0;
 
     const float* floatValues = *ppFloatValues;
@@ -716,11 +716,11 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         else if (const FTextProperty* TextProperty = CastField<const FTextProperty>(Property))
         {
             const char* cString = nullptr;
-            if (RenderStreamLink::instance().rs_getFrameText(specHash, iText, &cString) == RenderStreamLink::RS_ERROR_SUCCESS)
+            if (RenderStreamLink::instance().rs_getFrameText(specHash, textValues, &cString) == RenderStreamLink::RS_ERROR_SUCCESS)
             {
                 TextProperty->SetPropertyValue_InContainer(Root, FText::FromString(UTF8_TO_TCHAR(cString)));
             }
-            ++iText;
+            ++textValues;
         }
         ++iParam;
     }
