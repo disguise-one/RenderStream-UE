@@ -7,7 +7,7 @@ class UWorld;
 class AActor;
 
 // Select a scene within the project, provide and apply parameters.
-class RenderStreamSceneSelector
+class RENDERSTREAM_API RenderStreamSceneSelector
 {
 public:
     virtual ~RenderStreamSceneSelector();
@@ -23,6 +23,10 @@ public:
 
     SchemaStatus SchemaStatus() const;
 
+public: // static helpers
+    static TArray<UFunction*> GetEvents(const AActor* rootActor);
+    static TArray<FProperty*> GetProperties(const AActor* rootActor);
+
 protected:
     const RenderStreamLink::Schema& Schema() const;
     void GetAllLevels(TArray<AActor*>& Actors, ULevel* Level) const;
@@ -32,7 +36,7 @@ protected:
     void ApplyParameters(uint32_t sceneId, const TArray<AActor*>& Actors);
 private:
     size_t ValidateParameters(const AActor* Root, RenderStreamLink::RemoteParameter* const parameters, size_t numParameters) const;
-    void ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals);
+    void ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals, size_t& nTextVals);
     void ApplySkeletalPose(uint64_t specHash, size_t iPose, const FString& ParamKey, RenderStreamLink::FAnimDataKey& PropKey);
     
     TMap<uint64_t /*id*/, RenderStreamLink::FSkeletalLayout> m_skeletalLayoutCache;
