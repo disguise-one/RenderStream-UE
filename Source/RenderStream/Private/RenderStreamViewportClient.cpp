@@ -1,7 +1,6 @@
 #include "RenderStreamViewportClient.h"
 
 #include "Camera/CameraActor.h"
-#include "RenderStreamChannelDefinition.h"
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/Device/IDisplayClusterRenderDevice.h"
 #include "IDisplayCluster.h"
@@ -569,6 +568,14 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					if (PolicyController)
 						LocalPlayer = PolicyController->GetLocalPlayer();
 				}
+
+                const ACameraActor* Camera = Info.Template.Get();
+                const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
+
+                if (Definition != nullptr)
+                {
+                    ViewFamily.EngineShowFlags = Definition->ShowFlags;
+                }
 				/// !!!! disguise customizations
 
 				// Calculate the player's view information.
@@ -589,7 +596,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					Views.Add(View);
 
 					/// !!!! disguise customizations
-					UpdateView(&ViewFamily, View, Info);
+					UpdateView(&ViewFamily, View, Info, Definition);
 					/// !!!! disguise customizations
 
 					// Apply viewport context settings to view (crossGPU, visibility, etc)
@@ -1008,18 +1015,15 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
 /// DisplayClusterViewportClient.cpp copy-pasta
 
-void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info)
+void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info, const URenderStreamChannelDefinition* Definition)
 {
     if (!Info.Template.IsValid())
         return;
 
     TSet<FPrimitiveComponentId> Collection;
-    const ACameraActor* Camera = Info.Template.Get();
-    const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
+
     if (Definition != nullptr)
     {
-        EngineShowFlags = Definition->ShowFlags;
-        ViewFamily->EngineShowFlags = Definition->ShowFlags;
         View->bCameraMotionBlur = Definition->ShowFlags.MotionBlur;
         const TSet<TSoftObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EChannelVisibilty::Visible ? Definition->Hidden : Definition->Visible;
         for (const TSoftObjectPtr<AActor> Actor : Actors)
