@@ -101,10 +101,23 @@ const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
         return m_defaultSchema.schema;
 }
 
+bool RenderStreamSceneSelector::IsExe() const
+{
+    FString executableName = FPlatformProcess::ExecutableName();
+    return !executableName.Contains("UnrealEditor");
+}
 
 void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 {
-    const std::string AssetPath = TCHAR_TO_UTF8(*FPaths::GetProjectFilePath());
+    std::string AssetPath;
+    if(IsExe())
+    {
+        AssetPath = TCHAR_TO_UTF8(FPlatformProcess::ExecutablePath());
+    }
+    else
+    {
+        AssetPath = TCHAR_TO_UTF8(*FPaths::GetProjectFilePath());
+    }
     uint32_t nBytes = 0;
     RenderStreamLink::instance().rs_loadSchema(AssetPath.c_str(), nullptr, &nBytes);
 
