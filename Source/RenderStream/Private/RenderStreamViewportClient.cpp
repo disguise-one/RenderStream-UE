@@ -1,7 +1,6 @@
 #include "RenderStreamViewportClient.h"
 
 #include "Camera/CameraActor.h"
-#include "RenderStreamChannelDefinition.h"
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/Device/IDisplayClusterRenderDevice.h"
 #include "IDisplayCluster.h"
@@ -62,6 +61,11 @@
 
 #include "RenderStream.h"
 
+#include "Slate/SceneViewport.h"
+#include "IDisplayClusterCallbacks.h"
+#include "UObject/UObjectGlobals.h"
+#include "UObject/Package.h"
+
 URenderStreamViewportClient::URenderStreamViewportClient(FVTableHelper& Helper)
     : Super(Helper)
 {
@@ -79,10 +83,10 @@ static UCanvas* GetCanvasByName(FName CanvasName)
 	UCanvas** FoundCanvas = CanvasMap.Find(CanvasName);
 	if (!FoundCanvas)
 	{
-		UCanvas* CanvasObject = FindObject<UCanvas>(GetTransientPackage(), *CanvasName.ToString());
+		UCanvas* CanvasObject = FindObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), *CanvasName.ToString());
 		if (!CanvasObject)
 		{
-			CanvasObject = NewObject<UCanvas>(GetTransientPackage(), CanvasName);
+			CanvasObject = NewObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), CanvasName);
 			CanvasObject->AddToRoot();
 		}
 
@@ -194,13 +198,190 @@ struct FCompareViewFamilyBySizeAndGPU
 	}
 };
 
+// Wrapper for FSceneViewport to allow us to add custom stats specific to display cluster (per-view-family CPU and GPU perf)
+class FDisplayClusterSceneViewport : public FSceneViewport
+{
+public:
+	FDisplayClusterSceneViewport(FViewportClient* InViewportClient, TSharedPtr<SViewport> InViewportWidget)
+		: FSceneViewport(InViewportClient, InViewportWidget)
+	{}
+
+	~FDisplayClusterSceneViewport()
+	{
+		for (auto It = CpuHistoryByDescription.CreateIterator(); It; ++It)
+		{
+			delete It.Value();
+		}
+	}
+
+	virtual int32 DrawStatsHUD(FCanvas* InCanvas, int32 InX, int32 InY) override
+	{
+#if GPUPROFILERTRACE_ENABLED
+		/// !!!! disguise customizations
+		static const auto DisplayClusterShowStats =  IConsoleManager::Get().FindConsoleVariable(TEXT("DC.ShowStats"));
+		/// !!!! disguise customizations
+		
+		if (DisplayClusterShowStats->GetInt())
+		{
+			// Get GPU perf results
+			TArray<FRealtimeGPUProfilerDescriptionResult> PerfResults;
+			FRealtimeGPUProfiler::Get()->FetchPerfByDescription(PerfResults);
+
+			UFont* StatsFont = GetStatsFont();
+
+			const FLinearColor HeaderColor = FLinearColor(1.f, 0.2f, 0.f);
+
+			if (PerfResults.Num())
+			{
+				// Get CPU perf results
+				TArray<float> CpuPerfResults;
+				CpuPerfResults.AddUninitialized(PerfResults.Num());
+				{
+					FRWScopeLock Lock(CpuHistoryMutex, SLT_Write);
+
+					for (int32 ResultIndex = 0; ResultIndex < PerfResults.Num(); ResultIndex++)
+					{
+						CpuPerfResults[ResultIndex] = FetchHistoryAverage(PerfResults[ResultIndex].Description);
+					}
+				}
+
+				// Compute column sizes
+				int32 YIgnore;
+
+				const TCHAR* DescriptionHeader = TEXT("Display Cluster Stats");
+				int32 DescriptionColumnWidth;
+				StringSize(StatsFont, DescriptionColumnWidth, YIgnore, DescriptionHeader);
+
+				for (const FRealtimeGPUProfilerDescriptionResult& PerfResult : PerfResults)
+				{
+					int32 XL;
+					StringSize(StatsFont, XL, YIgnore, *PerfResult.Description);
+
+					DescriptionColumnWidth = FMath::Max(DescriptionColumnWidth, XL);
+				}
+
+				int32 NumberColumnWidth;
+				StringSize(StatsFont, NumberColumnWidth, YIgnore, *FString::ChrN(7, 'W'));
+
+				// Render header
+				InCanvas->DrawShadowedString(InX, InY, DescriptionHeader, StatsFont, HeaderColor);
+				RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 1 * NumberColumnWidth, InY, TEXT("GPUs"), HeaderColor);
+				RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 2 * NumberColumnWidth, InY, TEXT("Average"), HeaderColor);
+				RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 3 * NumberColumnWidth, InY, TEXT("CPU"), HeaderColor);
+				InY += StatsFont->GetMaxCharHeight();
+
+				// Render rows
+				int32 ResultIndex = 0;
+				const FLinearColor StatColor = FLinearColor(0.f, 1.f, 0.f);
+
+				for (const FRealtimeGPUProfilerDescriptionResult& PerfResult : PerfResults)
+				{
+					InCanvas->DrawTile(InX, InY, DescriptionColumnWidth + 3 * NumberColumnWidth, StatsFont->GetMaxCharHeight(),
+						0, 0, 1, 1,
+						(ResultIndex & 1) ? FLinearColor(0.02f, 0.02f, 0.02f, 0.88f) : FLinearColor(0.05f, 0.05f, 0.05f, 0.92f),
+						GWhiteTexture, true);
+
+					// Source GPU times are in microseconds, CPU times in seconds, so we need to divide one by 1000, and multiply the other by 1000
+					InCanvas->DrawShadowedString(InX, InY, *PerfResult.Description, StatsFont, StatColor);
+					RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 1 * NumberColumnWidth, InY, *FString::Printf(TEXT("%d"), PerfResult.GPUMask.GetNative()), StatColor);
+					RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 2 * NumberColumnWidth, InY, *FString::Printf(TEXT("%.2f"), PerfResult.AverageTime / 1000.f), StatColor);
+					RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 3 * NumberColumnWidth, InY, *FString::Printf(TEXT("%.2f"), CpuPerfResults[ResultIndex] * 1000.f), StatColor);
+
+					InY += StatsFont->GetMaxCharHeight();
+
+					ResultIndex++;
+				}
+			}
+			else
+			{
+				InCanvas->DrawShadowedString(InX, InY, TEXT("Display Cluster Stats [NO DATA]"), StatsFont, HeaderColor);
+				InY += StatsFont->GetMaxCharHeight();
+			}
+
+			InY += StatsFont->GetMaxCharHeight();
+		}
+#endif  // GPUPROFILERTRACE_ENABLED
+
+		return InY;
+	}
+
+	float* GetNextHistoryWriteAddress(const FString& Description)
+	{
+		FRWScopeLock Lock(CpuHistoryMutex, SLT_Write);
+
+		FCpuProfileHistory*& History = CpuHistoryByDescription.FindOrAdd(Description);
+		if (!History)
+		{
+			History = new FCpuProfileHistory;
+		}
+
+		return &History->Times[(History->HistoryIndex++) % FCpuProfileHistory::HistoryCount];
+	}
+
+private:
+	static void RightJustify(FCanvas* Canvas, UFont* StatsFont, const int32 X, const int32 Y, TCHAR const* Text, FLinearColor const& Color)
+	{
+		int32 ColumnSizeX, ColumnSizeY;
+		StringSize(StatsFont, ColumnSizeX, ColumnSizeY, Text);
+		Canvas->DrawShadowedString(X - ColumnSizeX, Y, Text, StatsFont, Color);
+	}
+
+	// Only callable when the CpuHistoryMutex is locked!
+	float FetchHistoryAverage(const FString& Description) const
+	{
+		const FCpuProfileHistory* const* History = CpuHistoryByDescription.Find(Description);
+
+		float Average = 0.f;
+		if (History)
+		{
+			float ValidResultCount = 0.f;
+			for (uint32 HistoryIndex = 0; HistoryIndex < FCpuProfileHistory::HistoryCount; HistoryIndex++)
+			{
+				float HistoryTime = (*History)->Times[HistoryIndex];
+				if (HistoryTime > 0.f)
+				{
+					Average += HistoryTime;
+					ValidResultCount += 1.f;
+				}
+			}
+			if (ValidResultCount > 0.f)
+			{
+				Average /= ValidResultCount;
+			}
+		}
+		return Average;
+	}
+
+	struct FCpuProfileHistory
+	{
+		FCpuProfileHistory()
+		{
+			FMemory::Memset(*this, 0);
+		}
+
+		static const uint32 HistoryCount = 64;
+
+		// Constructor memsets everything to zero, assuming structure is Plain Old Data.  If any dynamic structures are
+		// added, you'll need a more generalized constructor that zeroes out all the uninitialized data.
+		uint32 HistoryIndex;
+		float Times[HistoryCount];
+	};
+
+	// History payload is separately allocated in memory, as it's written to asynchronously by the Render Thread, and we
+	// can't have it moved if the Map storage gets reallocated when new view families are added.
+	TMap<FString, FCpuProfileHistory*> CpuHistoryByDescription;
+	FRWLock CpuHistoryMutex;
+};
+
 void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 {
+	/// !!!! disguise customizations
 	static const auto DisplayClusterForceCopyCrossGPU = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.ForceCopyCrossGPU"));
 	static const auto DisplayClusterLumenPerView = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.LumenPerView"));
 	static const auto DisplayClusterSortViews = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.SortViews"));
 	static const auto DisplayClusterSingleRender = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.SingleRender"));
 	static const auto DisplayClusterDebugDraw = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.DebugDraw"));
+	/// !!!! disguise customizations
 
 	////////////////////////////////
 	// For any operation mode other than 'Cluster' we use default UGameViewportClient::Draw pipeline
@@ -387,6 +568,14 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					if (PolicyController)
 						LocalPlayer = PolicyController->GetLocalPlayer();
 				}
+
+                const ACameraActor* Camera = Info.Template.Get();
+                const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
+
+                if (Definition != nullptr)
+                {
+                    ViewFamily.EngineShowFlags = Definition->ShowFlags;
+                }
 				/// !!!! disguise customizations
 
 				// Calculate the player's view information.
@@ -394,7 +583,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				FRotator	ViewRotation;
 				FSceneView* View = RenderFrameViewportManager->CalcSceneView(LocalPlayer, &ViewFamily, ViewLocation, ViewRotation, InViewport, nullptr, ViewportContext.StereoViewIndex);
 
-				if (View && !DCView.IsViewportContextCanBeRendered())
+				if (View && (!DCView.IsViewportContextCanBeRendered() || ViewFamily.RenderTarget == nullptr))
 				{
 					ViewFamily.Views.Remove(View);
 
@@ -407,7 +596,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					Views.Add(View);
 
 					/// !!!! disguise customizations
-					UpdateView(&ViewFamily, View, Info);
+					UpdateView(&ViewFamily, View, Info, Definition);
 					/// !!!! disguise customizations
 
 					// Apply viewport context settings to view (crossGPU, visibility, etc)
@@ -454,9 +643,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					View->CurrentBufferVisualizationMode = GetCurrentBufferVisualizationMode();
 
 					View->CameraConstrainedViewRect = View->UnscaledViewRect;
-
-					// Enable per-view virtual shadow map caching
-					View->State->AddVirtualShadowMapCache(MyWorld->Scene);
 
 					// Enable per-view Lumen scene
 					if (DisplayClusterLumenPerView->GetInt())
@@ -559,7 +745,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 				}
 
 				// Set up secondary resolution fraction for the view family.
-				if (!bStereoRendering && ViewFamily.SupportsScreenPercentage())
+				if (ViewFamily.SupportsScreenPercentage())
 				{
 					float CustomSecondaryScreenPercentage = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SecondaryScreenPercentage.GameViewport"), false)->GetFloat();
 					if (CustomSecondaryScreenPercentage > 0.0)
@@ -580,7 +766,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					TEXT("Some code has tried to set up an alien screen percentage driver, that could be wrong if not supported very well by the RHI."));
 
 				// Setup main view family with screen percentage interface by dynamic resolution if screen percentage is enabled.
-#if WITH_DYNAMIC_RESOLUTION
+	#if WITH_DYNAMIC_RESOLUTION
 				if (ViewFamily.EngineShowFlags.ScreenPercentage)
 				{
 					FDynamicResolutionStateInfos DynamicResolutionStateInfos;
@@ -602,14 +788,14 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 							DynamicResolutionStateInfos.ResolutionFractionUpperBounds[GDynamicPrimaryResolutionFraction]));
 					}
 
-#if CSV_PROFILER
+	#if CSV_PROFILER
 					if (DynamicResolutionStateInfos.ResolutionFractionApproximations[GDynamicPrimaryResolutionFraction] >= 0.0f)
 					{
 						CSV_CUSTOM_STAT_GLOBAL(DynamicResolutionPercentage, DynamicResolutionStateInfos.ResolutionFractionApproximations[GDynamicPrimaryResolutionFraction] * 100.0f, ECsvCustomStatOp::Set);
 					}
-#endif
+	#endif
 				}
-#endif
+	#endif
 
 				// If a screen percentage interface was not set by dynamic resolution, then create one matching legacy behavior.
 				if (ViewFamily.GetScreenPercentageInterface() == nullptr)
@@ -618,7 +804,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					float CustomBufferRatio = DCViewFamily.CustomBufferRatio;
 
 					float GlobalResolutionFraction = 1.0f;
-					float SecondaryScreenPercentage = 1.0f;
+					float SecondaryScreenPercentage = ViewFamily.SecondaryViewFraction;
 
 					if (ViewFamily.EngineShowFlags.ScreenPercentage)
 					{
@@ -657,12 +843,10 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 #endif
 
 				ViewFamily.ProfileDescription = DCViewFamily.Views[0].Viewport->GetId();
-				// !!!! disguise customizations - FDisplayClusterSceneViewport is private
-				//if (!ViewFamily.ProfileDescription.IsEmpty())
-				//{
-				//	ViewFamily.ProfileSceneRenderTime = ((FDisplayClusterSceneViewport*)InViewport)->GetNextHistoryWriteAddress(ViewFamily.ProfileDescription);
-				//}
-				// !!!! disguise customizations
+				if (!ViewFamily.ProfileDescription.IsEmpty())
+				{
+					ViewFamily.ProfileSceneRenderTime = ((FDisplayClusterSceneViewport*)InViewport)->GetNextHistoryWriteAddress(ViewFamily.ProfileDescription);
+				}
 
 				// Draw the player views.
 				if (!bDisableWorldRendering && PlayerViewMap.Num() > 0 && FSlateApplication::Get().GetPlatformApplication()->IsAllowedToRender()) //-V560
@@ -679,6 +863,9 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 			}
 		}
 	}
+
+	// Trigger PreSubmitViewFamilies event before submitting to render
+	IDisplayCluster::Get().GetCallbacks().OnDisplayClusterPreSubmitViewFamilies().Broadcast(ViewFamilies);
 
 	// We gathered all the view families, now render them
 	if (!ViewFamilies.IsEmpty())
@@ -724,10 +911,10 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 					const FRHIGPUMask SubmitGPUMask = ViewFamily.Views.Num() == 1 ? ViewFamily.Views[0]->GPUMask : FRHIGPUMask::All();
 					ENQUEUE_RENDER_COMMAND(UDisplayClusterViewportClient_SubmitCommandList)(
 						[SubmitGPUMask](FRHICommandListImmediate& RHICmdList)
-						{
-							SCOPED_GPU_MASK(RHICmdList, SubmitGPUMask);
-							RHICmdList.SubmitCommandsHint();
-						});
+					{
+						SCOPED_GPU_MASK(RHICmdList, SubmitGPUMask);
+						RHICmdList.SubmitCommandsHint();
+					});
 				}
 			}
 		}
@@ -736,13 +923,6 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 	{
 		// Or if none to render, do logic for when rendering is skipped
 		GetRendererModule().PerFrameCleanupIfSkipRenderer();
-
-		// Make sure RHI resources get flushed if we're not using a renderer
-		ENQUEUE_RENDER_COMMAND(UDisplayClusterViewportClient_FlushRHIResources)(
-			[](FRHICommandListImmediate& RHICmdList)
-			{
-				RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-			});
 	}
 
 	// Handle special viewports game-thread logic at frame end
@@ -835,18 +1015,15 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 
 /// DisplayClusterViewportClient.cpp copy-pasta
 
-void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info)
+void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info, const URenderStreamChannelDefinition* Definition)
 {
     if (!Info.Template.IsValid())
         return;
 
     TSet<FPrimitiveComponentId> Collection;
-    const ACameraActor* Camera = Info.Template.Get();
-    const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
+
     if (Definition != nullptr)
     {
-        EngineShowFlags = Definition->ShowFlags;
-        ViewFamily->EngineShowFlags = Definition->ShowFlags;
         View->bCameraMotionBlur = Definition->ShowFlags.MotionBlur;
         const TSet<TSoftObjectPtr<AActor>> Actors = Definition->DefaultVisibility == EChannelVisibilty::Visible ? Definition->Hidden : Definition->Visible;
         for (const TSoftObjectPtr<AActor> Actor : Actors)
@@ -855,7 +1032,7 @@ void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FScen
             {
                 Actor->ForEachComponent<UPrimitiveComponent>(false, [&Collection](const UPrimitiveComponent* PrimativeComponent)
                 {
-                    Collection.Add(PrimativeComponent->ComponentId);
+                    Collection.Add(PrimativeComponent->GetPrimitiveSceneId());
                 });
             }
         }

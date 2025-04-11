@@ -11,6 +11,7 @@
 #include "Misc/MapErrors.h"
 #include "Camera/CameraComponent.h"
 #include "LevelEditorSubsystem.h"
+#include "Kismet/GameplayStatics.h"
 
 bool FRenderStreamValidation::ValidateProjectSettings()
 {

@@ -50,6 +50,7 @@ public class RenderStream : ModuleRules
         PrivateIncludePaths.AddRange(
             new string[]
             {
+                "RenderStream/Private",
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private"),
                 Path.Combine(EngineDirectory, "Source/Runtime/D3D12RHI/Private/Windows"),
                 Path.Combine(EngineDirectory, "Source/ThirdParty/Windows/D3DX12/Include"),

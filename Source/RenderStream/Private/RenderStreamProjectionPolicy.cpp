@@ -7,6 +7,7 @@
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "DisplayClusterConfigurationTypes.h"
+#include "DisplayCluster/Public/DisplayClusterRootActor.h"
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
@@ -155,6 +156,60 @@ bool FRenderStreamProjectionPolicy::GetProjectionMatrix(class IDisplayClusterVie
     OutPrjMatrix = PrjMatrix * clippingMatrix;
 
     return true;
+}
+
+bool FRenderStreamProjectionPolicy::ImplSetupProjectionViewPoint(IDisplayClusterViewport* InViewport, const float InDeltaTime, FMinimalViewInfo& InOutViewInfo, float* OutCustomNearClippingPlane) const
+{
+	if (OutCustomNearClippingPlane)
+	{
+		*OutCustomNearClippingPlane = -1;
+	}
+
+	bool bResult = false;
+
+    FRenderStreamModule* Module = FRenderStreamModule::Get();
+    check(Module);
+    auto& Info = Module->GetViewportInfo(InViewport->GetId());
+    UCameraComponent* AssignedCamera = Info.Camera.IsValid() ? Info.Camera->GetCameraComponent() : nullptr;
+
+	constexpr bool UseCameraPostProcess = true;
+
+	if (AssignedCamera)
+	{
+		// Use assigned camera component
+		// Store CustomNearClippingPlane locally, and then use that value for the projection matrix
+		bResult = IDisplayClusterViewport::GetCameraComponentView(AssignedCamera, InDeltaTime, UseCameraPostProcess, InOutViewInfo, OutCustomNearClippingPlane);
+	}
+	else if (UWorld* CurrentWorld = InViewport ? InViewport->GetConfiguration().GetCurrentWorld() : nullptr)
+	{
+		// Get active player camera
+		bResult = IDisplayClusterViewport::GetPlayerCameraView(CurrentWorld, UseCameraPostProcess, InOutViewInfo);
+	}
+
+	// Fix camera lens deffects (prototype)
+	// InOutViewInfo.Location += CameraSettings.FrustumOffset;
+	// InOutViewInfo.Rotation += CameraSettings.FrustumRotation;
+
+	return bResult;
+}
+
+void FRenderStreamProjectionPolicy::UpdatePostProcessSettings(IDisplayClusterViewport* InViewport)
+{
+    // Copied from FDisplayClusterProjectionCameraPolicy
+	if (InViewport && !EnumHasAnyFlags(InViewport->GetRenderSettingsICVFX().RuntimeFlags, EDisplayClusterViewportRuntimeICVFXFlags::InCamera))
+	{
+		float DeltaTime = 0.0f;
+		if (ADisplayClusterRootActor* SceneRootActor = InViewport->GetConfiguration().GetRootActor(EDisplayClusterRootActorType::Scene))
+		{
+			DeltaTime = SceneRootActor->GetWorldDeltaSeconds();
+		}
+
+		FMinimalViewInfo ViewInfo;
+		if (ImplSetupProjectionViewPoint(InViewport, DeltaTime, ViewInfo) && ViewInfo.PostProcessBlendWeight > 0.0f)
+		{
+			InViewport->GetViewport_CustomPostProcessSettings().AddCustomPostProcess(IDisplayClusterViewport_CustomPostProcessSettings::ERenderPass::Override, ViewInfo.PostProcessSettings, ViewInfo.PostProcessBlendWeight, true);
+		}
+	}
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "DisplayClusterViewportClient.h"
+#include "RenderStreamChannelDefinition.h"
 #include "RenderStreamViewportClient.generated.h"
 
 UCLASS()
@@ -18,7 +19,7 @@ public:
     virtual void Draw(FViewport* Viewport, FCanvas* SceneCanvas) override;
 
 protected:
-    void UpdateView(class FSceneViewFamily* ViewFamily, class FSceneView* View, const struct FRenderStreamViewportInfo& Info);
+    void UpdateView(class FSceneViewFamily* ViewFamily, class FSceneView* View, const struct FRenderStreamViewportInfo& Info, const URenderStreamChannelDefinition* Definition);
 
 //#if WITH_EDITOR
 //    bool Draw_PIE(FViewport* InViewport, FCanvas* SceneCanvas);

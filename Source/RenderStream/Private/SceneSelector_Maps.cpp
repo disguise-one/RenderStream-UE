@@ -1,6 +1,9 @@
 #include "SceneSelector_Maps.h"
+#include "RenderStream.h"
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
+#include "Kismet/GameplayStatics.h"
+
 
 void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
 {

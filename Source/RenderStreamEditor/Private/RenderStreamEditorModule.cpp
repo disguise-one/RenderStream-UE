@@ -54,6 +54,16 @@ DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
 const FString ContentFolder = TEXT("/Game");
 
+TSharedRef<IDetailCustomization> MakeDefinitionCustomizationInstance()
+{
+    return MakeShareable(new FDefinitionCustomization);
+}
+
+TSharedRef<IDetailCustomization> MakeSettingsCustomizationInstance()
+{
+    return MakeShareable(new FSettingsCustomization);
+}
+
 void FRenderStreamEditorModule::StartupModule()
 {
     {
