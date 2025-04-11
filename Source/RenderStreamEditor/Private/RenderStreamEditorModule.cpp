@@ -910,7 +910,7 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \
         -archivedirectory=\"%s\" -clientconfig=Development -nocompile -nocompileuat"),
         *projectPath,
-        projectName,
+        *projectName,
         *enginePath,
         *outputFolder);
 
