@@ -900,15 +900,17 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 {
     FString uatPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Build/BatchFiles/RunUAT.bat"));
     FString projectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
+    FString projectName = FApp::GetProjectName();
     FString enginePath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Binaries/Win64/UnrealEditor.exe"));
 
     FString outputFolder = GetSelectedOutputFolder();
 
-    FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded -EditorIO -EditorIOPort=64241 \
-        BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=BT_Core_UE5_4 -unrealexe=\"%s\" \
+    FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
+        BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \
         -archivedirectory=\"%s\" -clientconfig=Development -nocompile -nocompileuat"),
         *projectPath,
+        projectName,
         *enginePath,
         *outputFolder);
 
