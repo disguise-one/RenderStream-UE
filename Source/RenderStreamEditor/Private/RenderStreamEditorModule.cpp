@@ -915,6 +915,9 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 
     FString outputFolder = GetSelectedOutputFolder();
 
+    if(outputFolder == FString())
+        return;
+
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \

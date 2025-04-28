@@ -53,10 +53,6 @@
 		{
 			"Name": "ConcertSyncClient",
 			"Enabled": true
-		},
-		{
-			"Name": "LiveLinkOverNDisplay",
-			"Enabled": true
 		}
 	]
 }
