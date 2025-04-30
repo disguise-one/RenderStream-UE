@@ -458,31 +458,34 @@
 
     void FSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
     {
-        const TSharedRef<IPropertyHandle> Property = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(URenderStreamSettings, SceneSelector));
-        if (Property->IsValidHandle())
-        {
-            TArray<TWeakObjectPtr<UObject>> Objects;
-            DetailBuilder.GetObjectsBeingCustomized(Objects);
-            IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Scene Selection");
+        // This code prehibits the SceneSelection to be saved to the DefaultEngine.ini file for an unknown reason in UE 5.5
+        // This is possibly a bug in the SaveConfig() function
 
-            Property->MarkHiddenByCustomization();
-            Property->MarkResetToDefaultCustomized();
-            FDetailWidgetRow& SceneSelectionRow = Category.AddCustomRow(FText::FromString("Scene Selection"));
+        // const TSharedRef<IPropertyHandle> Property = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(URenderStreamSettings, SceneSelector));
+        // if (Property->IsValidHandle())
+        // {
+        //     TArray<TWeakObjectPtr<UObject>> Objects;
+        //     DetailBuilder.GetObjectsBeingCustomized(Objects);
+        //     IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Scene Selection");
 
-            SceneSelectionRow
-                .NameContent()
-                [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("Scene Selection", "Scene Selection"))
-                    .Font(IDetailLayoutBuilder::GetDetailFont())
-                ]
-            .ValueContent()
-                .HAlign(HAlign_Fill)
-                [
-                    SNew(SSceneSelectionCombo)
-                    .SceneSelection(Objects)
-                ];
-        }
+        //     // Property->MarkHiddenByCustomization();
+        //     // Property->MarkResetToDefaultCustomized();
+        //     FDetailWidgetRow& SceneSelectionRow = Category.AddCustomRow(FText::FromString("Scene Selection"));
+
+        //     SceneSelectionRow
+        //         .NameContent()
+        //         [
+        //             SNew(STextBlock)
+        //             .Text(LOCTEXT("Scene Selection", "Scene Selection"))
+        //             .Font(IDetailLayoutBuilder::GetDetailFont())
+        //         ]
+        //     .ValueContent()
+        //         .HAlign(HAlign_Fill)
+        //         [
+        //             SNew(SSceneSelectionCombo)
+        //             .SceneSelection(Objects)
+        //         ];
+        // }
     }
 
 
