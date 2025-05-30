@@ -1,3 +1,7 @@
+# RS3.0-UE5.3-v0
+Compatible with disguise designer version r30.9 and above.
+* Add working colour space in schema
+
 # RS2.0-UE5.3-v2
 Compatible with disguise designer version r25.0 and above.
 * Fix for skeleton joint offsets not being applied in correct direction
