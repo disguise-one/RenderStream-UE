@@ -376,6 +376,13 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
             UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
             if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
             {
+                // Treat all incoming textures are in linear colour space to
+                // ensure consistent behaviour.
+                // Without this, UE applies gamma 2.2 to textures with
+                // integer formats, but treats floating-point formats 
+                // as linear (RST-353).
+                Texture->SRGB = 0;
+                Texture->bForceLinearGamma = true;
                 UE_LOG(LogRenderStream, Log, TEXT("Exposed render texture property: %s"), *Name);
                 if (numParameters < nParameters + 1)
                 {
@@ -648,6 +655,13 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
             if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
             {
+                // Treat all incoming textures are in linear colour space to
+                // ensure consistent behaviour.
+                // Without this, UE applies gamma 2.2 to textures with
+                // integer formats, but treats floating-point formats 
+                // as linear (RST-353).
+                Texture->SRGB = 0;
+                Texture->bForceLinearGamma = true;
                 if (iImage >= nImageVals)
                 {
                     UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
