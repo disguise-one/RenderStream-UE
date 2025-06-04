@@ -76,7 +76,6 @@
 #include <ID3D12DynamicRHI.h>
 
 #include "VulkanRHIPrivate.h"
-#include "VulkanRHIBridge.h"
 #include "VulkanResources.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStream);

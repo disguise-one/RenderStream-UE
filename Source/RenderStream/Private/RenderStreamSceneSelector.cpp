@@ -18,7 +18,6 @@
 #include "UObject/TextProperty.h"
 
 #include "VulkanRHIPrivate.h"
-#include "VulkanRHIBridge.h"
 #include "VulkanResources.h"
 
 #include "HardwareInfo.h"

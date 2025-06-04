@@ -241,7 +241,7 @@ void DisableShowFlag(const FRenderStreamChannelInfo& Info, const FString& LevelN
         }
     }
 
-    RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s. Channel definition %s not found in level %."), *SettingName, *Info.Name, *LevelName))));
+    RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(TEXT("Could not fix %s. Channel definition %s not found in level %s."), *SettingName, *Info.Name, *LevelName))));
 
 }
 

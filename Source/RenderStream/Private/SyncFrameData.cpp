@@ -27,18 +27,25 @@ FString FRenderStreamSyncFrameData::SerializeToString() const
 
 bool FRenderStreamSyncFrameData::DeserializeFromString(const FString& Str)
 {
-    TArray<uint8> TempBytes;
-    TempBytes.AddUninitialized(Str.Len());
-    StringToBytes(Str, TempBytes.GetData(), Str.Len());
+    EDisplayClusterNodeRole NodeRole = IDisplayCluster::Get().GetClusterMgr()->GetClusterRole();
 
-    FMemoryReader Ar(TempBytes);
-    if (Map(Ar))
+    if (NodeRole == EDisplayClusterNodeRole::Secondary)
     {
-        FollowerReceive();
-        return true;
+        TArray<uint8> TempBytes;
+        TempBytes.AddUninitialized(Str.Len());
+        StringToBytes(Str, TempBytes.GetData(), Str.Len());
+
+        FMemoryReader Ar(TempBytes);
+        if (Map(Ar))
+        {
+            FollowerReceive();
+            return true;
+        }
+
+        return false;
     }
 
-    return false;
+    return true;
 }
 
 bool FRenderStreamSyncFrameData::Map(FArchive& Ar)

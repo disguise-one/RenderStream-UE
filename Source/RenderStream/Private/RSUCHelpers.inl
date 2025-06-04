@@ -7,7 +7,6 @@
 #include "D3D12RHIBridge.h"
 
 #include "VulkanRHIPrivate.h"
-#include "VulkanRHIBridge.h"
 #include "VulkanResources.h"
 
 #include "Windows/AllowWindowsPlatformTypes.h"
