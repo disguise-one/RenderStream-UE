@@ -1,10 +1,10 @@
 #include "StreamPool.h"
 #include "FrameStream.h"
 
-bool FStreamPool::AddNewStreamToPool(const FString& StreamName, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt)
+bool FStreamPool::AddNewStreamToPool(const FString& StreamName, const FIntPoint& Resolution, const FString& Channel, const RenderStreamLink::ProjectionClipping& Clipping, RenderStreamLink::StreamHandle Handle, RenderStreamLink::RSPixelFormat Fmt, bool requiresDepth)
 {
     FFrameStreamPtr stream = MakeShared<FFrameStream, ESPMode::ThreadSafe>();
-    if (!stream->Setup(StreamName, Resolution, Channel, Clipping, Handle, Fmt))
+    if (!stream->Setup(StreamName, Resolution, Channel, Clipping, Handle, Fmt, requiresDepth))
         return false;
 
     m_pool.Add(stream);

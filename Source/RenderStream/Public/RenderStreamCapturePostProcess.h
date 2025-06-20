@@ -6,6 +6,7 @@
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamPostProcess, Log, All);
 
+
 /**
  * 'renderstream' policy for disguise integration
  */
@@ -28,10 +29,32 @@ public:
 	virtual void HandleEndScene(IDisplayClusterViewportManager* InViewportManager) override;
 	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const override;
 
+    virtual void HandleBeginNewFrame(IDisplayClusterViewportManager* InViewportManager, FDisplayClusterRenderFrame& InOutRenderFrame) override;
+
 private:
+    void RebuildDepthExtractionTable();
+
+    void OnPostOpaque_RenderThread(FPostOpaqueRenderParameters& PostOpaqueParameters);
+    
+    void OnDisplayClusterPostBackbufferUpdate_RenderThread(FRHICommandListImmediate& CmdList, const IDisplayClusterViewportManagerProxy* ViewportProxyManager, FViewport* Viewport);
+
+    FDelegateHandle StreamsChangedDelegateHandle;
+    FDelegateHandle DisplayClusterPostBackBufferUpdateHandle;
+    FDelegateHandle PostOpaqueDelegateHandle;
+    TMap<FString, TRefCountPtr<IPooledRenderTarget>> m_extractedDepth;
+    TMap<FString, FVector2D> m_extractedDepthTAAJitter;
+    TArray<FString> m_depthIds;
+
 	TMap<FString, FString> Parameters;
 	FString Id;
 	static FString Type;
+    bool m_EncodeDepth = false;
+    mutable FCriticalSection m_extractedDepthLock;
+
+    IDisplayClusterViewportManager* ViewportManager; // Not owned by this class
+
+    using ViewportIdOrdering = TArray<FString>;
+    TQueue<ViewportIdOrdering> ViewportIdOrderPerFrame;
 };
 
 class FRenderStreamPostProcessFactory
