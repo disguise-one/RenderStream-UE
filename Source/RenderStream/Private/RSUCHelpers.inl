@@ -7,7 +7,6 @@
 #include "D3D12RHIBridge.h"
 
 #include "VulkanRHIPrivate.h"
-#include "VulkanRHIBridge.h"
 #include "VulkanResources.h"
 
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -23,6 +22,8 @@
 
 #include <array>
 #include <VulkanResources.h>
+
+#include "PipelineStateCache.h"
 
 class FRHITexture;
 
@@ -77,7 +78,7 @@ namespace {
         }
 
         TUniformBufferRef<RSResizeCopyUB> Data = TUniformBufferRef<RSResizeCopyUB>::CreateUniformBufferImmediate(UB, UniformBuffer_SingleFrame);
-        FRHIBatchedShaderParameters Params;
+        FRHIBatchedShaderParameters Params = CommandList.GetScratchShaderParameters();
         SetUniformBufferParameter(Params, GetUniformBufferParameter<RSResizeCopyUB>(), Data);
         CommandList.SetBatchedShaderParameters(CommandList.GetBoundPixelShader(), Params);
     }
@@ -264,6 +265,7 @@ namespace RSUCHelpers
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBA8
             { DXGI_FORMAT_R8G8B8A8_UNORM, EPixelFormat::PF_R8G8B8A8 },         // RS_FMT_RGBX8
         };
+       
         const auto format = formatMap[rsFormat];
 
         ETextureCreateFlags flags = ETextureCreateFlags::RenderTargetable;
@@ -274,7 +276,13 @@ namespace RSUCHelpers
         auto desc = FRHITextureCreateDesc::Create2D(TEXT("RenderStream:Stream"), Resolution.X, Resolution.Y, format.ue);
         desc.AddFlags(flags);
         desc.SetClearValue(FClearValueBinding::Green);
-        BufTexture = RHICreateTexture(desc);
+
+        ENQUEUE_RENDER_COMMAND(CreateTex)(
+            [&BufTexture, desc](FRHICommandListImmediate& RHICmdList)
+            {
+                BufTexture = RHICreateTexture(desc);
+            }
+        );
         return true;
     }
 }

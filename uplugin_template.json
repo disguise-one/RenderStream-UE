@@ -10,7 +10,7 @@
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
-	"EngineVersion": "5.3.0",
+	"EngineVersion": "5.6.0",
 	"CanContainContent": false,
 	"IsBetaVersion": false,
 	"IsExperimentalVersion": false,
@@ -48,6 +48,10 @@
 		},
 		{
 			"Name": "nDisplay",
+			"Enabled": true
+		},
+		{
+			"Name": "ConcertSyncClient",
 			"Enabled": true
 		}
 	]

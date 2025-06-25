@@ -5,7 +5,6 @@
 #include <malloc.h>
 #include "RenderStream.h"
 #include "RenderStreamHelper.h"
-#include "RSUCHelpers.inl"
 #include "RenderStreamSettings.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
@@ -13,6 +12,15 @@
 #include "TextureResource.h"
 
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
+
+#include "Engine/Level.h"
+#include "Engine/World.h"
+#include "UObject/TextProperty.h"
+
+#include "VulkanRHIPrivate.h"
+#include "VulkanResources.h"
+
+#include "HardwareInfo.h"
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
@@ -679,6 +687,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     RenderStreamLink::SenderFrame data = {};
                     if (toggle == "D3D11")
                     {
+                        {
+                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                        }
                         data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
                         data.dx11.resource = static_cast<ID3D11Resource*>(resource);
                         auto err = RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data);

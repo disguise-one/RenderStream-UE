@@ -1,4 +1,5 @@
 #include "SceneSelector_None.h"
+#include "RenderStream.h"
 #include "Engine/World.h"
 
 bool SceneSelector_None::OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema)

@@ -12,8 +12,6 @@
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
-namespace
-{
     inline static bool SortAlphabeticallyByLocalizedText(const FString& ip1, const FString& ip2)
     {
         FText LocalizedText1;
@@ -24,21 +22,6 @@ namespace
 
         return LocalizedText1.ToString() < LocalizedText2.ToString();
     }
-
-    class FDefinitionCustomization final : public IDetailCustomization
-    {
-    public:
-        // IDetailCustomization interface
-        virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-        void CustomizeShowFlagSettings(IDetailCategoryBuilder& CategoryBuilder, TSharedPtr<IPropertyHandle> InShowFlagSettingsProperty);
-        void CustomizeVisibility(IDetailLayoutBuilder& DetailBuilder, TSharedPtr<IPropertyHandle> Property);
-
-    private:
-        ECheckBoxState OnGetDisplayCheckState(FString ShowFlagName) const;
-        void OnShowFlagCheckStateChanged(ECheckBoxState InNewRadioState, FString FlagName);
-
-        TSharedPtr<IPropertyHandle> ShowFlagSettingsProperty;
-    };
 
     void FDefinitionCustomization::CustomizeShowFlagSettings(IDetailCategoryBuilder& CategoryBuilder, TSharedPtr<IPropertyHandle> InShowFlagSettingsProperty)
     {
@@ -382,13 +365,6 @@ namespace
         }
     }
 
-    class FSettingsCustomization final : public IDetailCustomization
-    {
-    public:
-        // IDetailCustomization interface
-        virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-    };
-
     class SSceneSelectionCombo : public SCompoundWidget
     {
     public:
@@ -482,42 +458,35 @@ namespace
 
     void FSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
     {
-        const TSharedRef<IPropertyHandle> Property = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(URenderStreamSettings, SceneSelector));
-        if (Property->IsValidHandle())
-        {
-            TArray<TWeakObjectPtr<UObject>> Objects;
-            DetailBuilder.GetObjectsBeingCustomized(Objects);
-            IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Scene Selection");
+        // This code prehibits the SceneSelection to be saved to the DefaultEngine.ini file for an unknown reason in UE 5.5
+        // This is possibly a bug in the SaveConfig() function
 
-            Property->MarkHiddenByCustomization();
-            Property->MarkResetToDefaultCustomized();
-            FDetailWidgetRow& SceneSelectionRow = Category.AddCustomRow(FText::FromString("Scene Selection"));
+        // const TSharedRef<IPropertyHandle> Property = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(URenderStreamSettings, SceneSelector));
+        // if (Property->IsValidHandle())
+        // {
+        //     TArray<TWeakObjectPtr<UObject>> Objects;
+        //     DetailBuilder.GetObjectsBeingCustomized(Objects);
+        //     IDetailCategoryBuilder& Category = DetailBuilder.EditCategory("Scene Selection");
 
-            SceneSelectionRow
-                .NameContent()
-                [
-                    SNew(STextBlock)
-                    .Text(LOCTEXT("Scene Selection", "Scene Selection"))
-                    .Font(IDetailLayoutBuilder::GetDetailFont())
-                ]
-            .ValueContent()
-                .HAlign(HAlign_Fill)
-                [
-                    SNew(SSceneSelectionCombo)
-                    .SceneSelection(Objects)
-                ];
-        }
+        //     // Property->MarkHiddenByCustomization();
+        //     // Property->MarkResetToDefaultCustomized();
+        //     FDetailWidgetRow& SceneSelectionRow = Category.AddCustomRow(FText::FromString("Scene Selection"));
+
+        //     SceneSelectionRow
+        //         .NameContent()
+        //         [
+        //             SNew(STextBlock)
+        //             .Text(LOCTEXT("Scene Selection", "Scene Selection"))
+        //             .Font(IDetailLayoutBuilder::GetDetailFont())
+        //         ]
+        //     .ValueContent()
+        //         .HAlign(HAlign_Fill)
+        //         [
+        //             SNew(SSceneSelectionCombo)
+        //             .SceneSelection(Objects)
+        //         ];
+        // }
     }
-}
 
-TSharedRef<IDetailCustomization> MakeDefinitionCustomizationInstance()
-{
-    return MakeShareable(new FDefinitionCustomization);
-}
-
-TSharedRef<IDetailCustomization> MakeSettingsCustomizationInstance()
-{
-    return MakeShareable(new FSettingsCustomization);
-}
 
 #undef LOCTEXT_NAMESPACE
