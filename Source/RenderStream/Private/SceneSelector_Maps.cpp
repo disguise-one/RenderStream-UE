@@ -13,6 +13,8 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
         return;
     }
 
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("SceneSelector_Maps::ApplyScene()"));
+
     MapData& map = m_maps[sceneId];
 
     if (world.GetName() != map.Name)
