@@ -109,10 +109,14 @@ const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
         return m_defaultSchema.schema;
 }
 
-
 void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 {
-    const std::string AssetPath = TCHAR_TO_UTF8(*FPaths::GetProjectFilePath());
+    #if WITH_EDITOR
+        const std::string AssetPath = TCHAR_TO_UTF8(*FPaths::GetProjectFilePath());
+    #else
+        const std::string AssetPath = TCHAR_TO_UTF8(FPlatformProcess::ExecutablePath());
+    #endif
+      
     uint32_t nBytes = 0;
     RenderStreamLink::instance().rs_loadSchema(AssetPath.c_str(), nullptr, &nBytes);
 

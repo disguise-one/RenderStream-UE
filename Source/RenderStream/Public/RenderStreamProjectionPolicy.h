@@ -37,6 +37,10 @@ public:
     
     bool CalculateView(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float NCP, const float FCP) override;
     bool GetProjectionMatrix(class IDisplayClusterViewport* InViewport, const uint32 InContextNum, FMatrix& OutPrjMatrix) override;
+
+	// Override post-processing
+	// Required since UE5.4 in order to enable camera post-processing effects such as depth of field
+	virtual void UpdatePostProcessSettings(IDisplayClusterViewport* InViewport) override; 
     
     const TMap<FString, FString>& GetParameters() const
     {
@@ -44,6 +48,8 @@ public:
     }
     
 protected:
+    bool ImplSetupProjectionViewPoint(IDisplayClusterViewport* InViewport, const float InDeltaTime, FMinimalViewInfo& InOutViewInfo, float* OutCustomNearClippingPlane = nullptr) const;
+
     FString ProjectionPolicyId;
     TMap<FString, FString> Parameters;
     
