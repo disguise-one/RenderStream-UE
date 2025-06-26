@@ -110,10 +110,14 @@ const RenderStreamLink::Schema& RenderStreamSceneSelector::Schema() const
         return m_defaultSchema.schema;
 }
 
-
 void RenderStreamSceneSelector::LoadSchemas(const UWorld& World)
 {
-    const std::string AssetPath = TCHAR_TO_UTF8(*FPaths::GetProjectFilePath());
+    #if WITH_EDITOR
+        const std::string AssetPath = TCHAR_TO_UTF8(*FPaths::GetProjectFilePath());
+    #else
+        const std::string AssetPath = TCHAR_TO_UTF8(FPlatformProcess::ExecutablePath());
+    #endif
+      
     uint32_t nBytes = 0;
     RenderStreamLink::instance().rs_loadSchema(AssetPath.c_str(), nullptr, &nBytes);
 
@@ -686,6 +690,10 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     RenderStreamLink::SenderFrame data = {};
                     if (toggle == "D3D11")
                     {
+                        {
+                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                        }
                         data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
                         data.dx11.resource = static_cast<ID3D11Resource*>(resource);
                         auto err = RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data);

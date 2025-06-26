@@ -18,6 +18,9 @@ public:
 
     void GenerateAssetMetadata();
 
+    void RunPackageAndCopy();
+    void RegisterToolBarButton();
+
 private:
     FString StreamName();
 
@@ -39,6 +42,8 @@ private:
     void UnregisterSettings();
 
     void RunValidation(const TArray<URenderStreamChannelCacheAsset*> Caches);
+
+    FString GetSelectedOutputFolder();
 
     TWeakObjectPtr<UWorld> GameWorld;
     bool DirtyAssetMetadata = false;
