@@ -499,20 +499,20 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
 
     // These are updated by ApplyParameters to allow each actor to operate on the next set of data.
     const RenderStreamLink::RemoteParameter* paramsPtr = params.parameters;
-    const float* floatValuesPtr = floatValues.data();
     size_t textValues = 0;
     const RenderStreamLink::ImageFrameData* imageValuesPtr = imageValues.data();
+    size_t iFloat = 0;
     for (AActor* actor : Actors)
     {
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
-        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, &floatValuesPtr, floatValues.size(), &imageValuesPtr, imageValues.size(), textValues);
+        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, floatValues, iFloat, &imageValuesPtr, imageValues.size(), textValues);
     }
 
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
-void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const float** ppFloatValues, const size_t nFloatVals, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals, size_t& textValues)
+void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const std::vector<float>& floatValues, size_t& iFloat, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals, size_t& textValues)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
     struct
@@ -531,11 +531,9 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
     };
 
     size_t iParam = 0;
-    size_t iFloat = 0;
     size_t iImage = 0;
     size_t iPose = 0;
 
-    const float* floatValues = *ppFloatValues;
     const RenderStreamLink::ImageFrameData* imageValues = *ppImageValues;
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
@@ -545,7 +543,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         for (UFunction* func : GetEvents(Root))
         {
             int oldValue = m_floatValuesLast.size() > iFloat ? m_floatValuesLast[iFloat] : 0;
-            int newValue = floatValues[iFloat];
+            int newValue = (int)floatValues[iFloat];
             if (newValue > oldValue) // value increment signals an invoke
             {
                 // TODO: should we invoke once per increment? e.g. oldValue == 0, newValue == 5 => 1 invoke or 5 invokes?
@@ -566,7 +564,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             Property->IsA(FFloatProperty::StaticClass()) ||
             Property->IsA(FDoubleProperty::StaticClass()))
         {
-            if (iFloat >= nFloatVals)
+            if (iFloat >= floatValues.size())
             {
                 UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read float value from disguise that is out of range. Does the metadata need to be regenerated?"));
                 continue;
@@ -612,7 +610,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                                 : StructProperty->Struct == trans ? 16
                                 : StructProperty->Struct == rot ? 3
                                 : 0;
-            if (iFloat + (inc - 1) >= nFloatVals)
+            if (iFloat + (inc - 1) >= floatValues.size())
             {
                 UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a vector/color/transform value from disguise that is out of range. Does the metadata need to be regenerated?"));
                 continue;
@@ -767,7 +765,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         ++iParam;
     }
 
-    *ppFloatValues += iFloat;
     *ppImageValues += iImage;
     *ppParams += iParam;
 }
