@@ -546,15 +546,22 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->ExposedParams.Empty();
     GenerateParameters(Cache->ExposedParams, Level->GetLevelScriptActor());
 
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+
     // We can only know the sublevels of the persistent level.
     if (Level->IsPersistentLevel())
     {
         Cache->SubLevels.Empty();
-        for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
+        
+        // Sublevels are not loaded when SceneSelector is None so they shouldn't be added to the cache
+        if (settings->SceneSelector != ERenderStreamSceneSelector::None)
         {
-            if (auto WorldAsset = SubLevel->GetWorldAsset())
+            for (ULevelStreaming* SubLevel : Level->GetWorld()->GetStreamingLevels())
             {
-                Cache->SubLevels.Add(WorldAsset->GetPackage()->GetPathName());
+                if (auto WorldAsset = SubLevel->GetWorldAsset())
+                {
+                    Cache->SubLevels.Add(WorldAsset->GetPackage()->GetPathName());
+                }
             }
         }
     }
