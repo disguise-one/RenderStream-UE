@@ -88,6 +88,8 @@ bool FRenderStreamSyncFrameData::Map(FArchive& Ar)
 
 void FRenderStreamSyncFrameData::ControllerReceive()
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::ControllerReceive()"));
+
     if (m_isQuitting)
     {
         // Process deferred quit status from last frame (deferred due to ndisplay sync)
@@ -95,7 +97,6 @@ void FRenderStreamSyncFrameData::ControllerReceive()
         return;
     }
 
-    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::ControllerReceive()"));
     SCOPE_CYCLE_COUNTER(STAT_AwaitFrame);
     const double StartTime = FPlatformTime::Seconds();
     const RenderStreamLink::RS_ERROR Ret = RenderStreamLink::instance().rs_awaitFrameData(500, &m_frameData);
@@ -122,6 +123,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
     {
         if (Ret == RenderStreamLink::RS_ERROR_TIMEOUT)
         {
+            TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::ControllerReceive() - timeout, setting new status message"));
             RenderStreamLink::instance().rs_setNewStatusMessage("Not requested");
         }
         else
@@ -134,6 +136,7 @@ void FRenderStreamSyncFrameData::ControllerReceive()
     {
         if (!m_frameDataValid)
         {
+            TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::ControllerReceive() - invalid frame data, setting new status message"));
             RenderStreamLink::instance().rs_setNewStatusMessage("");
         }
 
@@ -234,6 +237,7 @@ void FRenderStreamSyncFrameData::Apply() const
 
 void FRenderStreamSyncFrameData::QuitNow() const
 {
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::QuitNow()"));
     RenderStreamLink::instance().rs_setNewStatusMessage("");
     UE_LOG(LogRenderStream, Log, TEXT("Quitting due to RenderStream request"));
     FPlatformMisc::RequestExit(false);

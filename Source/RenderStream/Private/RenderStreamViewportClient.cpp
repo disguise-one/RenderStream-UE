@@ -130,23 +130,23 @@ URenderStreamViewportClient::~URenderStreamViewportClient()
 /** Util to find named canvas in transient package, and create if not found */
 static UCanvas* GetCanvasByName(FName CanvasName)
 {
-	// Cache to avoid FString/FName conversions/compares
-	static TMap<FName, UCanvas*> CanvasMap;
-	UCanvas** FoundCanvas = CanvasMap.Find(CanvasName);
-	if (!FoundCanvas)
-	{
-		UCanvas* CanvasObject = FindObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), *CanvasName.ToString());
-		if (!CanvasObject)
-		{
-			CanvasObject = NewObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), CanvasName);
-			CanvasObject->AddToRoot();
-		}
+    // Cache to avoid FString/FName conversions/compares
+    static TMap<FName, UCanvas*> CanvasMap;
+    UCanvas** FoundCanvas = CanvasMap.Find(CanvasName);
+    if (!FoundCanvas)
+    {
+        UCanvas* CanvasObject = FindObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), *CanvasName.ToString());
+        if (!CanvasObject)
+        {
+            CanvasObject = NewObject<UCanvas>(static_cast<UObject*>(GetTransientPackage()), CanvasName);
+            CanvasObject->AddToRoot();
+        }
 
-		CanvasMap.Add(CanvasName, CanvasObject);
-		return CanvasObject;
-	}
+        CanvasMap.Add(CanvasName, CanvasObject);
+        return CanvasObject;
+    }
 
-	return *FoundCanvas;
+    return *FoundCanvas;
 }
 
 void URenderStreamViewportClient::Init(struct FWorldContext& WorldContext, UGameInstance* OwningGameInstance, bool bCreateNewAudioDevice)
@@ -155,7 +155,7 @@ void URenderStreamViewportClient::Init(struct FWorldContext& WorldContext, UGame
     const bool bIsNDisplayClusterMode = true; //(GEngine->StereoRenderingDevice.IsValid() && GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Cluster);
     /// !!!! disguise customizations
     if (bIsNDisplayClusterMode)
-	{
+    {
         // r.CompositionForceRenderTargetLoad
         IConsoleVariable* const ForceLoadCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.CompositionForceRenderTargetLoad"));
         if (ForceLoadCVar)
@@ -197,9 +197,9 @@ void URenderStreamViewportClient::Init(struct FWorldContext& WorldContext, UGame
         {
             FApp::SetHasFocusFunction([]() { return true; });
         }
-	}
+    }
 
-	Super::Init(WorldContext, OwningGameInstance, bCreateNewAudioDevice);
+    Super::Init(WorldContext, OwningGameInstance, bCreateNewAudioDevice);
 }
 
 ULocalPlayer* URenderStreamViewportClient::SetupInitialLocalPlayer(FString& OutError)
@@ -230,200 +230,201 @@ ULocalPlayer* URenderStreamViewportClient::SetupInitialLocalPlayer(FString& OutE
 
 struct FCompareViewFamilyBySizeAndGPU
 {
-	FORCEINLINE bool operator()(const FSceneViewFamilyContext& A, const FSceneViewFamilyContext& B) const
-	{
-		FIntPoint SizeA = A.RenderTarget->GetSizeXY();
-		FIntPoint SizeB = B.RenderTarget->GetSizeXY();
-		int32 AreaA = SizeA.X * SizeA.Y;
-		int32 AreaB = SizeB.X * SizeB.Y;
+    FORCEINLINE bool operator()(const FSceneViewFamilyContext& A, const FSceneViewFamilyContext& B) const
+    {
+        FIntPoint SizeA = A.RenderTarget->GetSizeXY();
+        FIntPoint SizeB = B.RenderTarget->GetSizeXY();
+        int32 AreaA = SizeA.X * SizeA.Y;
+        int32 AreaB = SizeB.X * SizeB.Y;
 
-		if (AreaA != AreaB)
-		{
-			// Decreasing area
-			return AreaA > AreaB;
-		}
+        if (AreaA != AreaB)
+        {
+            // Decreasing area
+            return AreaA > AreaB;
+        }
 
-		int32 GPUIndexA = A.Views[0]->GPUMask.GetFirstIndex();
-		int32 GPUIndexB = B.Views[0]->GPUMask.GetFirstIndex();
+        int32 GPUIndexA = A.Views[0]->GPUMask.GetFirstIndex();
+        int32 GPUIndexB = B.Views[0]->GPUMask.GetFirstIndex();
 
-		// Decreasing GPU index
-		return GPUIndexA > GPUIndexB;
-	}
+        // Decreasing GPU index
+        return GPUIndexA > GPUIndexB;
+    }
 };
 
 // Wrapper for FSceneViewport to allow us to add custom stats specific to display cluster (per-view-family CPU and GPU perf)
 class FDisplayClusterSceneViewport : public FSceneViewport
 {
 public:
-	FDisplayClusterSceneViewport(FViewportClient* InViewportClient, TSharedPtr<SViewport> InViewportWidget)
-		: FSceneViewport(InViewportClient, InViewportWidget)
-	{}
+    FDisplayClusterSceneViewport(FViewportClient* InViewportClient, TSharedPtr<SViewport> InViewportWidget)
+        : FSceneViewport(InViewportClient, InViewportWidget)
+    {
+    }
 
-	~FDisplayClusterSceneViewport()
-	{
-		for (auto It = CpuHistoryByDescription.CreateIterator(); It; ++It)
-		{
-			delete It.Value();
-		}
-	}
+    ~FDisplayClusterSceneViewport()
+    {
+        for (auto It = CpuHistoryByDescription.CreateIterator(); It; ++It)
+        {
+            delete It.Value();
+        }
+    }
 
-	virtual int32 DrawStatsHUD(FCanvas* InCanvas, int32 InX, int32 InY) override
-	{
+    virtual int32 DrawStatsHUD(FCanvas* InCanvas, int32 InX, int32 InY) override
+    {
 #if GPUPROFILERTRACE_ENABLED
-		/// !!!! disguise customizations
-		static const auto DisplayClusterShowStats =  IConsoleManager::Get().FindConsoleVariable(TEXT("DC.ShowStats"));
-		/// !!!! disguise customizations
-		
-		if (DisplayClusterShowStats->GetInt())
-		{
-			// Get GPU perf results
-			TArray<FRealtimeGPUProfilerDescriptionResult> PerfResults;
-			FRealtimeGPUProfiler::Get()->FetchPerfByDescription(PerfResults);
+        /// !!!! disguise customizations
+        static const auto DisplayClusterShowStats = IConsoleManager::Get().FindConsoleVariable(TEXT("DC.ShowStats"));
+        /// !!!! disguise customizations
 
-			UFont* StatsFont = GetStatsFont();
+        if (DisplayClusterShowStats->GetInt())
+        {
+            // Get GPU perf results
+            TArray<FRealtimeGPUProfilerDescriptionResult> PerfResults;
+            FRealtimeGPUProfiler::Get()->FetchPerfByDescription(PerfResults);
 
-			const FLinearColor HeaderColor = FLinearColor(1.f, 0.2f, 0.f);
+            UFont* StatsFont = GetStatsFont();
 
-			if (PerfResults.Num())
-			{
-				// Get CPU perf results
-				TArray<float> CpuPerfResults;
-				CpuPerfResults.AddUninitialized(PerfResults.Num());
-				{
-					FRWScopeLock Lock(CpuHistoryMutex, SLT_Write);
+            const FLinearColor HeaderColor = FLinearColor(1.f, 0.2f, 0.f);
 
-					for (int32 ResultIndex = 0; ResultIndex < PerfResults.Num(); ResultIndex++)
-					{
-						CpuPerfResults[ResultIndex] = FetchHistoryAverage(PerfResults[ResultIndex].Description);
-					}
-				}
+            if (PerfResults.Num())
+            {
+                // Get CPU perf results
+                TArray<float> CpuPerfResults;
+                CpuPerfResults.AddUninitialized(PerfResults.Num());
+                {
+                    FRWScopeLock Lock(CpuHistoryMutex, SLT_Write);
 
-				// Compute column sizes
-				int32 YIgnore;
+                    for (int32 ResultIndex = 0; ResultIndex < PerfResults.Num(); ResultIndex++)
+                    {
+                        CpuPerfResults[ResultIndex] = FetchHistoryAverage(PerfResults[ResultIndex].Description);
+                    }
+                }
 
-				const TCHAR* DescriptionHeader = TEXT("Display Cluster Stats");
-				int32 DescriptionColumnWidth;
-				StringSize(StatsFont, DescriptionColumnWidth, YIgnore, DescriptionHeader);
+                // Compute column sizes
+                int32 YIgnore;
 
-				for (const FRealtimeGPUProfilerDescriptionResult& PerfResult : PerfResults)
-				{
-					int32 XL;
-					StringSize(StatsFont, XL, YIgnore, *PerfResult.Description);
+                const TCHAR* DescriptionHeader = TEXT("Display Cluster Stats");
+                int32 DescriptionColumnWidth;
+                StringSize(StatsFont, DescriptionColumnWidth, YIgnore, DescriptionHeader);
 
-					DescriptionColumnWidth = FMath::Max(DescriptionColumnWidth, XL);
-				}
+                for (const FRealtimeGPUProfilerDescriptionResult& PerfResult : PerfResults)
+                {
+                    int32 XL;
+                    StringSize(StatsFont, XL, YIgnore, *PerfResult.Description);
 
-				int32 NumberColumnWidth;
-				StringSize(StatsFont, NumberColumnWidth, YIgnore, *FString::ChrN(7, 'W'));
+                    DescriptionColumnWidth = FMath::Max(DescriptionColumnWidth, XL);
+                }
 
-				// Render header
-				InCanvas->DrawShadowedString(InX, InY, DescriptionHeader, StatsFont, HeaderColor);
-				RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 1 * NumberColumnWidth, InY, TEXT("GPUs"), HeaderColor);
-				RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 2 * NumberColumnWidth, InY, TEXT("Average"), HeaderColor);
-				RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 3 * NumberColumnWidth, InY, TEXT("CPU"), HeaderColor);
-				InY += StatsFont->GetMaxCharHeight();
+                int32 NumberColumnWidth;
+                StringSize(StatsFont, NumberColumnWidth, YIgnore, *FString::ChrN(7, 'W'));
 
-				// Render rows
-				int32 ResultIndex = 0;
-				const FLinearColor StatColor = FLinearColor(0.f, 1.f, 0.f);
+                // Render header
+                InCanvas->DrawShadowedString(InX, InY, DescriptionHeader, StatsFont, HeaderColor);
+                RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 1 * NumberColumnWidth, InY, TEXT("GPUs"), HeaderColor);
+                RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 2 * NumberColumnWidth, InY, TEXT("Average"), HeaderColor);
+                RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 3 * NumberColumnWidth, InY, TEXT("CPU"), HeaderColor);
+                InY += StatsFont->GetMaxCharHeight();
 
-				for (const FRealtimeGPUProfilerDescriptionResult& PerfResult : PerfResults)
-				{
-					InCanvas->DrawTile(InX, InY, DescriptionColumnWidth + 3 * NumberColumnWidth, StatsFont->GetMaxCharHeight(),
-						0, 0, 1, 1,
-						(ResultIndex & 1) ? FLinearColor(0.02f, 0.02f, 0.02f, 0.88f) : FLinearColor(0.05f, 0.05f, 0.05f, 0.92f),
-						GWhiteTexture, true);
+                // Render rows
+                int32 ResultIndex = 0;
+                const FLinearColor StatColor = FLinearColor(0.f, 1.f, 0.f);
 
-					// Source GPU times are in microseconds, CPU times in seconds, so we need to divide one by 1000, and multiply the other by 1000
-					InCanvas->DrawShadowedString(InX, InY, *PerfResult.Description, StatsFont, StatColor);
-					RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 1 * NumberColumnWidth, InY, *FString::Printf(TEXT("%d"), PerfResult.GPUMask.GetNative()), StatColor);
-					RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 2 * NumberColumnWidth, InY, *FString::Printf(TEXT("%.2f"), PerfResult.AverageTime / 1000.f), StatColor);
-					RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 3 * NumberColumnWidth, InY, *FString::Printf(TEXT("%.2f"), CpuPerfResults[ResultIndex] * 1000.f), StatColor);
+                for (const FRealtimeGPUProfilerDescriptionResult& PerfResult : PerfResults)
+                {
+                    InCanvas->DrawTile(InX, InY, DescriptionColumnWidth + 3 * NumberColumnWidth, StatsFont->GetMaxCharHeight(),
+                        0, 0, 1, 1,
+                        (ResultIndex & 1) ? FLinearColor(0.02f, 0.02f, 0.02f, 0.88f) : FLinearColor(0.05f, 0.05f, 0.05f, 0.92f),
+                        GWhiteTexture, true);
 
-					InY += StatsFont->GetMaxCharHeight();
+                    // Source GPU times are in microseconds, CPU times in seconds, so we need to divide one by 1000, and multiply the other by 1000
+                    InCanvas->DrawShadowedString(InX, InY, *PerfResult.Description, StatsFont, StatColor);
+                    RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 1 * NumberColumnWidth, InY, *FString::Printf(TEXT("%d"), PerfResult.GPUMask.GetNative()), StatColor);
+                    RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 2 * NumberColumnWidth, InY, *FString::Printf(TEXT("%.2f"), PerfResult.AverageTime / 1000.f), StatColor);
+                    RightJustify(InCanvas, StatsFont, InX + DescriptionColumnWidth + 3 * NumberColumnWidth, InY, *FString::Printf(TEXT("%.2f"), CpuPerfResults[ResultIndex] * 1000.f), StatColor);
 
-					ResultIndex++;
-				}
-			}
-			else
-			{
-				InCanvas->DrawShadowedString(InX, InY, TEXT("Display Cluster Stats [NO DATA]"), StatsFont, HeaderColor);
-				InY += StatsFont->GetMaxCharHeight();
-			}
+                    InY += StatsFont->GetMaxCharHeight();
 
-			InY += StatsFont->GetMaxCharHeight();
-		}
+                    ResultIndex++;
+                }
+            }
+            else
+            {
+                InCanvas->DrawShadowedString(InX, InY, TEXT("Display Cluster Stats [NO DATA]"), StatsFont, HeaderColor);
+                InY += StatsFont->GetMaxCharHeight();
+            }
+
+            InY += StatsFont->GetMaxCharHeight();
+        }
 #endif  // GPUPROFILERTRACE_ENABLED
 
-		return InY;
-	}
+        return InY;
+    }
 
-	float* GetNextHistoryWriteAddress(const FString& Description)
-	{
-		FRWScopeLock Lock(CpuHistoryMutex, SLT_Write);
+    float* GetNextHistoryWriteAddress(const FString& Description)
+    {
+        FRWScopeLock Lock(CpuHistoryMutex, SLT_Write);
 
-		FCpuProfileHistory*& History = CpuHistoryByDescription.FindOrAdd(Description);
-		if (!History)
-		{
-			History = new FCpuProfileHistory;
-		}
+        FCpuProfileHistory*& History = CpuHistoryByDescription.FindOrAdd(Description);
+        if (!History)
+        {
+            History = new FCpuProfileHistory;
+        }
 
-		return &History->Times[(History->HistoryIndex++) % FCpuProfileHistory::HistoryCount];
-	}
+        return &History->Times[(History->HistoryIndex++) % FCpuProfileHistory::HistoryCount];
+    }
 
 private:
-	static void RightJustify(FCanvas* Canvas, UFont* StatsFont, const int32 X, const int32 Y, TCHAR const* Text, FLinearColor const& Color)
-	{
-		int32 ColumnSizeX, ColumnSizeY;
-		StringSize(StatsFont, ColumnSizeX, ColumnSizeY, Text);
-		Canvas->DrawShadowedString(X - ColumnSizeX, Y, Text, StatsFont, Color);
-	}
+    static void RightJustify(FCanvas* Canvas, UFont* StatsFont, const int32 X, const int32 Y, TCHAR const* Text, FLinearColor const& Color)
+    {
+        int32 ColumnSizeX, ColumnSizeY;
+        StringSize(StatsFont, ColumnSizeX, ColumnSizeY, Text);
+        Canvas->DrawShadowedString(X - ColumnSizeX, Y, Text, StatsFont, Color);
+    }
 
-	// Only callable when the CpuHistoryMutex is locked!
-	float FetchHistoryAverage(const FString& Description) const
-	{
-		const FCpuProfileHistory* const* History = CpuHistoryByDescription.Find(Description);
+    // Only callable when the CpuHistoryMutex is locked!
+    float FetchHistoryAverage(const FString& Description) const
+    {
+        const FCpuProfileHistory* const* History = CpuHistoryByDescription.Find(Description);
 
-		float Average = 0.f;
-		if (History)
-		{
-			float ValidResultCount = 0.f;
-			for (uint32 HistoryIndex = 0; HistoryIndex < FCpuProfileHistory::HistoryCount; HistoryIndex++)
-			{
-				float HistoryTime = (*History)->Times[HistoryIndex];
-				if (HistoryTime > 0.f)
-				{
-					Average += HistoryTime;
-					ValidResultCount += 1.f;
-				}
-			}
-			if (ValidResultCount > 0.f)
-			{
-				Average /= ValidResultCount;
-			}
-		}
-		return Average;
-	}
+        float Average = 0.f;
+        if (History)
+        {
+            float ValidResultCount = 0.f;
+            for (uint32 HistoryIndex = 0; HistoryIndex < FCpuProfileHistory::HistoryCount; HistoryIndex++)
+            {
+                float HistoryTime = (*History)->Times[HistoryIndex];
+                if (HistoryTime > 0.f)
+                {
+                    Average += HistoryTime;
+                    ValidResultCount += 1.f;
+                }
+            }
+            if (ValidResultCount > 0.f)
+            {
+                Average /= ValidResultCount;
+            }
+        }
+        return Average;
+    }
 
-	struct FCpuProfileHistory
-	{
-		FCpuProfileHistory()
-		{
-			FMemory::Memset(*this, 0);
-		}
+    struct FCpuProfileHistory
+    {
+        FCpuProfileHistory()
+        {
+            FMemory::Memset(*this, 0);
+        }
 
-		static const uint32 HistoryCount = 64;
+        static const uint32 HistoryCount = 64;
 
-		// Constructor memsets everything to zero, assuming structure is Plain Old Data.  If any dynamic structures are
-		// added, you'll need a more generalized constructor that zeroes out all the uninitialized data.
-		uint32 HistoryIndex;
-		float Times[HistoryCount];
-	};
+        // Constructor memsets everything to zero, assuming structure is Plain Old Data.  If any dynamic structures are
+        // added, you'll need a more generalized constructor that zeroes out all the uninitialized data.
+        uint32 HistoryIndex;
+        float Times[HistoryCount];
+    };
 
-	// History payload is separately allocated in memory, as it's written to asynchronously by the Render Thread, and we
-	// can't have it moved if the Map storage gets reallocated when new view families are added.
-	TMap<FString, FCpuProfileHistory*> CpuHistoryByDescription;
-	FRWLock CpuHistoryMutex;
+    // History payload is separately allocated in memory, as it's written to asynchronously by the Render Thread, and we
+    // can't have it moved if the Map storage gets reallocated when new view families are added.
+    TMap<FString, FCpuProfileHistory*> CpuHistoryByDescription;
+    FRWLock CpuHistoryMutex;
 };
 
 void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
@@ -613,6 +614,13 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     if (PolicyController)
                         LocalPlayer = PolicyController->GetLocalPlayer();
                 }
+
+                const ACameraActor* Camera = Info.Template.Get();
+                const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
+                if (Definition != nullptr)
+                {
+                    ViewFamily.EngineShowFlags = Definition->ShowFlags;
+                }
                 /// !!!! disguise customizations
 
                 // Calculate the player's view information.
@@ -633,7 +641,7 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     Views.Add(View);
 
                     /// !!!! disguise customizations
-                    UpdateView(&ViewFamily, View, Info);
+                    UpdateView(&ViewFamily, View, Info, Definition);
                     /// !!!! disguise customizations
 
                     // We don't allow instanced stereo currently
@@ -949,14 +957,12 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
 }
 /// DisplayClusterViewportClient.cpp copy-pasta
 
-void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info)
+void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FSceneView* View, const FRenderStreamViewportInfo& Info, const URenderStreamChannelDefinition* Definition)
 {
     if (!Info.Template.IsValid())
         return;
 
     TSet<FPrimitiveComponentId> Collection;
-    const ACameraActor* Camera = Info.Template.Get();
-    const URenderStreamChannelDefinition* Definition = Camera ? Camera->FindComponentByClass<URenderStreamChannelDefinition>() : nullptr;
     if (Definition != nullptr)
     {
         EngineShowFlags = Definition->ShowFlags;
@@ -968,22 +974,22 @@ void URenderStreamViewportClient::UpdateView(FSceneViewFamily* ViewFamily, FScen
             if (Actor.IsValid())
             {
                 Actor->ForEachComponent<UPrimitiveComponent>(false, [&Collection](const UPrimitiveComponent* PrimativeComponent)
-                {
-                    Collection.Add(PrimativeComponent->GetPrimitiveSceneId());
-                });
+                    {
+                        Collection.Add(PrimativeComponent->GetPrimitiveSceneId());
+                    });
             }
         }
 
         if (Definition->DefaultVisibility == EChannelVisibilty::Visible)
             View->HiddenPrimitives = Collection;
         else
-		{
-			if (Collection.IsEmpty())
-			{
-				Collection.Add(FPrimitiveComponentId());
-			}
+        {
+            if (Collection.IsEmpty())
+            {
+                Collection.Add(FPrimitiveComponentId());
+            }
 
             View->ShowOnlyPrimitives = Collection;
-		}
+        }
     }
 }
