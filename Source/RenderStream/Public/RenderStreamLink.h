@@ -28,7 +28,7 @@ typedef uint64_t VkDeviceSize;
 typedef struct VkSemaphore_T* VkSemaphore;
 
 #define RS_PLUGIN_NAME "RenderStream-UE"
-#define RS_PLUGIN_VERSION "RS2.0-UE5.3-v2"
+#define RS_PLUGIN_VERSION "RS3.0-UE5.3-v0"
 
 class RenderStreamLink
 {
@@ -254,6 +254,7 @@ public:
         RS_PARAMETER_SKELETON,
         RS_PARAMETER_LAST= RS_PARAMETER_SKELETON
     };
+    static const char* ParamTypeToName(RemoteParameterType type);
 
     enum RemoteParameterDmxType
     {
@@ -261,8 +262,20 @@ public:
         RS_DMX_8,
         RS_DMX_16_BE,
     };
-
-    static const char* ParamTypeToName(RemoteParameterType type);
+    
+    enum RSColourSpace
+    {
+        RS_COLOUR_SPACE_UNKNOWN,
+        RS_COLOUR_SPACE_sRGBCurve,
+        // All colour spaces are linear by default
+        RS_COLOUR_SPACE_sRGB,
+        RS_COLOUR_SPACE_Rec2020,
+        RS_COLOUR_SPACE_ACES2065,
+        RS_COLOUR_SPACE_ACEScg,
+        RS_COLOUR_SPACE_P3D65,
+        RS_COLOUR_SPACE_P3DCI,
+    };
+    RENDERSTREAM_API static RSColourSpace GetWorkingColourSpace();
 
     typedef struct
     {
@@ -331,6 +344,7 @@ public:
         const char* engineVersion;
         const char* pluginVersion;
         const char* info;
+        RSColourSpace workingColourSpace;
         Channels channels;
         Scenes scenes;
     } Schema;
@@ -343,7 +357,7 @@ public:
 
 #pragma pack(pop)
 
-#define RENDER_STREAM_VERSION_MAJOR 2
+#define RENDER_STREAM_VERSION_MAJOR 3
 #define RENDER_STREAM_VERSION_MINOR 0
 
     enum UseDX12SharedHeapFlag
@@ -499,6 +513,7 @@ public:
             schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
             schema.pluginVersion = _strdup(RS_PLUGIN_VERSION);
             schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
+            schema.workingColourSpace = GetWorkingColourSpace();
             schema.channels.nChannels = 0;
             schema.channels.channels = nullptr;
             schema.scenes.nScenes = 0;

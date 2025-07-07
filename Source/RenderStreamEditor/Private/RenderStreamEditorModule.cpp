@@ -31,6 +31,7 @@
 
 #include "Runtime/Launch/Resources/Version.h"
 #include "GeneralProjectSettings.h"
+#include "Engine/RendererSettings.h"
 
 #include "RenderStream/Public/RenderStreamLink.h"
 #include <set>
@@ -742,6 +743,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     Schema.schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
     Schema.schema.pluginVersion = _strdup(RS_PLUGIN_VERSION);
     Schema.schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
+    Schema.schema.workingColourSpace = RenderStreamLink::GetWorkingColourSpace();
     Schema.schema.channels.nChannels = uint32_t(Channels.size());
     Schema.schema.channels.channels = static_cast<const char**>(malloc(Schema.schema.channels.nChannels * sizeof(const char*)));
     auto It = Channels.begin();

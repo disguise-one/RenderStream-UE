@@ -2,6 +2,7 @@
 #include "RenderStream.h"
 
 #include "RenderStreamSettings.h"
+#include "Engine/RendererSettings.h"
 
 #if defined WIN32 || defined WIN64
 #define WINDOWS
@@ -27,7 +28,7 @@ namespace {
     }
 }
 
-const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
+/*static*/ const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
 {
     static const char* ParamTypeName[] = {
         "Number",
@@ -43,6 +44,27 @@ const char* RenderStreamLink::ParamTypeToName(RemoteParameterType type)
     return ParamTypeName[type];
 }
 
+/*static*/ RenderStreamLink::RSColourSpace RenderStreamLink::GetWorkingColourSpace()
+{
+    // Note that UE will always expect linear colour space
+    switch (GetDefault<URendererSettings>()->WorkingColorSpaceChoice.GetValue())
+    {
+    case EWorkingColorSpace::Type::sRGB:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_sRGB;
+    case EWorkingColorSpace::Type::Rec2020:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_Rec2020;
+    case EWorkingColorSpace::Type::ACESAP0:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_ACES2065;
+    case EWorkingColorSpace::Type::ACESAP1:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_ACEScg;
+    case EWorkingColorSpace::Type::P3D65:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_P3D65;
+    case EWorkingColorSpace::Type::P3DCI:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_P3DCI;
+    default:
+        return RenderStreamLink::RSColourSpace::RS_COLOUR_SPACE_UNKNOWN;
+    }
+}
 
 /*static*/ RenderStreamLink& RenderStreamLink::instance()
 {
