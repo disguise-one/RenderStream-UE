@@ -61,6 +61,8 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
         return;
     }
 
+    TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("SceneSelector_StreamingLevels::ApplyScene()"));
+
     SchemaSpec& spec = m_specs[sceneId];
     if (spec.streamingLevel && !spec.streamingLevel->IsLevelLoaded())
     {
