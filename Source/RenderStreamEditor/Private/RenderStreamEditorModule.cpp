@@ -532,7 +532,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
                 FString ChannelName = TCHAR_TO_UTF8(*(Definition->GetChannelName()));
                 Cache->Channels.Emplace(ChannelName);
                 FRenderStreamChannelInfo channelInfo = FRenderStreamValidation::GetChannelInfo(Definition, Level);
-                sanitizeChannelInfo(channelInfo);
+                SanitizeChannelInfo(channelInfo);
                 Cache->ChannelInfoMap.Emplace(ChannelName, channelInfo);
             }
         }
