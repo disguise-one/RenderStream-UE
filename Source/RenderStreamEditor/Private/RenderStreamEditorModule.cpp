@@ -505,7 +505,7 @@ bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
 }
 
 // Removes transient objects from the channel info in preparation to save the channel info into the cache
-void sanitizeChannelInfo(FRenderStreamChannelInfo& ChannelInfo)
+void SanitizeChannelInfo(FRenderStreamChannelInfo& ChannelInfo)
 {
     ChannelInfo.PostProcessSettings.WeightedBlendables.Array.RemoveAll([](const FWeightedBlendable& Blendable)
     {
