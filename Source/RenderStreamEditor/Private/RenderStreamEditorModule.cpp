@@ -504,6 +504,15 @@ bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
     return checkoutNotCancelled && allPackagesWriteable;
 }
 
+// Removes transient objects from the channel info in preparation to save the channel info into the cache
+void SanitizeChannelInfo(FRenderStreamChannelInfo& ChannelInfo)
+{
+    ChannelInfo.PostProcessSettings.WeightedBlendables.Array.RemoveAll([](const FWeightedBlendable& Blendable)
+    {
+        return Blendable.Object && Blendable.Object->IsA<UMaterialInstanceDynamic>();
+    });
+}
+
 URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
 {
     URenderStreamChannelCacheAsset* Cache = GetOrCreateCache(Level);
@@ -522,7 +531,9 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
             {
                 FString ChannelName = TCHAR_TO_UTF8(*(Definition->GetChannelName()));
                 Cache->Channels.Emplace(ChannelName);
-                Cache->ChannelInfoMap.Emplace(ChannelName, FRenderStreamValidation::GetChannelInfo(Definition, Level));
+                FRenderStreamChannelInfo channelInfo = FRenderStreamValidation::GetChannelInfo(Definition, Level);
+                SanitizeChannelInfo(channelInfo);
+                Cache->ChannelInfoMap.Emplace(ChannelName, channelInfo);
             }
         }
     }
