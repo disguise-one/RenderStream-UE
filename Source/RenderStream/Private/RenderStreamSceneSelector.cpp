@@ -13,6 +13,10 @@
 #include "TextureResource.h"
 
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
+#include <Kismet/KismetRenderingLibrary.h>
+
+#include "Materials/MaterialInstanceDynamic.h"
+#include "OpenColorIOBlueprintLibrary.h"
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
@@ -741,6 +745,47 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         return;
                     }
                 });
+
+                UTextureRenderTarget2D* tmpTexture = UKismetRenderingLibrary::CreateRenderTarget2D(
+                    Root->GetWorld(),
+                    Texture->SizeX,
+                    Texture->SizeY
+                );
+
+                const URenderStreamSettings* settings2 = GetDefault<URenderStreamSettings>();
+                if (settings2->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
+                {
+                    FOpenColorIOColorConversionSettings ConvSettings;
+                    ConvSettings.ConfigurationSource = settings2->OCIOConfig.ColorConfiguration.ConfigurationSource;
+                    // NOTE: I reverted the source/destination color spaces on purpose
+                    // since we need to transform the shared texture parameter in the opposite way we do the viewport
+                    ConvSettings.SourceColorSpace = settings2->OCIOConfig.ColorConfiguration.DestinationColorSpace;
+                    ConvSettings.DestinationColorSpace = settings2->OCIOConfig.ColorConfiguration.SourceColorSpace;
+
+                    UOpenColorIOBlueprintLibrary::ApplyColorSpaceTransform(
+                        Root, 
+                        ConvSettings,    
+                        Texture,
+                        tmpTexture 
+                    );
+
+                    UMaterialInterface* CopyMat = LoadObject<UMaterialInterface>(
+                        nullptr,
+                        TEXT("/Game/M_CopyRT.M_CopyRT")
+                    );
+
+                    if (CopyMat)
+                    {
+                        UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(CopyMat, GetTransientPackage());
+                        MID->SetTextureParameterValue(TEXT("InputTexture"), tmpTexture);
+                        UKismetRenderingLibrary::DrawMaterialToRenderTarget(Root->GetWorld(), Texture, MID);
+                    }
+                    else
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Didn't find the material during the colour transform"));
+                    }
+                }
+
                 ++iImage;
             }
         }
