@@ -10,6 +10,11 @@
 
 #include "Animation/AnimBlueprintGeneratedClass.h"
 
+#include "Engine/World.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimNodeBase.h"
+
 TMap<FName, FName> GetDefaultBoneNameMap()
 {
     TMap<FName, FName> BoneMap;

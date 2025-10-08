@@ -4,7 +4,7 @@
 
 #include "HardwareInfo.h"
 
-#include "D3D12RHIBridge.h"
+#include "D3D12RHI.h"
 
 #include "VulkanRHIPrivate.h"
 #include "VulkanResources.h"
@@ -133,7 +133,7 @@ namespace RSUCHelpers
             float URight = CropU.Y;
             float VTop = CropV.X;
             float VBottom = CropV.Y;
-            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer(ULeft, URight, VTop, VBottom);
+            FBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer(RHICmdList, ULeft, URight, VTop, VBottom);
             RHICmdList.SetStreamSource(0, VertexBuffer, 0);
 
             // set viewport to RT size

@@ -11,7 +11,7 @@
 
 #include "IDisplayCluster.h"
 #include "Interfaces/IPluginManager.h"
-#include "Windows/MinWindows.h"
+#include "Windows/WindowsHWrapper.h"
 
 namespace {
     void log_default(const char* text) {

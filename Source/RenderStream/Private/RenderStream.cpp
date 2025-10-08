@@ -1023,7 +1023,7 @@ void FRenderStreamModule::OnEndFrame()
     }
 
     // Get the time we idled this frame.
-    double WaitTime = FThreadIdleStats::Get().Waits;
+    double WaitTime = UE::Stats::FThreadIdleStats::Get().Waits;
 
     Entries.Push({ "Frame Time", DiffTime * 1000.0f });
     Entries.Push({ "Game Time", FPlatformTime::ToMilliseconds(GGameThreadTime) });
