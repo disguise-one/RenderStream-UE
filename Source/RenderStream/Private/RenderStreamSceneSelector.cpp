@@ -17,6 +17,8 @@
 
 #include "Materials/MaterialInstanceDynamic.h"
 #include "OpenColorIOBlueprintLibrary.h"
+#include <OpenColorIOColorTransform.h>
+#include <OpenColorIORendering.h>
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
 
@@ -746,28 +748,42 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     }
                 });
 
-                UTextureRenderTarget2D* tmpTexture = UKismetRenderingLibrary::CreateRenderTarget2D(
-                    Root->GetWorld(),
-                    Texture->SizeX,
-                    Texture->SizeY
-                );
-
                 const URenderStreamSettings* settings2 = GetDefault<URenderStreamSettings>();
                 if (settings2->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
                 {
-                    FOpenColorIOColorConversionSettings ConvSettings;
-                    ConvSettings.ConfigurationSource = settings2->OCIOConfig.ColorConfiguration.ConfigurationSource;
-                    // NOTE: I reverted the source/destination color spaces on purpose
-                    // since we need to transform the shared texture parameter in the opposite way we do the viewport
-                    ConvSettings.SourceColorSpace = settings2->OCIOConfig.ColorConfiguration.DestinationColorSpace;
-                    ConvSettings.DestinationColorSpace = settings2->OCIOConfig.ColorConfiguration.SourceColorSpace;
-
-                    UOpenColorIOBlueprintLibrary::ApplyColorSpaceTransform(
-                        Root, 
-                        ConvSettings,    
-                        Texture,
-                        tmpTexture 
+                    UTextureRenderTarget2D* tmpTexture = UKismetRenderingLibrary::CreateRenderTarget2D(
+                        Root->GetWorld(),
+                        Texture->SizeX,
+                        Texture->SizeY
                     );
+
+                    static FOpenColorIOColorConversionSettings ConvSettings;
+                    ConvSettings.ConfigurationSource = settings2->OCIOConfig.ColorConfiguration.ConfigurationSource;
+
+                    if (settings2->OCIOConfig.ColorConfiguration.DestinationColorSpace.ColorSpaceIndex != INDEX_NONE)
+                    {
+                        ConvSettings.SourceColorSpace = settings2->OCIOConfig.ColorConfiguration.DestinationColorSpace;
+                        ConvSettings.DestinationColorSpace = settings2->OCIOConfig.ColorConfiguration.SourceColorSpace;
+                    }
+                    else
+                    {
+                        ConvSettings.SourceColorSpace = settings2->OCIOConfig.ColorConfiguration.SourceColorSpace;
+                        ConvSettings.DestinationDisplayView = settings2->OCIOConfig.ColorConfiguration.DestinationDisplayView;
+                        ConvSettings.DisplayViewDirection = EOpenColorIOViewTransformDirection::Inverse;
+                    }
+                    
+
+                    bool isTransformApplied = UOpenColorIOBlueprintLibrary::ApplyColorSpaceTransform(
+                        Root,
+                        ConvSettings,
+                        Texture,
+                        tmpTexture
+                    );
+
+                    if (!isTransformApplied)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Failed to apply colour transform"));
+                    }
 
                     UMaterialInterface* CopyMat = LoadObject<UMaterialInterface>(
                         nullptr,
@@ -776,7 +792,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
                     if (CopyMat)
                     {
-                        UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(CopyMat, GetTransientPackage());
+                        UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(CopyMat, Root);
                         MID->SetTextureParameterValue(TEXT("InputTexture"), tmpTexture);
                         UKismetRenderingLibrary::DrawMaterialToRenderTarget(Root->GetWorld(), Texture, MID);
                     }
