@@ -396,6 +396,14 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     return SIZE_MAX;
                 }
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameters[nParameters]);
+
+                //m_textureColourTransform = UKismetRenderingLibrary::CreateRenderTarget2D(
+                //    Root->GetWorld(),
+                //    Texture->SizeX,
+                //    Texture->SizeY, 
+                //    Texture->RenderTargetFormat
+                //);
+
                 ++nParameters;
             }
             else
@@ -785,6 +793,22 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         UE_LOG(LogRenderStream, Error, TEXT("Failed to apply colour transform"));
                     }
 
+                    //{
+                    //    TArray<FLinearColor> LinearDataTMP;
+                    //    tmpTexture->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(LinearDataTMP);
+                    //    FString color = LinearDataTMP[0].ToString();
+                    //    UE_LOG(LogRenderStream, Error, TEXT("AE_LOGS: tmpTexture colour after = %s"), *color);
+                    //}
+
+                    Texture->InitCustomFormat(frameData.width, frameData.height, EPixelFormat::PF_FloatRGBA, false);
+
+                    //{
+                    //    TArray<FLinearColor> LinearDataTMP;
+                    //    Texture->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(LinearDataTMP);
+                    //    FString color = LinearDataTMP[0].ToString();
+                    //    UE_LOG(LogRenderStream, Error, TEXT("AE_LOGS: Texture colour before = %s"), *color);
+                    //}
+
                     UMaterialInterface* CopyMat = LoadObject<UMaterialInterface>(
                         nullptr,
                         TEXT("/Game/M_CopyRT.M_CopyRT")
@@ -800,6 +824,14 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     {
                         UE_LOG(LogRenderStream, Error, TEXT("Didn't find the material during the colour transform"));
                     }
+
+
+                    //{
+                    //    TArray<FLinearColor> LinearDataTMP;
+                    //    Texture->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(LinearDataTMP);
+                    //    FString color = LinearDataTMP[0].ToString();
+                    //    UE_LOG(LogRenderStream, Error, TEXT("AE_LOGS: Texture colour after = %s"), *color);
+                    //}
                 }
 
                 ++iImage;

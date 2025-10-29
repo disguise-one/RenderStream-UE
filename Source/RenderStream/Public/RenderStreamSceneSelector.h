@@ -43,4 +43,6 @@ private:
     std::vector<uint8_t> m_schemaMem;
     RenderStreamLink::ScopedSchema m_defaultSchema;
     std::vector<float> m_floatValuesLast;
+
+    //mutable UTextureRenderTarget2D* m_textureColourTransform;
 };
