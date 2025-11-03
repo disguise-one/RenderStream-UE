@@ -48,5 +48,5 @@ private:
 
     UTextureRenderTarget2D* m_textureColourTransform;
     mutable FOpenColorIOColorConversionSettings m_colourConversionSettings;
-    mutable bool isColourConfigurationEnabled = false;
+    mutable bool m_isColourConfigurationEnabled = false;
 };
