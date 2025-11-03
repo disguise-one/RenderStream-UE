@@ -14,17 +14,18 @@
 
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
 #include <Kismet/KismetRenderingLibrary.h>
-
-#include "Materials/MaterialInstanceDynamic.h"
 #include "OpenColorIOBlueprintLibrary.h"
-#include <OpenColorIOColorTransform.h>
-#include <OpenColorIORendering.h>
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector()
 {
-    if (m_textureColourTransform && m_textureColourTransform->IsRooted())
+    if (m_textureColourTransform)
     {
-        m_textureColourTransform->RemoveFromRoot();
+        if (m_textureColourTransform->IsRooted())
+        {
+            m_textureColourTransform->RemoveFromRoot();
+        }
+
+        UKismetRenderingLibrary::ReleaseRenderTarget2D(m_textureColourTransform);
     }
 }
 
@@ -211,10 +212,15 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
     if (settings->OCIOConfig.bIsEnabled && settings->OCIOConfig.ColorConfiguration.ConfigurationSource)
     {
-        isColourConfigurationEnabled = true;
+        m_isColourConfigurationEnabled = true;
 
         m_colourConversionSettings.ConfigurationSource = settings->OCIOConfig.ColorConfiguration.ConfigurationSource;
 
+        // OCIO has two different types for colour space, ColorSpace and DisplayView.
+        // Colour transform of ColorSpace can be supported in any order; however, DisplayView cannot be used as a source.
+        // To use DisplayView as a source, `DisplayViewDirection` needs to be set to `Inverse` with
+        // `colourConversionSettings.DestinationDisplayView` set to `DestinationDisplayView`.
+        // `Support inverse view transform` setting under `Plugins - OpenColorIO` in the UE project must be enabled: DSOF-31260
         if (settings->OCIOConfig.ColorConfiguration.DestinationColorSpace.ColorSpaceIndex != INDEX_NONE)
         {
             m_colourConversionSettings.SourceColorSpace = settings->OCIOConfig.ColorConfiguration.DestinationColorSpace;
@@ -770,7 +776,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
                 const RenderStreamLink::ImageFrameData& frameData = imageValues[iImage];
 
-                if (isColourConfigurationEnabled)
+                if (m_isColourConfigurationEnabled)
                 {
                     if (!m_textureColourTransform)
                     {
