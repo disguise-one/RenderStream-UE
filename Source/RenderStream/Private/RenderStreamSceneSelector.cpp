@@ -20,7 +20,13 @@
 #include <OpenColorIOColorTransform.h>
 #include <OpenColorIORendering.h>
 
-RenderStreamSceneSelector::~RenderStreamSceneSelector() = default;
+RenderStreamSceneSelector::~RenderStreamSceneSelector()
+{
+    if (m_textureColourTransform && m_textureColourTransform->IsRooted())
+    {
+        m_textureColourTransform->RemoveFromRoot();
+    }
+}
 
 void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * Level) const
 {
@@ -201,6 +207,27 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
             Actors.Num(), offset, sceneParameters.nParameters);
         return false;
     }
+
+    const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
+    if (settings->OCIOConfig.bIsEnabled && settings->OCIOConfig.ColorConfiguration.ConfigurationSource)
+    {
+        isColourConfigurationEnabled = true;
+
+        m_colourConversionSettings.ConfigurationSource = settings->OCIOConfig.ColorConfiguration.ConfigurationSource;
+
+        if (settings->OCIOConfig.ColorConfiguration.DestinationColorSpace.ColorSpaceIndex != INDEX_NONE)
+        {
+            m_colourConversionSettings.SourceColorSpace = settings->OCIOConfig.ColorConfiguration.DestinationColorSpace;
+            m_colourConversionSettings.DestinationColorSpace = settings->OCIOConfig.ColorConfiguration.SourceColorSpace;
+        }
+        else
+        {
+            m_colourConversionSettings.SourceColorSpace = settings->OCIOConfig.ColorConfiguration.SourceColorSpace;
+            m_colourConversionSettings.DestinationDisplayView = settings->OCIOConfig.ColorConfiguration.DestinationDisplayView;
+            m_colourConversionSettings.DisplayViewDirection = EOpenColorIOViewTransformDirection::Inverse;
+        }
+    }
+
 
     return true;
 }
@@ -520,6 +547,74 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
 }
 
+void RenderStreamSceneSelector::GetTextureParameter(const FString& toggle, const RenderStreamLink::ImageFrameData& frameData, size_t iImage, UTextureRenderTarget2D* Texture)
+{
+    ENQUEUE_RENDER_COMMAND(GetTex)(
+        [Texture, toggle, frameData, iImage](FRHICommandListImmediate& RHICmdList)
+        {
+            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Block %d"), iImage);
+            const auto rtResource = Texture->GetRenderTargetResource();
+            if (!rtResource)
+            {
+                return;
+            }
+            void* resource = rtResource->TextureRHI->GetNativeResource();
+
+            RenderStreamLink::SenderFrame data = {};
+            if (toggle == "D3D11")
+            {
+                data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
+                data.dx11.resource = static_cast<ID3D11Resource*>(resource);
+                auto err = RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data);
+            }
+            else if (toggle == "D3D12")
+            {
+                {
+                    SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                    RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                }
+
+                data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
+                data.dx12.resource = static_cast<ID3D12Resource*>(resource);
+
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage2 %d"), iImage);
+                if (RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data) != RenderStreamLink::RS_ERROR_SUCCESS)
+                {
+
+                }
+            }
+            else if (toggle == "Vulkan")
+            {
+                {
+                    SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                    RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                }
+
+                FVulkanTexture* VulkanTexture = ResourceCast(rtResource->TextureRHI->GetTexture2D());
+                auto point2 = VulkanTexture->GetSizeXY();
+
+                data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
+                data.vk.memory = VulkanTexture->GetAllocationHandle();
+                data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
+                data.vk.format = frameData.format;
+                data.vk.width = uint32_t(point2.X);
+                data.vk.height = uint32_t(point2.Y);
+                // TODO: semaphores
+
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage2 %d"), iImage);
+                if (RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data) != RenderStreamLink::RS_ERROR_SUCCESS)
+                {
+
+                }
+            }
+            else
+            {
+                UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
+                return;
+            }
+        });
+}
+
 void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash, const RenderStreamLink::RemoteParameter** ppParams, const size_t nParams, const std::vector<float>& floatValues, size_t& iFloat, const RenderStreamLink::ImageFrameData** ppImageValues, const size_t nImageVals, size_t& textValues)
 {
     auto toggle = FHardwareInfo::GetHardwareInfo(NAME_RHI);
@@ -667,6 +762,12 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             UObject* o = ObjectProperty->GetObjectPropertyValue(ObjectAddress);
             if (UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(o))
             {
+                if (iImage >= nImageVals)
+                {
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                    continue;
+                }
+
                 // Treat all incoming textures are in linear colour space to
                 // ensure consistent behaviour.
                 // Without this, UE applies gamma 2.2 to textures with
@@ -674,164 +775,100 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 // as linear (RST-353).
                 Texture->SRGB = 0;
                 Texture->bForceLinearGamma = true;
-                if (iImage >= nImageVals)
-                {
-                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
-                    continue;
-                }
 
                 const RenderStreamLink::ImageFrameData& frameData = imageValues[iImage];
-                if (!Texture->bGPUSharedFlag || Texture->GetFormat() != formatMap[frameData.format].ue)
+
+                if (isColourConfigurationEnabled)
                 {
-                    Texture->bGPUSharedFlag = true;
-                    Texture->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
-                }
-                else
-                {
-                    Texture->ResizeTarget(frameData.width, frameData.height);
-                }
-
-                ENQUEUE_RENDER_COMMAND(GetTex)(
-                [this, toggle, Texture, frameData, iImage](FRHICommandListImmediate& RHICmdList)
-                {
-                    SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Block %d"), iImage);
-                    const auto rtResource = Texture->GetRenderTargetResource();
-                    if (!rtResource)
+                    if (!m_textureColourTransform)
                     {
-                        return;
+                        m_textureColourTransform = UKismetRenderingLibrary::CreateRenderTarget2D(
+                            Root,
+                            Texture->SizeX,
+                            Texture->SizeY,
+                            Texture->RenderTargetFormat
+                        );
+
+                        m_textureColourTransform->SRGB = 0;
+                        m_textureColourTransform->bForceLinearGamma = true;
+
+                        m_textureColourTransform->AddToRoot();
+                        m_textureColourTransform->UpdateResourceImmediate(true);
                     }
-                    void* resource = rtResource->TextureRHI->GetNativeResource();
 
-                    RenderStreamLink::SenderFrame data = {};
-                    if (toggle == "D3D11")
+                    if (Texture->OverrideFormat != EPixelFormat::PF_FloatRGBA)
                     {
-                        data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
-                        data.dx11.resource = static_cast<ID3D11Resource*>(resource);
-                        auto err = RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data);
-                    }
-                    else if (toggle == "D3D12")
-                    {
-                        {
-                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
-                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-                        }
-
-                        data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX12_TEXTURE;
-                        data.dx12.resource = static_cast<ID3D12Resource*>(resource);
-                        
-                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage2 %d"), iImage);
-                        if (RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data) != RenderStreamLink::RS_ERROR_SUCCESS)
-                        {
-
-                        }
-                    }
-                    else if (toggle == "Vulkan")
-                    {
-                        {
-                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
-                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-                        }
-
-                        FVulkanTexture* VulkanTexture = ResourceCast(rtResource->TextureRHI->GetTexture2D());
-                        auto point2 = VulkanTexture->GetSizeXY();
-
-                        data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_VULKAN_TEXTURE;
-                        data.vk.memory = VulkanTexture->GetAllocationHandle();
-                        data.vk.size = VulkanTexture->GetAllocationOffset() + VulkanTexture->GetMemorySize();
-                        data.vk.format = frameData.format;
-                        data.vk.width = uint32_t(point2.X);
-                        data.vk.height = uint32_t(point2.Y);
-                        // TODO: semaphores
-
-                        SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS getFrameImage2 %d"), iImage);
-                        if (RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data) != RenderStreamLink::RS_ERROR_SUCCESS)
-                        {
-
-                        }
+                        Texture->InitCustomFormat(frameData.width, frameData.height, EPixelFormat::PF_FloatRGBA, false);
                     }
                     else
                     {
-                        UE_LOG(LogRenderStream, Error, TEXT("RenderStream tried to send frame with unsupported RHI backend."));
-                        return;
+                        Texture->ResizeTarget(frameData.width, frameData.height);
                     }
-                });
 
-                const URenderStreamSettings* settings2 = GetDefault<URenderStreamSettings>();
-                if (settings2->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
-                {
-                    UTextureRenderTarget2D* tmpTexture = UKismetRenderingLibrary::CreateRenderTarget2D(
-                        Root->GetWorld(),
-                        Texture->SizeX,
-                        Texture->SizeY
+                    if (!m_textureColourTransform->bGPUSharedFlag || m_textureColourTransform->GetFormat() != formatMap[frameData.format].ue)
+                    {
+                        m_textureColourTransform->bGPUSharedFlag = true;
+                        m_textureColourTransform->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
+                    }
+                    else
+                    {
+                        Texture->ResizeTarget(frameData.width, frameData.height);
+                    }
+
+                    FTextureRenderTargetResource* SourceRes = Texture->GameThread_GetRenderTargetResource();
+                    FTextureRenderTargetResource* DestRes = m_textureColourTransform->GameThread_GetRenderTargetResource();
+                    if (!SourceRes || !DestRes)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Cannot get render target resource for a source or a destination"));
+                        continue;
+                    }
+
+                    FTextureRHIRef SourceTexture = SourceRes->GetRenderTargetTexture();
+                    FTextureRHIRef DestTexture = DestRes->GetRenderTargetTexture();
+                    if (!SourceTexture || !DestTexture)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Cannot get render target texture for a source or a destination"));
+                        continue;
+                    }
+
+                    ENQUEUE_RENDER_COMMAND(CopyTex)(
+                        [SourceTexture, DestTexture](FRHICommandListImmediate& RHICmdList)
+                        {
+                            RHICmdList.CopyTexture(
+                                SourceTexture,
+                                DestTexture,
+                                FRHICopyTextureInfo()
+                            );
+                        }
                     );
 
-                    static FOpenColorIOColorConversionSettings ConvSettings;
-                    ConvSettings.ConfigurationSource = settings2->OCIOConfig.ColorConfiguration.ConfigurationSource;
-
-                    if (settings2->OCIOConfig.ColorConfiguration.DestinationColorSpace.ColorSpaceIndex != INDEX_NONE)
-                    {
-                        ConvSettings.SourceColorSpace = settings2->OCIOConfig.ColorConfiguration.DestinationColorSpace;
-                        ConvSettings.DestinationColorSpace = settings2->OCIOConfig.ColorConfiguration.SourceColorSpace;
-                    }
-                    else
-                    {
-                        ConvSettings.SourceColorSpace = settings2->OCIOConfig.ColorConfiguration.SourceColorSpace;
-                        ConvSettings.DestinationDisplayView = settings2->OCIOConfig.ColorConfiguration.DestinationDisplayView;
-                        ConvSettings.DisplayViewDirection = EOpenColorIOViewTransformDirection::Inverse;
-                    }
-                    
+                    GetTextureParameter(toggle, frameData, iImage, m_textureColourTransform);
 
                     bool isTransformApplied = UOpenColorIOBlueprintLibrary::ApplyColorSpaceTransform(
                         Root,
-                        ConvSettings,
-                        Texture,
-                        tmpTexture
+                        m_colourConversionSettings,
+                        m_textureColourTransform,
+                        Texture
                     );
 
                     if (!isTransformApplied)
                     {
-                        UE_LOG(LogRenderStream, Error, TEXT("Failed to apply colour transform"));
+                        UE_LOG(LogRenderStream, Error, TEXT("Failed to apply colour transform. If colour transform uses display-view, please check if 'Support inverse view transform' option is enabled in UE project"));
                     }
-
-                    //{
-                    //    TArray<FLinearColor> LinearDataTMP;
-                    //    tmpTexture->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(LinearDataTMP);
-                    //    FString color = LinearDataTMP[0].ToString();
-                    //    UE_LOG(LogRenderStream, Error, TEXT("AE_LOGS: tmpTexture colour after = %s"), *color);
-                    //}
-
-                    Texture->InitCustomFormat(frameData.width, frameData.height, EPixelFormat::PF_FloatRGBA, false);
-
-                    //{
-                    //    TArray<FLinearColor> LinearDataTMP;
-                    //    Texture->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(LinearDataTMP);
-                    //    FString color = LinearDataTMP[0].ToString();
-                    //    UE_LOG(LogRenderStream, Error, TEXT("AE_LOGS: Texture colour before = %s"), *color);
-                    //}
-
-                    UMaterialInterface* CopyMat = LoadObject<UMaterialInterface>(
-                        nullptr,
-                        TEXT("/Game/M_CopyRT.M_CopyRT")
-                    );
-
-                    if (CopyMat)
+                }
+                else
+                {
+                    if (!Texture->bGPUSharedFlag || Texture->GetFormat() != formatMap[frameData.format].ue)
                     {
-                        UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(CopyMat, Root);
-                        MID->SetTextureParameterValue(TEXT("InputTexture"), tmpTexture);
-                        UKismetRenderingLibrary::DrawMaterialToRenderTarget(Root->GetWorld(), Texture, MID);
+                        Texture->bGPUSharedFlag = true;
+                        Texture->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
                     }
                     else
                     {
-                        UE_LOG(LogRenderStream, Error, TEXT("Didn't find the material during the colour transform"));
+                        Texture->ResizeTarget(frameData.width, frameData.height);
                     }
 
-
-                    //{
-                    //    TArray<FLinearColor> LinearDataTMP;
-                    //    Texture->GameThread_GetRenderTargetResource()->ReadLinearColorPixels(LinearDataTMP);
-                    //    FString color = LinearDataTMP[0].ToString();
-                    //    UE_LOG(LogRenderStream, Error, TEXT("AE_LOGS: Texture colour after = %s"), *color);
-                    //}
+                    GetTextureParameter(toggle, frameData, iImage, Texture);
                 }
 
                 ++iImage;
