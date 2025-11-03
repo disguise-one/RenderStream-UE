@@ -423,14 +423,6 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
                     return SIZE_MAX;
                 }
                 validateField(Name, "", RenderStreamLink::RS_PARAMETER_IMAGE, parameters[nParameters]);
-
-                //m_textureColourTransform = UKismetRenderingLibrary::CreateRenderTarget2D(
-                //    Root->GetWorld(),
-                //    Texture->SizeX,
-                //    Texture->SizeY, 
-                //    Texture->RenderTargetFormat
-                //);
-
                 ++nParameters;
             }
             else
