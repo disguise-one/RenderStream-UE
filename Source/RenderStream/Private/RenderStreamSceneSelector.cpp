@@ -550,7 +550,7 @@ void RenderStreamSceneSelector::GetTextureParameter(const FString& toggle, const
     ENQUEUE_RENDER_COMMAND(GetTex)(
         [Texture, toggle, frameData, iImage](FRHICommandListImmediate& RHICmdList)
         {
-            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Block %d"), iImage);
+            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Texture Parameter Block %d"), iImage);
             const auto rtResource = Texture->GetRenderTargetResource();
             if (!rtResource)
             {
@@ -762,7 +762,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
             {
                 if (iImage >= nImageVals)
                 {
-                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a image value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read an image value from disguise that is out of range. Does the metadata need to be regenerated?"));
                     continue;
                 }
 
