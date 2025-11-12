@@ -804,7 +804,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     {
                         Texture->InitCustomFormat(frameData.width, frameData.height, EPixelFormat::PF_FloatRGBA, false);
                     }
-                    else
+                    else if (Texture->SizeX != frameData.width || Texture->SizeY != frameData.height)
                     {
                         Texture->ResizeTarget(frameData.width, frameData.height);
                     }
@@ -814,7 +814,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         textureColourTransform->bGPUSharedFlag = true;
                         textureColourTransform->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
                     }
-                    else
+                    else if (textureColourTransform->SizeX != frameData.width || textureColourTransform->SizeY != frameData.height)
                     {
                         textureColourTransform->ResizeTarget(frameData.width, frameData.height);
                     }
@@ -840,7 +840,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         Texture->bGPUSharedFlag = true;
                         Texture->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
                     }
-                    else
+                    else if (Texture->SizeX != frameData.width || Texture->SizeY != frameData.height)
                     {
                         Texture->ResizeTarget(frameData.width, frameData.height);
                     }
