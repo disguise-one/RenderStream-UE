@@ -46,7 +46,7 @@ private:
     RenderStreamLink::ScopedSchema m_defaultSchema;
     std::vector<float> m_floatValuesLast;
 
-    UTextureRenderTarget2D* m_textureColourTransform;
+    std::vector<UTextureRenderTarget2D*> m_texturesColourTransform;
     mutable FOpenColorIOColorConversionSettings m_colourConversionSettings;
     mutable bool m_isColourConfigurationEnabled = false;
 };

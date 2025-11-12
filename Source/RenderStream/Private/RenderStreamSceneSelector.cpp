@@ -18,14 +18,17 @@
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector()
 {
-    if (m_textureColourTransform)
+    for (UTextureRenderTarget2D* texture : m_texturesColourTransform)
     {
-        if (m_textureColourTransform->IsRooted())
+        if (texture)
         {
-            m_textureColourTransform->RemoveFromRoot();
-        }
+            if (texture->IsRooted())
+            {
+                texture->RemoveFromRoot();
+            }
 
-        UKismetRenderingLibrary::ReleaseRenderTarget2D(m_textureColourTransform);
+            UKismetRenderingLibrary::ReleaseRenderTarget2D(texture);
+        }
     }
 }
 
@@ -778,21 +781,24 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
 
                 if (m_isColourConfigurationEnabled)
                 {
-                    if (!m_textureColourTransform)
+                    if (iImage >= m_texturesColourTransform.size())
                     {
-                        m_textureColourTransform = UKismetRenderingLibrary::CreateRenderTarget2D(
+                        UTextureRenderTarget2D* texture = UKismetRenderingLibrary::CreateRenderTarget2D(
                             Root,
                             Texture->SizeX,
                             Texture->SizeY,
                             Texture->RenderTargetFormat
                         );
 
-                        m_textureColourTransform->SRGB = 0;
-                        m_textureColourTransform->bForceLinearGamma = true;
+                        texture->SRGB = 0;
+                        texture->bForceLinearGamma = true;
 
-                        m_textureColourTransform->AddToRoot();
-                        m_textureColourTransform->UpdateResourceImmediate(true);
+                        texture->AddToRoot();
+                        texture->UpdateResourceImmediate(true);
+
+                        m_texturesColourTransform.push_back(std::move(texture));
                     }
+                    UTextureRenderTarget2D* textureColourTransform = m_texturesColourTransform[iImage];
 
                     if (Texture->OverrideFormat != EPixelFormat::PF_FloatRGBA)
                     {
@@ -803,49 +809,22 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                         Texture->ResizeTarget(frameData.width, frameData.height);
                     }
 
-                    if (!m_textureColourTransform->bGPUSharedFlag || m_textureColourTransform->GetFormat() != formatMap[frameData.format].ue)
+                    if (!textureColourTransform->bGPUSharedFlag || textureColourTransform->GetFormat() != formatMap[frameData.format].ue)
                     {
-                        m_textureColourTransform->bGPUSharedFlag = true;
-                        m_textureColourTransform->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
+                        textureColourTransform->bGPUSharedFlag = true;
+                        textureColourTransform->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
                     }
                     else
                     {
-                        Texture->ResizeTarget(frameData.width, frameData.height);
+                        textureColourTransform->ResizeTarget(frameData.width, frameData.height);
                     }
 
-                    FTextureRenderTargetResource* SourceRes = Texture->GameThread_GetRenderTargetResource();
-                    FTextureRenderTargetResource* DestRes = m_textureColourTransform->GameThread_GetRenderTargetResource();
-                    if (!SourceRes || !DestRes)
-                    {
-                        UE_LOG(LogRenderStream, Error, TEXT("Cannot get render target resource for a source or a destination"));
-                        continue;
-                    }
-
-                    FTextureRHIRef SourceTexture = SourceRes->GetRenderTargetTexture();
-                    FTextureRHIRef DestTexture = DestRes->GetRenderTargetTexture();
-                    if (!SourceTexture || !DestTexture)
-                    {
-                        UE_LOG(LogRenderStream, Error, TEXT("Cannot get render target texture for a source or a destination"));
-                        continue;
-                    }
-
-                    ENQUEUE_RENDER_COMMAND(CopyTex)(
-                        [SourceTexture, DestTexture](FRHICommandListImmediate& RHICmdList)
-                        {
-                            RHICmdList.CopyTexture(
-                                SourceTexture,
-                                DestTexture,
-                                FRHICopyTextureInfo()
-                            );
-                        }
-                    );
-
-                    GetTextureParameter(toggle, frameData, iImage, m_textureColourTransform);
+                    GetTextureParameter(toggle, frameData, iImage, textureColourTransform);
 
                     bool isTransformApplied = UOpenColorIOBlueprintLibrary::ApplyColorSpaceTransform(
                         Root,
                         m_colourConversionSettings,
-                        m_textureColourTransform,
+                        textureColourTransform,
                         Texture
                     );
 
