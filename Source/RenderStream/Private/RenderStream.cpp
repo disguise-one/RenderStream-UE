@@ -80,8 +80,6 @@
 
 // Part of the workaround for RSP-379
 #include "FileMediaOutput.h"
-#include "Synchronization/DisplayClusterMediaOutputSynchronizationPolicyEthernetBarrier.h"
-
 
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
@@ -801,9 +799,8 @@ void FRenderStreamModule::OnBeginFrame()
     if (RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Num() == 0)
     {
         TObjectPtr<UFileMediaOutput> MediaOutput = NewObject<UFileMediaOutput>(GetTransientPackage());
-        TObjectPtr<UDisplayClusterMediaOutputSynchronizationPolicyEthernetBarrier> OutputSyncPolicy = NewObject<UDisplayClusterMediaOutputSynchronizationPolicyEthernetBarrier>(GetTransientPackage());
         RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.bEnable = true;
-        RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Add({MediaOutput, OutputSyncPolicy});
+        RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Add({MediaOutput,});
     }
 }
 

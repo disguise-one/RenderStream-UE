@@ -44,12 +44,7 @@ public class RenderStream : ModuleRules
                 "DisplayClusterConfiguration",
                 "HeadMountedDisplay",
                 "EngineSettings",
-                "AnimGraphRuntime",
-
-                // Part of the workaround for RSP-379
-                "AnimationCore",
-                "MediaIOCore",
-                "DisplayClusterMedia"
+                "AnimGraphRuntime"
             });
 
         PrivateIncludePaths.AddRange(
