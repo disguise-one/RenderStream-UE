@@ -78,6 +78,11 @@
 #include "VulkanRHIPrivate.h"
 #include "VulkanResources.h"
 
+// Part of the workaround for RSP-379
+#include "FileMediaOutput.h"
+#include "Synchronization/DisplayClusterMediaOutputSynchronizationPolicyEthernetBarrier.h"
+
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -787,6 +792,18 @@ void FRenderStreamModule::OnBeginFrame()
     {
         RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.bIsEnabled = true;
         RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.ColorConfiguration = settings->OCIOConfig.ColorConfiguration;
+    }
+
+    // Added as temporary workaround for RSP-379
+    // With the release of 5.7 a regression was introduced that requires offscreen workloads to have valid MediaOutputs
+    // The types are just random ones I picked
+    // Epic is aware of this and is planning to fix it in 5.7.1
+    if (RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Num() == 0)
+    {
+        TObjectPtr<UFileMediaOutput> MediaOutput = NewObject<UFileMediaOutput>(GetTransientPackage());
+        TObjectPtr<UDisplayClusterMediaOutputSynchronizationPolicyEthernetBarrier> OutputSyncPolicy = NewObject<UDisplayClusterMediaOutputSynchronizationPolicyEthernetBarrier>(GetTransientPackage());
+        RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.bEnable = true;
+        RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Add({MediaOutput, OutputSyncPolicy});
     }
 }
 
