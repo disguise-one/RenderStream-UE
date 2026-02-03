@@ -5,6 +5,8 @@
 #include "Modules/ModuleInterface.h"
 #include "DisplayClusterConfigurationTypes_Viewport.h"
 #include "Cluster/IDisplayClusterClusterManager.h"
+#include "OpenColorIORendering.h"
+#include "IDisplayClusterCallbacks.h"
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -30,6 +32,7 @@ class FRenderStreamProjectionPolicyFactory;
 class FRenderStreamPostProcessFactory;
 class ARenderStreamEventHandler;
 class UGameInstance;
+class IDisplayClusterViewport;
 
 bool IsInCluster();
 bool IsDX11();
@@ -66,6 +69,7 @@ protected:
     void AppWillTerminate();
     
     void EnableStats() const;
+    void OnUpdateViewportMediaState(IDisplayClusterViewport* InViewport, EDisplayClusterViewportMediaState& InOutMediaState);
 
     TArray<TWeakObjectPtr<ARenderStreamEventHandler>> m_eventHandlers;
 
@@ -109,4 +113,9 @@ public:
     TMap<FName, RenderStreamLink::FSkeletalLayout> SkeletalLayouts;
     TMap<FName, RenderStreamLink::FSkeletalPose> SkeletalPoses;
     mutable FOnActorSpawned OnActorSpawnedDelegate;
+
+    // OCIO workaround: bypass nDisplay OCIO and apply manually in capture callback
+    FOpenColorIORenderPassResources CachedOCIOResources_RenderThread;
+    ERHIFeatureLevel::Type CachedOCIOFeatureLevel_RenderThread = ERHIFeatureLevel::SM5;
+    TMap<FString, FTextureRHIRef> OCIOOutputTextures_RenderThread;
 };
