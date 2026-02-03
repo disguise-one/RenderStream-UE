@@ -115,53 +115,13 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         }
 
         // Apply OCIO manually if resources are cached
-        if (Module->CachedOCIOResources_RenderThread.IsValid())
+        if (Module->CachedOCIOResources.IsValid())
         {
-            const FIntPoint OutputSize(Rects[0].Width(), Rects[0].Height());
+            FTextureRHIRef& OutputTex = Module->OCIOOutputTextures.FindOrAdd(ViewportId);
+            FIntRect OutputRect;
+            ApplyOCIOTransform(RHICmdList, Resources[0], Rects[0], OutputTex, OutputRect);
 
-            // Create texture on first use then resuse for subsequent frames
-            FTextureRHIRef& ResultTex = Module->OCIOOutputTextures_RenderThread.FindOrAdd(ViewportId);
-            if (!ResultTex.IsValid() ||
-                ResultTex->GetSizeX() != (uint32)OutputSize.X ||
-                ResultTex->GetSizeY() != (uint32)OutputSize.Y)
-            {
-                const FRHITextureCreateDesc Desc =
-                    FRHITextureCreateDesc::Create2D(TEXT("RSCaptureOCIOOutput"))
-                    .SetExtent(OutputSize.X, OutputSize.Y)
-                    .SetFormat(PF_FloatRGBA)
-                    .SetFlags(ETextureCreateFlags::RenderTargetable | ETextureCreateFlags::ShaderResource)
-                    .SetClearValue(FClearValueBinding::Black);
-                ResultTex = RHICreateTexture(Desc);
-            }
-
-            FRDGBuilder GraphBuilder(RHICmdList);
-
-            FRDGTextureRef InputTex = GraphBuilder.RegisterExternalTexture(
-                CreateRenderTarget(Resources[0], TEXT("RSCaptureOCIOInput")));
-            FRDGTextureRef OutputTex = GraphBuilder.RegisterExternalTexture(
-                CreateRenderTarget(ResultTex, TEXT("RSCaptureOCIOOutput")));
-
-            FScreenPassTexture Input(InputTex, Rects[0]);
-            const FIntRect OutputRect(FIntPoint::ZeroValue, OutputSize);
-            FScreenPassRenderTarget Output(OutputTex, OutputRect, ERenderTargetLoadAction::EClear);
-
-            // In UE5.6+ nDisplay applies an unwanted transform to change the encoding from Linear->sRGB on the frame
-            // The OCIO shader applies pow(input, gamma) before the transform
-            // Setting it to 2.2 undones the encoding transform to get back the linear data
-            const float OCIOGamma = 2.2f;
-
-            FOpenColorIORendering::AddPass_RenderThread(
-                GraphBuilder,
-                FScreenPassViewInfo(),
-                Module->CachedOCIOFeatureLevel_RenderThread,
-                Input,
-                Output,
-                Module->CachedOCIOResources_RenderThread,
-                OCIOGamma);
-
-            GraphBuilder.Execute();
-
-            Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, ResultTex, OutputRect);
+            Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, OutputTex, OutputRect);
         }
         else
         {
@@ -171,6 +131,54 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
 
     // Uncomment this to restore client display
     // InViewportProxy->ResolveResources(RHICmdList, EDisplayClusterViewportResourceType::InputShaderResource, InViewportProxy->GetOutputResourceType());
+}
+
+void FRenderStreamCapturePostProcess::ApplyOCIOTransform(FRHICommandListImmediate& RHICmdList, FRHITexture* Resource, const FIntRect& Rect, FTextureRHIRef& OutputTex, FIntRect& OutputRect) const
+{
+    FRenderStreamModule* Module = FRenderStreamModule::Get();
+    check(Module);
+
+    const FIntPoint OutputSize(Rect.Width(), Rect.Height());
+
+    if (!OutputTex.IsValid() ||
+        OutputTex->GetSizeX() != (uint32)OutputSize.X ||
+        OutputTex->GetSizeY() != (uint32)OutputSize.Y)
+    {
+        const FRHITextureCreateDesc Desc =
+            FRHITextureCreateDesc::Create2D(TEXT("RSCaptureOCIOOutput"))
+            .SetExtent(OutputSize.X, OutputSize.Y)
+            .SetFormat(PF_FloatRGBA)
+            .SetFlags(ETextureCreateFlags::RenderTargetable | ETextureCreateFlags::ShaderResource)
+            .SetClearValue(FClearValueBinding::Black);
+        OutputTex = RHICreateTexture(Desc);
+    }
+
+    FRDGBuilder GraphBuilder(RHICmdList);
+
+    FRDGTextureRef ShaderInput = GraphBuilder.RegisterExternalTexture(
+        CreateRenderTarget(Resource, TEXT("RSCaptureOCIOInput")));
+    FRDGTextureRef ShaderOutput = GraphBuilder.RegisterExternalTexture(
+        CreateRenderTarget(OutputTex, TEXT("RSCaptureOCIOOutput")));
+
+    FScreenPassTexture Input(ShaderInput, Rect);
+    OutputRect = FIntRect(FIntPoint::ZeroValue, OutputSize);
+    FScreenPassRenderTarget Output(ShaderOutput, OutputRect, ERenderTargetLoadAction::EClear);
+
+    // In UE5.6+ nDisplay applies an unwanted transform to change the encoding from Linear->sRGB on the frame
+    // The OCIO shader applies pow(input, gamma) before the transform
+    // Setting it to 2.2 undoes the encoding transform to get back the linear data
+    const float OCIOGamma = 2.2f;
+
+    FOpenColorIORendering::AddPass_RenderThread(
+        GraphBuilder,
+        FScreenPassViewInfo(),
+        Module->CachedOCIOFeatureLevel,
+        Input,
+        Output,
+        Module->CachedOCIOResources,
+        OCIOGamma);
+
+    GraphBuilder.Execute();
 }
 
 FRenderStreamPostProcessFactory::BasePostProcessPtr FRenderStreamPostProcessFactory::Create(

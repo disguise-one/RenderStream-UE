@@ -115,7 +115,7 @@ public:
     mutable FOnActorSpawned OnActorSpawnedDelegate;
 
     // OCIO workaround: bypass nDisplay OCIO and apply manually in capture callback
-    FOpenColorIORenderPassResources CachedOCIOResources_RenderThread;
-    ERHIFeatureLevel::Type CachedOCIOFeatureLevel_RenderThread = ERHIFeatureLevel::SM5;
-    TMap<FString, FTextureRHIRef> OCIOOutputTextures_RenderThread;
+    FOpenColorIORenderPassResources CachedOCIOResources;
+    ERHIFeatureLevel::Type CachedOCIOFeatureLevel = ERHIFeatureLevel::SM5;
+    TMap<FString, FTextureRHIRef> OCIOOutputTextures;
 };

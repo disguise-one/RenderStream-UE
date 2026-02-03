@@ -801,8 +801,8 @@ void FRenderStreamModule::OnBeginFrame()
             settings->OCIOConfig.ColorConfiguration, 
             FeatureLevel);
 
-        CachedOCIOResources_RenderThread = Resources;
-        CachedOCIOFeatureLevel_RenderThread = FeatureLevel;
+        CachedOCIOResources = Resources;
+        CachedOCIOFeatureLevel = FeatureLevel;
     }
 }
 
