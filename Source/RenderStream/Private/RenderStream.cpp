@@ -797,17 +797,12 @@ void FRenderStreamModule::OnBeginFrame()
     {
         // Feature level refers to the shader model (SM5, SM6, etc.)
         const ERHIFeatureLevel::Type FeatureLevel = GWorld->Scene->GetFeatureLevel();
-        FOpenColorIORenderPassResources PassResources = FOpenColorIORendering::GetRenderPassResources(
+        FOpenColorIORenderPassResources Resources = FOpenColorIORendering::GetRenderPassResources(
             settings->OCIOConfig.ColorConfiguration, 
             FeatureLevel);
 
-        ENQUEUE_RENDER_COMMAND(CacheOCIOResources)(
-            [this, Resources = MoveTemp(PassResources), FeatureLevel](FRHICommandListImmediate& RHICmdList)
-            {
-                CachedOCIOResources_RenderThread = Resources;
-                CachedOCIOFeatureLevel_RenderThread = FeatureLevel;
-            }
-        );
+        CachedOCIOResources_RenderThread = Resources;
+        CachedOCIOFeatureLevel_RenderThread = FeatureLevel;
     }
 }
 
