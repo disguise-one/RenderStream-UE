@@ -164,9 +164,10 @@ void FRenderStreamCapturePostProcess::ApplyOCIOTransform(FRHICommandListImmediat
     OutputRect = FIntRect(FIntPoint::ZeroValue, OutputSize);
     FScreenPassRenderTarget Output(ShaderOutput, OutputRect, ERenderTargetLoadAction::EClear);
 
-    // In UE5.6+ nDisplay applies an unwanted transform to change the encoding from Linear->sRGB on the frame
-    // The OCIO shader applies pow(input, gamma) before the transform
-    // Setting it to 2.2 undoes the encoding transform to get back the linear data
+    // In UE5.6+ if r.DefaultBackBufferPixelFormat=3 then the EngineDisplayGamma is set to 1.0, which causes InternalRenderTarget to get a linear encoding
+    // This a mismatch from the InputShaderResource  which it resolves to. It does a conversion (pow(input, 1/2.2)) before the copy
+    // The OCIO shader applies pow(input, gamma) before the transform so we make it 2.2 to undo the previous transform
+    // r.DefaultBackBufferPixelFormat is hardcoded in d3 to always be set to 3 so we don't need to worry about supporting other values
     const float OCIOGamma = 2.2f;
 
     FOpenColorIORendering::AddPass_RenderThread(
