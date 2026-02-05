@@ -801,8 +801,13 @@ void FRenderStreamModule::OnBeginFrame()
             settings->OCIOConfig.ColorConfiguration, 
             FeatureLevel);
 
-        CachedOCIOResources = Resources;
-        CachedOCIOFeatureLevel = FeatureLevel;
+        ENQUEUE_RENDER_COMMAND(CacheOCIOResources)(
+            [this, Resources, FeatureLevel](FRHICommandListImmediate& RHICmdList)
+            {
+                CachedOCIOResources = Resources;
+                CachedOCIOFeatureLevel = FeatureLevel;
+            }
+        );
     }
 }
 
