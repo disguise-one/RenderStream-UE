@@ -3,6 +3,8 @@
 #include "RenderStreamLink.h"
 #include "Render/PostProcess/IDisplayClusterPostProcessFactory.h"
 #include "Render/PostProcess/IDisplayClusterPostProcess.h"
+#include "RHI.h"
+#include "Math/IntRect.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogRenderStreamPostProcess, Log, All);
 
@@ -29,6 +31,7 @@ public:
 	virtual void PerformPostProcessViewAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, const IDisplayClusterViewportProxy* ViewportProxy) const override;
 
 private:
+	void ApplyOCIOTransform(FRHICommandListImmediate& RHICmdList, FRHITexture* Resource, const FIntRect& Rect, /**OUT**/ FTextureRHIRef& OutputTex, /**OUT**/ FIntRect& OutputRect) const;
 	TMap<FString, FString> Parameters;
 	FString Id;
 	static FString Type;
