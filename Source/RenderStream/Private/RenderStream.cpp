@@ -810,12 +810,12 @@ void FRenderStreamModule::OnBeginFrame()
         );
     }
 
-    // Added as temporary workaround for RSP-380
+    // Added as temporary workaround for RSP-379
     // With the release of 5.7 a regression was introduced that requires offscreen workloads to have valid MediaOutputs
     // The types are just random ones I picked
     // Epic is aware of this and is planning to fix it in 5.7.1
     ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
-    if (RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Num() == -1)
+    if (RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.MediaOutputs.Num() == 0)
     {
         TObjectPtr<UFileMediaOutput> MediaOutput = NewObject<UFileMediaOutput>(GetTransientPackage());
         RootActor->GetConfigData()->GetNode(ClusterMgr->GetNodeId())->MediaSettings.bEnable = true;
