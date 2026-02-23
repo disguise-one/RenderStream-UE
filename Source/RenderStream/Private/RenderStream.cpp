@@ -793,7 +793,7 @@ void FRenderStreamModule::OnBeginFrame()
     // OCIO needs 2 things at runtime: compiled shader and the proper LUT textures
     // Calling GetRenderPassResources allows us to retrieve a compiled shader and the neccessary textures
     // We want to cache these because we want to avoid Unreal's default application of OCIO which is bugged as of 5.6
-    if (settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr && GWorld && GWorld->Scene)
+    if (settings->OCIOConfig.bIsEnabled && settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr && GWorld && GWorld->Scene)
     {
         // Feature level refers to the shader model (SM5, SM6, etc.)
         const ERHIFeatureLevel::Type FeatureLevel = GWorld->Scene->GetFeatureLevel();

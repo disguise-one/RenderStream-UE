@@ -1,3 +1,11 @@
+# RS2.0-UE5.3-v8
+Compatible with disguise designer version r25.0 and above.
+* Fixed compatibility issue with the SonyCameraAndDisplay plugin
+
+# RS2.0-UE5.3-v7
+Compatible with disguise designer version r25.0 and above.
+* Fixed issue with custom events not being triggered when used in sublevels
+
 # RS2.0-UE5.3-v6
 Compatible with disguise designer version r25.0 and above.
 * Added more profiling granularity to certain functions
