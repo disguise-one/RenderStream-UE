@@ -1,3 +1,7 @@
+# RS2.0-UE5.3-v0
+Compatible with disguise designer version r30.1 and above.
+* Add working colour space in schema
+
 # RS2.0-UE5.3-v8
 Compatible with disguise designer version r25.0 and above.
 * Fixed compatibility issue with the SonyCameraAndDisplay plugin
