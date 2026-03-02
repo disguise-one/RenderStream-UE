@@ -781,10 +781,13 @@ void FRenderStreamModule::OnBeginFrame()
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
 
     ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
-    if (RootActor && settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
+    if (RootActor)
     {
-        RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.bIsEnabled = true;
-        RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.ColorConfiguration = settings->OCIOConfig.ColorConfiguration;
+        RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.bIsEnabled = settings->OCIOConfig.bIsEnabled;
+        if(settings->OCIOConfig.bIsEnabled && settings->OCIOConfig.ColorConfiguration.ConfigurationSource != nullptr)
+        {
+           RootActor->GetConfigData()->StageSettings.ViewportOCIO.AllViewportsOCIOConfiguration.ColorConfiguration = settings->OCIOConfig.ColorConfiguration;
+        }
     }
 }
 
