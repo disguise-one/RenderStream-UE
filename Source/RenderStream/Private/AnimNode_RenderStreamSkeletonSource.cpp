@@ -391,7 +391,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         // Find root bone transform
         // Apply the inverse of the parent's total position/rotation, so that root bone is at zero
         const FName& SourceBoneName = SourceBoneNames[SourceIndex];
-        if (IsRootBone(SourceBoneName) && (MeshParentIndex != INDEX_NONE) && (MeshParentIndex < MeshBoneCount))
+        if (IsRootBone(SourceIndex) && (MeshParentIndex != INDEX_NONE) && (MeshParentIndex < MeshBoneCount))
         {
             RootBoneTransform = MeshBoneWorldTransforms[MeshParentIndex.GetInt()].Inverse();
             RootBoneTransform.SetScale3D(FVector::OneVector);
@@ -471,7 +471,7 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
             const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[SourceIndex];
             const FName& SourceBoneName = SourceBoneNames[SourceIndex];
 
-            if (IsRootBone(SourceBoneName))
+            if (IsRootBone(SourceIndex))
             {
                 // Set the root bone position so it is at zero
                 // Root pose is applied directly to the SkeletalMeshActor transform
@@ -505,7 +505,7 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
         *SkeletonName.ToString(), SourceBoneCount);
 }
 
-/*static*/ bool FAnimNode_RenderStreamSkeletonSource::IsRootBone(const FName& SourceBoneName)
+bool FAnimNode_RenderStreamSkeletonSource::IsRootBone(int32 SourceIndex)
 {
-    return SourceBoneName == "Pelvis";
+    return SourceParentIndices[SourceIndex] < 0;
 }
