@@ -53,7 +53,7 @@ protected:
     void InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose);
     void BuildPoseFromAnimationData(const RenderStreamLink::FSkeletalPose& Pose, FCompactPose& OutPose);
 
-    static bool IsRootBone(const FName& SourceBoneName);
+    bool IsRootBone(int32 SourceIndex);
 
 private:
     std::vector<TWeakObjectPtr<AActor>> SkeletonActors;
