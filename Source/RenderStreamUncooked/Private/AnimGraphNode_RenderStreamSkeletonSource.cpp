@@ -16,3 +16,17 @@ FText UAnimGraphNode_RenderStreamSkeletonSource::GetMenuCategory() const
 {
     return LOCTEXT("NodeCategory", "RenderStream");
 }
+
+#if WITH_EDITOR
+void UAnimGraphNode_RenderStreamSkeletonSource::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
+
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(FAnimNode_RenderStreamSkeletonSource, SkeletonLayout))
+    {
+        Node.OnLayoutChanged();
+    }
+}
+#endif

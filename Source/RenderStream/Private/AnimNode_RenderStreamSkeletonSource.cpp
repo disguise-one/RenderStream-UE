@@ -10,43 +10,82 @@
 
 #include "Animation/AnimBlueprintGeneratedClass.h"
 
-TMap<FName, FName> GetDefaultBoneNameMap()
+static TArray<FName> GetExpectedBonesForLayout(ERenderStreamSkeletonLayout Layout)
 {
-    TMap<FName, FName> BoneMap;
+    TArray<FName> ExpectedBones;
 
-    const std::vector<FName> ExpectedBones =
+    switch (Layout)
     {
-        "Pelvis",
-        "Spine",
-        "Chest",
-        "Neck",
-        "LeftClavicle",
-        "LeftShoulder",
-        "LeftElbow",
-        "LeftWrist",
-        "LeftHip",
-        "LeftKnee",
-        "LeftAnkle",
-        "RightClavicle",
-        "RightShoulder",
-        "RightElbow",
-        "RightWrist",
-        "RightHip",
-        "RightKnee",
-        "RightAnkle"
-    };
+    case ERenderStreamSkeletonLayout::Captury:
+        ExpectedBones = {
+            "Hips", "Spine", "Spine1", "Spine2", "Spine3", "Spine4",
+            "Neck", "Head", "LeftShoulder", "LeftArm", "LeftForeArm",
+            "LeftHand", "RightShoulder", "RightArm", "RightForeArm",
+            "RightHand", "LeftUpLeg", "LeftLeg", "LeftFoot", "LeftToeBase",
+            "RightUpLeg", "RightLeg", "RightFoot", "RightToeBase",
+            "LeftHandThumb1", "LeftHandThumb2", "LeftHandThumb3",
+            "LeftHandIndex1", "LeftHandIndex2", "LeftHandIndex3",
+            "LeftHandMiddle1", "LeftHandMiddle2", "LeftHandMiddle3",
+            "LeftHandRing1", "LeftHandRing2", "LeftHandRing3",
+            "LeftHandPinky1", "LeftHandPinky2", "LeftHandPinky3",
+            "RightHandThumb1", "RightHandThumb2", "RightHandThumb3",
+            "RightHandIndex1", "RightHandIndex2", "RightHandIndex3",
+            "RightHandMiddle1", "RightHandMiddle2", "RightHandMiddle3",
+            "RightHandRing1", "RightHandRing2", "RightHandRing3",
+            "RightHandPinky1", "RightHandPinky2", "RightHandPinky3"
+        };
+        break;
 
-    for (const FName& Bone : ExpectedBones)
-    {
-        BoneMap.Add(Bone, Bone);
+    case ERenderStreamSkeletonLayout::Default:
+    default:
+        ExpectedBones = {
+            "Pelvis", "Spine", "Chest", "Neck",
+            "LeftClavicle", "LeftShoulder", "LeftElbow", "LeftWrist",
+            "LeftHip", "LeftKnee", "LeftAnkle",
+            "RightClavicle", "RightShoulder", "RightElbow", "RightWrist",
+            "RightHip", "RightKnee", "RightAnkle"
+        };
+        break;
     }
 
-    return BoneMap;
+    return ExpectedBones;
+}
+
+void FAnimNode_RenderStreamSkeletonSource::OnLayoutChanged()
+{
+    // Save the current visible map into the master cache
+    // This captures any edits the user just made before switching layouts
+    for (const TPair<FName, FName>& Pair : BoneNameMap)
+    {
+        MasterBoneCache.Add(Pair.Key, Pair.Value);
+    }
+
+    // Clear the visible map for the new layout
+    BoneNameMap.Empty();
+
+    // Get the expected bones for the new layout
+    TArray<FName> ExpectedBones = GetExpectedBonesForLayout(SkeletonLayout);
+
+    // Populate the visible map
+    for (const FName& Bone : ExpectedBones)
+    {
+        // If we have a cached mapping for this bone, use it!
+        if (const FName* CachedMappedName = MasterBoneCache.Find(Bone))
+        {
+            BoneNameMap.Add(Bone, *CachedMappedName);
+        }
+        else
+        {
+            // Otherwise, default it to the source bone name
+            BoneNameMap.Add(Bone, Bone);
+        }
+    }
 }
 
 FAnimNode_RenderStreamSkeletonSource::FAnimNode_RenderStreamSkeletonSource()
 {
-    BoneNameMap = GetDefaultBoneNameMap();
+    // Initialize with the default layout map on creation
+    OnLayoutChanged();
 }
 
 FAnimNode_RenderStreamSkeletonSource::~FAnimNode_RenderStreamSkeletonSource()
