@@ -15,6 +15,10 @@ public:
     virtual FText GetTooltipText() const override;
     virtual FText GetMenuCategory() const;
 
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
 public:
 
     UPROPERTY(EditAnywhere, Category = Settings)
