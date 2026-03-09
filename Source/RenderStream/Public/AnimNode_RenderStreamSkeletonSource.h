@@ -33,8 +33,8 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
     ERenderStreamSkeletonLayout SkeletonLayout = ERenderStreamSkeletonLayout::Default;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
-        TMap<FName, FName> BoneNameMap;
+    UPROPERTY(EditAnywhere, Category = MapsAndSets)
+    TMap<FName, FBoneReference> BoneNameMap;
 
     // When ticked, the root offsets applied to the actor are scaled by the actor's scale
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)

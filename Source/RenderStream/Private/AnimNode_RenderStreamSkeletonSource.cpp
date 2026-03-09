@@ -60,9 +60,9 @@ void FAnimNode_RenderStreamSkeletonSource::OnLayoutChanged()
 {
     // Save the current visible map into the master cache
     // This captures any edits the user just made before switching layouts
-    for (const TPair<FName, FName>& Pair : BoneNameMap)
+    for (const TPair<FName, FBoneReference>& Pair : BoneNameMap)
     {
-        MasterBoneCache.Add(Pair.Key, Pair.Value);
+        MasterBoneCache.Add(Pair.Key, Pair.Value.BoneName);
     }
 
     // Clear the visible map for the new layout
@@ -74,16 +74,20 @@ void FAnimNode_RenderStreamSkeletonSource::OnLayoutChanged()
     // Populate the visible map
     for (const FName& Bone : ExpectedBones)
     {
+        FBoneReference NewBoneRef;
+
         // If we have a cached mapping for this bone, use it!
         if (const FName* CachedMappedName = MasterBoneCache.Find(Bone))
         {
-            BoneNameMap.Add(Bone, *CachedMappedName);
+            NewBoneRef.BoneName = *CachedMappedName;
         }
         else
         {
-            // Otherwise, default it to the source bone name
-            BoneNameMap.Add(Bone, Bone);
+            // Otherwise, default it to None
+            NewBoneRef.BoneName = NAME_None;
         }
+
+        BoneNameMap.Add(Bone, NewBoneRef);
     }
 }
 
@@ -299,6 +303,12 @@ void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimation
 {
     Super::CacheBones_AnyThread(Context);
     BasePose.CacheBones(Context);
+
+    // Initialize all our bone references against the current skeleton
+    for (TPair<FName, FBoneReference>& Pair : BoneNameMap)
+    {
+        Pair.Value.Initialize(Context.AnimInstanceProxy->GetRequiredBones());
+    }
 }
 
 void FAnimNode_RenderStreamSkeletonSource::GatherDebugData(FNodeDebugData& DebugData)
@@ -369,11 +379,9 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
 
         // Find equivalent mesh bone name and index for current source bone
         FCompactPoseBoneIndex MeshIndex(INDEX_NONE);
-        if (BoneNameMap.Contains(SourceBoneName))
+        if (const FBoneReference* MeshBoneRef = BoneNameMap.Find(SourceBoneName))
         {
-            const FName MeshBoneName = BoneNameMap[SourceBoneName];
-            const int32 ReferenceMeshIndex = BoneContainerRef.GetPoseBoneIndexForBoneName(MeshBoneName);
-            MeshIndex = BoneContainerRef.MakeCompactPoseIndex(FMeshPoseBoneIndex(ReferenceMeshIndex));
+            MeshIndex = MeshBoneRef->GetCompactPoseIndex(BoneContainerRef);
         }
 
         // Populate mappings between indices and number of children
