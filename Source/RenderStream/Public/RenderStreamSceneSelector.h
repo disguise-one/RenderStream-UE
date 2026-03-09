@@ -2,6 +2,8 @@
 
 #include "RenderStreamLink.h"
 #include <vector>
+#include "Engine/TextureRenderTarget2D.h"
+#include "OpenColorIOColorSpace.h"
 
 class UWorld;
 class AActor;
