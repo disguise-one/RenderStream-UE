@@ -67,6 +67,23 @@ void InitialiseRetargeting(
         }
     }
 
+    // Compute SourceMappedParentIndex: for each source bone, walk up the source
+    // parent chain to find the nearest ancestor that is mapped to a mesh bone.
+    OutInitData.SourceMappedParentIndex.Init(INDEX_NONE, SourceBoneCount);
+    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; ++SourceIndex)
+    {
+        int32 Walk = OutInitData.SourceParentIndices[SourceIndex];
+        while (Walk != INDEX_NONE)
+        {
+            if (OutInitData.SourceToMeshIndex[Walk] != INDEX_NONE)
+            {
+                OutInitData.SourceMappedParentIndex[SourceIndex] = Walk;
+                break;
+            }
+            Walk = OutInitData.SourceParentIndices[Walk];
+        }
+    }
+
     // Initialise persistent per-bone arrays
     OutInitData.MeshToSourceSpaceTransforms.Init(FTransform::Identity, SourceBoneCount);
     OutInitData.LocalInitialOrientationDifferences.Init(FQuat::Identity, SourceBoneCount);
@@ -108,7 +125,13 @@ void InitialiseRetargeting(
         if (SourceParentIndex == INDEX_NONE)
             continue;
 
-        const int32 ParentMeshIndex = OutInitData.SourceToMeshIndex[SourceParentIndex];
+        // Find the nearest mapped source ancestor's mesh index.
+        // If the direct source parent is mapped, use it. Otherwise walk up.
+        const int32 MappedParentSourceIndex = OutInitData.SourceMappedParentIndex[SourceIndex];
+        if (MappedParentSourceIndex == INDEX_NONE)
+            continue;
+
+        const int32 ParentMeshIndex = OutInitData.SourceToMeshIndex[MappedParentSourceIndex];
         if (ParentMeshIndex == INDEX_NONE || ParentMeshIndex >= MeshBoneCount)
             continue;
 
@@ -116,13 +139,25 @@ void InitialiseRetargeting(
         const FQuat InitialRotation = SourceInitialPose[SourceIndex].GetRotation();
         OutInitData.SourceInitialPoseRotations[SourceIndex] = InitialRotation;
 
-        // Find offset between mesh joint and source pose parent
+        // Compute the accumulated source-space offset from the mapped parent to this bone,
+        // walking through any unmapped intermediate bones.
+        FVector SourceInitialOffset = SourceInitialPose[SourceIndex].GetTranslation();
+        {
+            int32 Walk = SourceParentIndex;
+            while (Walk != MappedParentSourceIndex)
+            {
+                SourceInitialOffset = SourceInitialPose[Walk].GetRotation().RotateVector(SourceInitialOffset)
+                    + SourceInitialPose[Walk].GetTranslation();
+                Walk = OutInitData.SourceParentIndices[Walk];
+            }
+        }
+
+        // Find offset between mesh joint and the mapped source parent's mesh bone
         const FVector MeshInitialOffset =
             MeshBoneWorldTransforms[MeshIndex].GetTranslation() -
             MeshBoneWorldTransforms[ParentMeshIndex].GetTranslation();
 
-        const FVector SourceInitialOffset = SourceInitialPose[SourceIndex].GetTranslation();
-
+        // For multi-child check, use the direct source parent
         if (SourceNumberOfChildren[SourceParentIndex] > 1)
         {
             // Multi-child parent: can't rotate parent to satisfy all children.
@@ -148,10 +183,10 @@ void InitialiseRetargeting(
             const FQuat OrientationDifferenceDelta =
                 WorldInitialOrientationDifferences[ParentMeshIndex].Inverse() *
                 WorldInitialOrientationDifferences[MeshIndex];
-            OutInitData.LocalInitialOrientationDifferences[SourceParentIndex] =
+            OutInitData.LocalInitialOrientationDifferences[MappedParentSourceIndex] =
                 ParentParentGlobalRotation.Inverse() * OrientationDifferenceDelta * ParentParentGlobalRotation;
 
-            OutInitData.MeshToSourceSpaceTransforms[SourceParentIndex].SetRotation(
+            OutInitData.MeshToSourceSpaceTransforms[MappedParentSourceIndex].SetRotation(
                 WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[ParentMeshIndex].GetRotation());
         }
 
@@ -167,6 +202,52 @@ void BuildRetargetedPose(
 {
     const int32 SourceBoneCount = Pose.joints.Num();
     check(InitData.SourceToMeshIndex.Num() == SourceBoneCount);
+
+    // For each source bone, compute the accumulated pose rotation from all unmapped
+    // ancestors between it and its nearest mapped ancestor. This is composed
+    // with the bone's own pose rotation so mapped descendants feel the effect.
+    // AccumulatedPoseRotation[i] = product of pose rotations from unmapped bones
+    // between SourceMappedParentIndex[i] and i (exclusive of the mapped parent,
+    // inclusive of unmapped intermediates, exclusive of i itself).
+    TArray<FQuat> AccumulatedUnmappedPoseRotation;
+    AccumulatedUnmappedPoseRotation.Init(FQuat::Identity, SourceBoneCount);
+
+    // First pass: convert all pose joints to UE space
+    TArray<FQuat> SourcePoseRotations;
+    SourcePoseRotations.SetNum(SourceBoneCount);
+    for (int32 i = 0; i < SourceBoneCount; ++i)
+        SourcePoseRotations[i] = ConvertD3TransformToUE(Pose.joints[i].transform).GetRotation();
+
+    // Second pass: for each mapped bone, walk from its direct source parent up to the
+    // mapped ancestor, accumulating unmapped pose rotations.
+    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; ++SourceIndex)
+    {
+        if (InitData.SourceToMeshIndex[SourceIndex] == INDEX_NONE)
+            continue; // only compute for mapped bones
+
+        const int32 MappedParent = InitData.SourceMappedParentIndex[SourceIndex];
+        if (MappedParent == INDEX_NONE)
+            continue;
+
+        // Walk from direct parent up to (but not including) the mapped ancestor,
+        // collecting unmapped bone indices.
+        TArray<int32, TInlineAllocator<8>> UnmappedChain;
+        int32 Walk = InitData.SourceParentIndices[SourceIndex];
+        while (Walk != MappedParent && Walk != INDEX_NONE)
+        {
+            UnmappedChain.Add(Walk);
+            Walk = InitData.SourceParentIndices[Walk];
+        }
+
+        // Compose rotations from mapped parent downward (reverse order)
+        FQuat Accumulated = FQuat::Identity;
+        for (int32 j = UnmappedChain.Num() - 1; j >= 0; --j)
+        {
+            const int32 UnmappedIdx = UnmappedChain[j];
+            Accumulated = Accumulated * SourcePoseRotations[UnmappedIdx];
+        }
+        AccumulatedUnmappedPoseRotation[SourceIndex] = Accumulated;
+    }
 
     for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
     {
@@ -185,11 +266,15 @@ void BuildRetargetedPose(
         {
             const FTransform SourceBoneTransform = ConvertD3TransformToUE(Joint.transform);
 
+            // Compose this bone's pose rotation with accumulated unmapped ancestor rotations
+            const FQuat CombinedPoseRotation =
+                (AccumulatedUnmappedPoseRotation[SourceIndex] * SourceBoneTransform.GetRotation()).GetNormalized();
+
             // Apply rotation
             const FQuat& MeshToSource = InitData.MeshToSourceSpaceTransforms[SourceIndex].GetRotation();
             const FQuat SourceRotation =
                 MeshToSource.Inverse() * InitData.SourceInitialPoseRotations[SourceIndex] *
-                SourceBoneTransform.GetRotation() * MeshToSource;
+                CombinedPoseRotation * MeshToSource;
             const FQuat MeshRotation = InOutMeshBoneTransforms[MeshIndex].GetRotation();
             const FQuat& InitialOrientationOffset = InitData.LocalInitialOrientationDifferences[SourceIndex];
             InOutMeshBoneTransforms[MeshIndex].SetRotation(
@@ -197,8 +282,10 @@ void BuildRetargetedPose(
 
             // Apply position
             const FVector MeshPosition = InOutMeshBoneTransforms[MeshIndex].GetTranslation();
-            const int32 SourceParentIndex = InitData.SourceParentIndices[SourceIndex];
-            const FQuat ParentMeshToSource = InitData.MeshToSourceSpaceTransforms[SourceParentIndex].GetRotation();
+            const int32 MappedParentSourceIndex = InitData.SourceMappedParentIndex[SourceIndex];
+            const FQuat ParentMeshToSource = (MappedParentSourceIndex != INDEX_NONE)
+                ? InitData.MeshToSourceSpaceTransforms[MappedParentSourceIndex].GetRotation()
+                : FQuat::Identity;
             const FTransform SourceInitialTransform(InitData.SourceInitialPoseRotations[SourceIndex]);
             const FVector SourcePosition =
                 (SourceInitialTransform * FTransform(ParentMeshToSource).Inverse()).TransformVector(

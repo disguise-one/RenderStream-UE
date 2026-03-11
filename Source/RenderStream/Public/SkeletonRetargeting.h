@@ -17,6 +17,7 @@ struct FRetargetInitData
     TArray<FQuat>         SourceInitialPoseRotations;
     TArray<int32>         SourceToMeshIndex;      // plain int32, not FCompactPoseBoneIndex
     TArray<int32>         SourceParentIndices;
+    TArray<int32>         SourceMappedParentIndex; // nearest source ancestor that IS mapped (-1 if none)
     FTransform            RootBoneTransform;
 };
 

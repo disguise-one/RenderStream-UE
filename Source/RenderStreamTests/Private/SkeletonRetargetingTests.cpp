@@ -611,7 +611,207 @@ bool FTest_SkeletonRetargeting_RotationWithDifferentLayout::RunTest(const FStrin
 }
 
 // ---------------------------------------------------------------------------
-// Test 9 — IdenticalLayoutsWithPose
+// Test 9 — UnmappedMiddleBone
+// Source has an extra bone in the spine that doesn't exist in the mesh.
+// Source: Root(0) -> SpineLower(1) -> SpineMiddle(2) -> SpineUpper(3) -> Head(4)
+// Mesh:   Root(0) -> SpineLower(1) -> SpineUpper(2) -> Head(3)
+// SpineMiddle is unmapped. When SpineMiddle gets a pose rotation, SpineUpper
+// and Head should move as if the rotation propagated through the chain.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_UnmappedMiddleBone,
+    "RenderStream.SkeletonRetargeting.UnmappedMiddleBone",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_UnmappedMiddleBone::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // --- Source skeleton (5 bones) ---
+    const TArray<FString> SourceNames = {
+        "Root", "SpineLower", "SpineMiddle", "SpineUpper", "Head"
+    };
+    const TArray<int32> SourceParents = {INDEX_NONE, 0, 1, 2, 3};
+
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},  // Root
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},   // SpineLower
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},   // SpineMiddle
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},   // SpineUpper
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},   // Head
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(SourceNames, SourceD3, SourceParents);
+
+    // --- Mesh skeleton (4 bones, no SpineMiddle) ---
+    const TArray<FString> MeshNames = {"Root", "SpineLower", "SpineUpper", "Head"};
+    const TArray<int32>   MeshParents = {INDEX_NONE, 0, 1, 2};
+
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},  // SpineUpper (parent=SpineLower in mesh)
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
+
+    // Name map: source -> mesh (SpineMiddle is NOT in the map)
+    TMap<FName, int32> NameMap;
+    NameMap.Add(FName("Root"), 0);
+    NameMap.Add(FName("SpineLower"), 1);
+    // SpineMiddle intentionally unmapped
+    NameMap.Add(FName("SpineUpper"), 2);
+    NameMap.Add(FName("Head"), 3);
+
+    // --- Test A: Identity pose (baseline) ---
+    {
+        const RenderStreamLink::FSkeletalPose IdentityPose = BuildD3IdentityPose(Layout);
+        const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, IdentityPose);
+        const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, IdentityPose);
+
+        // Expected source positions (all along Z): Root(0,0,0), SL(0,0,10), SM(0,0,20), SU(0,0,30), Head(0,0,40)
+        // Mesh has 4 bones. We expect SpineUpper at source SpineUpper position and Head at source Head position.
+        // Check that mesh bones are at reasonable positions with identity pose.
+        TestTrue(TEXT("UnmappedMiddle identity: mesh has 4 bones"), Actual.Num() == 4);
+    }
+
+    // --- Test B: Rotate SpineMiddle (unmapped) by 90 deg around d3 Z ---
+    {
+        const float H = FMath::DegreesToRadians(90.f) * 0.5f;
+        RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+        // SpineMiddle is source index 2
+        Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
+
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+        const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+        // With 90 deg rotation on SpineMiddle, SpineUpper and Head should move sideways.
+        // Expected source world positions:
+        //   Root: (0,0,0), SpineLower: (0,0,10), SpineMiddle: (0,0,20)
+        //   SpineUpper: rotated 90 around Z from (0,0,10) -> (10,0,0) + parent(0,0,20) = (10,0,20) in UE coords
+        //   Head: (0,0,10) rotated by 90 around Z -> (10,0,0) + SpineUpper = (20,0,20) in UE coords
+        // Verify that SpineUpper (mesh index 2) has actually moved sideways.
+        // If the bug is present, SpineUpper stays at (0,0,30) — straight up.
+        const FVector SpineUpperPos = Actual[2]; // mesh index 2 = SpineUpper
+        const FVector HeadPos       = Actual[3]; // mesh index 3 = Head
+
+        // SpineUpper should NOT be directly above SpineLower if SpineMiddle was rotated 90 deg.
+        // In the buggy case, it would still be at roughly (0, 0, 30).
+        // In the correct case, it should have a significant lateral offset.
+        const FVector SpineLowerPos = Actual[1]; // mesh index 1
+        const float LateralOffset = FVector::Dist2D(SpineUpperPos, SpineLowerPos);
+        TestTrue(
+            FString::Printf(TEXT("UnmappedMiddle rotated: SpineUpper lateral offset = %.2f cm (should be > 5)"), LateralOffset),
+            LateralOffset > 5.f);
+
+        // Head should be even further offset
+        const float HeadLateralOffset = FVector::Dist2D(HeadPos, SpineLowerPos);
+        TestTrue(
+            FString::Printf(TEXT("UnmappedMiddle rotated: Head lateral offset = %.2f cm (should be > 10)"), HeadLateralOffset),
+            HeadLateralOffset > 10.f);
+    }
+
+    // --- Test C: Rotate SpineMiddle by 45 deg, check directions ---
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+        Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
+
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+        const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+        // Check that SpineUpper->Head direction matches expected
+        // (Both are mapped, single-child chain, so direction should be correct)
+        const FVector ActualDir = (Actual[3] - Actual[2]).GetSafeNormal();
+        const FVector ExpectedDir = (Expected[4] - Expected[3]).GetSafeNormal(); // source indices 4,3
+        const float Dot = FMath::Clamp(FVector::DotProduct(ActualDir, ExpectedDir), -1.f, 1.f);
+        const float AngleDeg = FMath::RadiansToDegrees(FMath::Acos(Dot));
+        TestTrue(
+            FString::Printf(TEXT("UnmappedMiddle 45deg: SpineUpper->Head direction within 2 deg (angle=%.2f)"), AngleDeg),
+            AngleDeg <= 2.f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 10 — UnmappedMultipleMiddleBones
+// Source has TWO extra bones in the spine that don't exist in the mesh.
+// Source: Root(0) -> A(1) -> B(2) -> C(3) -> D(4) -> E(5)
+// Mesh:   Root(0) -> A(1) -> D(2) -> E(3)
+// B and C are unmapped. When both get pose rotations, D and E should
+// accumulate all intermediate rotations.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_UnmappedMultipleMiddleBones,
+    "RenderStream.SkeletonRetargeting.UnmappedMultipleMiddleBones",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_UnmappedMultipleMiddleBones::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // --- Source skeleton (6 bones) ---
+    const TArray<FString> SourceNames = {"Root", "A", "B", "C", "D", "E"};
+    const TArray<int32> SourceParents = {INDEX_NONE, 0, 1, 2, 3, 4};
+
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},  // B (unmapped)
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},  // C (unmapped)
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(SourceNames, SourceD3, SourceParents);
+
+    // --- Mesh skeleton (4 bones) ---
+    const TArray<FString> MeshNames = {"Root", "A", "D", "E"};
+    const TArray<int32>   MeshParents = {INDEX_NONE, 0, 1, 2};
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
+
+    TMap<FName, int32> NameMap;
+    NameMap.Add(FName("Root"), 0);
+    NameMap.Add(FName("A"), 1);
+    NameMap.Add(FName("D"), 2);
+    NameMap.Add(FName("E"), 3);
+
+    // Rotate B by 45 deg and C by 45 deg around d3 Z (total 90 deg)
+    const float H45 = FMath::DegreesToRadians(45.f) * 0.5f;
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H45), FMath::Cos(H45)};
+    Pose.joints[3].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H45), FMath::Cos(H45)};
+
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // D (mesh 2) should have significant lateral offset from A (mesh 1)
+    const float DLateral = FVector::Dist2D(Actual[2], Actual[1]);
+    TestTrue(
+        FString::Printf(TEXT("UnmappedMultiple: D lateral offset = %.2f cm (should be > 5)"), DLateral),
+        DLateral > 5.f);
+
+    // E (mesh 3) should have even more lateral offset
+    const float ELateral = FVector::Dist2D(Actual[3], Actual[1]);
+    TestTrue(
+        FString::Printf(TEXT("UnmappedMultiple: E lateral offset = %.2f cm (should be > 10)"), ELateral),
+        ELateral > 10.f);
+
+    // Check D->E direction matches expected source D->E direction
+    const FVector ActualDir = (Actual[3] - Actual[2]).GetSafeNormal();
+    const FVector ExpectedDir = (Expected[5] - Expected[4]).GetSafeNormal();
+    const float Dot = FMath::Clamp(FVector::DotProduct(ActualDir, ExpectedDir), -1.f, 1.f);
+    const float AngleDeg = FMath::RadiansToDegrees(FMath::Acos(Dot));
+    TestTrue(
+        FString::Printf(TEXT("UnmappedMultiple: D->E direction within 2 deg (angle=%.2f)"), AngleDeg),
+        AngleDeg <= 2.f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 11 — IdenticalLayoutsWithPose
 // Full 18-bone skeleton. Source == mesh. Non-trivial pose.
 // Source == mesh: positions should match (regression test for pose application).
 // ---------------------------------------------------------------------------
