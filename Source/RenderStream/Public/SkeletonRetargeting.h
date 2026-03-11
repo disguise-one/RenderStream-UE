@@ -38,13 +38,22 @@ namespace RenderStreamRetargeting
         const FRetargetInitData&               InitData,
         TArray<FTransform>&                    InOutMeshBoneTransforms);
 
+    // Utility: compute world-space transforms by walking the mesh hierarchy
+    RENDERSTREAM_API TArray<FTransform> ComputeWorldTransforms(
+        const TArray<FTransform>& LocalTransforms,
+        const TArray<int32>&      ParentIndices);
+
     // Utility: compute world-space positions by walking the mesh hierarchy
     RENDERSTREAM_API TArray<FVector> ComputeWorldPositions(
         const TArray<FTransform>& LocalTransforms,
         const TArray<int32>&      ParentIndices);
 
+    // Test oracle: compute expected world transforms from source data in d3 coordinates.
+    RENDERSTREAM_API TArray<FTransform> ComputeExpectedTransformsFromSource(
+        const RenderStreamLink::FSkeletalLayout& Layout,
+        const RenderStreamLink::FSkeletalPose&   Pose);
+
     // Test oracle: compute expected world positions from source data in d3 coordinates.
-    // Walks the d3 hierarchy accumulating transforms, converts each to UE space.
     RENDERSTREAM_API TArray<FVector> ComputeExpectedPositionsFromSource(
         const RenderStreamLink::FSkeletalLayout& Layout,
         const RenderStreamLink::FSkeletalPose&   Pose);

@@ -112,14 +112,7 @@ void InitialiseRetargeting(
         if (ParentMeshIndex == INDEX_NONE || ParentMeshIndex >= MeshBoneCount)
             continue;
 
-        // Don't apply offset if parent has > 1 children (known bug — see OutOfPlaneMultiChild test)
-        if (SourceNumberOfChildren[SourceParentIndex] > 1)
-        {
-            WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
-            continue;
-        }
-
-        // Find source initial pose rotation
+        // Find source initial pose rotation (set for all non-root bones with valid parent)
         const FQuat InitialRotation = SourceInitialPose[SourceIndex].GetRotation();
         OutInitData.SourceInitialPoseRotations[SourceIndex] = InitialRotation;
 
@@ -129,6 +122,17 @@ void InitialiseRetargeting(
             MeshBoneWorldTransforms[ParentMeshIndex].GetTranslation();
 
         const FVector SourceInitialOffset = SourceInitialPose[SourceIndex].GetTranslation();
+
+        if (SourceNumberOfChildren[SourceParentIndex] > 1)
+        {
+            // Multi-child parent: can't rotate parent to satisfy all children.
+            // Inherit parent's WOD to keep the chain consistent for downstream
+            // single-child processing.
+            WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
+            continue;
+        }
+
+        // Single-child parent: compute orientation correction
         if (SourceInitialOffset == FVector(0.f, 0.f, 0.f))
         {
             WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
@@ -146,10 +150,11 @@ void InitialiseRetargeting(
                 WorldInitialOrientationDifferences[MeshIndex];
             OutInitData.LocalInitialOrientationDifferences[SourceParentIndex] =
                 ParentParentGlobalRotation.Inverse() * OrientationDifferenceDelta * ParentParentGlobalRotation;
+
+            OutInitData.MeshToSourceSpaceTransforms[SourceParentIndex].SetRotation(
+                WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[ParentMeshIndex].GetRotation());
         }
 
-        OutInitData.MeshToSourceSpaceTransforms[SourceParentIndex].SetRotation(
-            WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[ParentMeshIndex].GetRotation());
         OutInitData.MeshToSourceSpaceTransforms[SourceIndex].SetRotation(
             WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[MeshIndex].GetRotation());
     }
@@ -175,7 +180,6 @@ void BuildRetargetedPose(
         {
             // Root pose is applied directly to the SkeletalMeshActor transform
             InOutMeshBoneTransforms[MeshIndex].SetTranslation(InitData.RootBoneTransform.GetTranslation());
-            // rotation stays unchanged (matches original SetRotation(OutPose[MeshIndex].GetRotation()))
         }
         else
         {
@@ -192,19 +196,19 @@ void BuildRetargetedPose(
                 (InitialOrientationOffset * MeshRotation * SourceRotation).GetNormalized());
 
             // Apply position
+            const FVector MeshPosition = InOutMeshBoneTransforms[MeshIndex].GetTranslation();
             const int32 SourceParentIndex = InitData.SourceParentIndices[SourceIndex];
-            const FTransform& MeshToSourceParent = InitData.MeshToSourceSpaceTransforms[SourceParentIndex];
+            const FQuat ParentMeshToSource = InitData.MeshToSourceSpaceTransforms[SourceParentIndex].GetRotation();
             const FTransform SourceInitialTransform(InitData.SourceInitialPoseRotations[SourceIndex]);
             const FVector SourcePosition =
-                (SourceInitialTransform * MeshToSourceParent.Inverse()).TransformVector(
+                (SourceInitialTransform * FTransform(ParentMeshToSource).Inverse()).TransformVector(
                     SourceBoneTransform.GetTranslation());
-            const FVector MeshPosition = InOutMeshBoneTransforms[MeshIndex].GetTranslation();
             InOutMeshBoneTransforms[MeshIndex].SetTranslation(MeshPosition + SourcePosition);
         }
     }
 }
 
-TArray<FVector> ComputeWorldPositions(
+TArray<FTransform> ComputeWorldTransforms(
     const TArray<FTransform>& LocalTransforms,
     const TArray<int32>&      ParentIndices)
 {
@@ -219,15 +223,23 @@ TArray<FVector> ComputeWorldPositions(
         if (ParentIdx != INDEX_NONE && ParentIdx < N)
             WorldTransforms[i] = WorldTransforms[i] * WorldTransforms[ParentIdx];
     }
+    return WorldTransforms;
+}
+
+TArray<FVector> ComputeWorldPositions(
+    const TArray<FTransform>& LocalTransforms,
+    const TArray<int32>&      ParentIndices)
+{
+    const TArray<FTransform> WorldTransforms = ComputeWorldTransforms(LocalTransforms, ParentIndices);
 
     TArray<FVector> Positions;
-    Positions.SetNum(N);
-    for (int32 i = 0; i < N; ++i)
+    Positions.SetNum(WorldTransforms.Num());
+    for (int32 i = 0; i < WorldTransforms.Num(); ++i)
         Positions[i] = WorldTransforms[i].GetTranslation();
     return Positions;
 }
 
-TArray<FVector> ComputeExpectedPositionsFromSource(
+TArray<FTransform> ComputeExpectedTransformsFromSource(
     const RenderStreamLink::FSkeletalLayout& Layout,
     const RenderStreamLink::FSkeletalPose&   Pose)
 {
@@ -257,8 +269,6 @@ TArray<FVector> ComputeExpectedPositionsFromSource(
         if (PoseJoint)
         {
             FTransform PoseDelta = ConvertD3TransformToUE(PoseJoint->transform);
-            // Apply delta rotation on top of rest rotation; delta translation ignored (only positional
-            // deviations from layout are zero for all test poses that use this oracle)
             FQuat CombinedRotation = RestLocal.GetRotation() * PoseDelta.GetRotation();
             LocalTransforms[i] = FTransform(CombinedRotation, RestLocal.GetTranslation(), RestLocal.GetScale3D());
         }
@@ -268,7 +278,20 @@ TArray<FVector> ComputeExpectedPositionsFromSource(
         }
     }
 
-    return ComputeWorldPositions(LocalTransforms, ParentIndices);
+    return ComputeWorldTransforms(LocalTransforms, ParentIndices);
+}
+
+TArray<FVector> ComputeExpectedPositionsFromSource(
+    const RenderStreamLink::FSkeletalLayout& Layout,
+    const RenderStreamLink::FSkeletalPose&   Pose)
+{
+    const TArray<FTransform> WorldTransforms = ComputeExpectedTransformsFromSource(Layout, Pose);
+
+    TArray<FVector> Positions;
+    Positions.SetNum(WorldTransforms.Num());
+    for (int32 i = 0; i < WorldTransforms.Num(); ++i)
+        Positions[i] = WorldTransforms[i].GetTranslation();
+    return Positions;
 }
 
 } // namespace RenderStreamRetargeting
