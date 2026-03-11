@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "RenderStreamLink.h"
+#include "SkeletonRetargeting.h"
 
 #include "Engine/SkeletalMesh.h"
 
@@ -74,14 +75,7 @@ private:
     FDelegateHandle OnActorSpawnedHandle;
 
     // Cached pose info
-    TArray<FName> SourceBoneNames;
-    TArray<int32> SourceParentIndices;
-    TArray<FTransform> MeshToSourceSpaceTransforms;
-    TArray<FQuat> LocalInitialOrientationDifferences;
-    TArray<FQuat> SourceInitialPoseRotations;
-    TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
-    FTransform RootBoneTransform;
-    int32 MeshBoneCount;
+    FRetargetInitData CachedInitData;
     bool PoseInitialised;
 
     // Hidden cache that remembers every bone mapping ever set
