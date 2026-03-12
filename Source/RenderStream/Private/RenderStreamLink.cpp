@@ -197,6 +197,7 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_getFrameParameters);
     LOAD_FN(rs_getFrameImageData);
     LOAD_FN(rs_getFrameImage2);
+    LOAD_FN(rs_registerTextureParams);
     LOAD_FN(rs_getFrameText);
 
     LOAD_FN(rs_getSkeletonLayout);
