@@ -16,6 +16,7 @@ public:
     virtual FText GetMenuCategory() const;
 
 #if WITH_EDITOR
+    virtual void PostPlacedNewNode() override;
     virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 

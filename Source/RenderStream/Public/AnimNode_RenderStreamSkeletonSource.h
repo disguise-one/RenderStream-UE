@@ -22,6 +22,33 @@ enum class ERenderStreamSkeletonLayout : uint8
     Captury     UMETA(DisplayName = "Captury")
 };
 
+USTRUCT(BlueprintType)
+struct FBoneMapping
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, Category = BoneMapping, DisplayName = "Source Bone")
+    FName SourceBone;
+
+    UPROPERTY(EditAnywhere, Category = BoneMapping)
+    FBoneReference Bone;
+
+    UPROPERTY(EditAnywhere, Category = BoneMapping, DisplayName = "Skip Correction")
+    bool bSkipOrientationCorrection = false;
+};
+
+USTRUCT()
+struct FBoneCacheEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    FName BoneName;
+
+    UPROPERTY()
+    bool bSkipOrientationCorrection = false;
+};
+
 USTRUCT(BlueprintInternalUseOnly)
 struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_Base
 {
@@ -35,7 +62,7 @@ public:
     ERenderStreamSkeletonLayout SkeletonLayout = ERenderStreamSkeletonLayout::Default;
 
     UPROPERTY(EditAnywhere, Category = MapsAndSets)
-    TMap<FName, FBoneReference> BoneNameMap;
+    TArray<FBoneMapping> BoneNameMap;
 
     // When ticked, the root offsets applied to the actor are scaled by the actor's scale
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
@@ -54,7 +81,7 @@ public:
     virtual void PreUpdate(const UAnimInstance* InAnimInstance) override;
     virtual void GatherDebugData(FNodeDebugData& DebugData) override;
 
-    void OnLayoutChanged();
+    void OnLayoutChanged(const class USkeleton* TargetSkeleton = nullptr);
 
 protected:
 
@@ -80,6 +107,6 @@ private:
 
     // Hidden cache that remembers every bone mapping ever set
     UPROPERTY()
-    TMap<FName, FName> MasterBoneCache;
+    TMap<FName, FBoneCacheEntry> MasterBoneCache;
 };
 

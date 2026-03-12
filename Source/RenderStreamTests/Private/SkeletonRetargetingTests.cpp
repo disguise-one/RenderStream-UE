@@ -146,12 +146,13 @@ static TArray<FVector> RunRetargeting(
     const TArray<FRetargetMeshBone>&         MeshBones,
     const RenderStreamLink::FSkeletalLayout& Layout,
     const TMap<FName, int32>&                NameMap,
-    const RenderStreamLink::FSkeletalPose&   Pose)
+    const RenderStreamLink::FSkeletalPose&   Pose,
+    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>())
 {
     using namespace RenderStreamRetargeting;
 
     FRetargetInitData InitData;
-    InitialiseRetargeting(MeshBones, Layout, NameMap, InitData);
+    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, InitData);
 
     TArray<FTransform> BoneTransforms;
     BoneTransforms.SetNum(MeshBones.Num());
@@ -166,6 +167,34 @@ static TArray<FVector> RunRetargeting(
         MeshParentIndices[i] = MeshBones[i].ParentIndex;
 
     return ComputeWorldPositions(BoneTransforms, MeshParentIndices);
+}
+
+// Run full retargeting pipeline; returns actual world TRANSFORMS of mesh bones.
+static TArray<FTransform> RunRetargetingTransforms(
+    const TArray<FRetargetMeshBone>&         MeshBones,
+    const RenderStreamLink::FSkeletalLayout& Layout,
+    const TMap<FName, int32>&                NameMap,
+    const RenderStreamLink::FSkeletalPose&   Pose,
+    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>())
+{
+    using namespace RenderStreamRetargeting;
+
+    FRetargetInitData InitData;
+    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, InitData);
+
+    TArray<FTransform> BoneTransforms;
+    BoneTransforms.SetNum(MeshBones.Num());
+    for (int32 i = 0; i < MeshBones.Num(); ++i)
+        BoneTransforms[i] = MeshBones[i].LocalTransform;
+
+    BuildRetargetedPose(Pose, InitData, BoneTransforms);
+
+    TArray<int32> MeshParentIndices;
+    MeshParentIndices.SetNum(MeshBones.Num());
+    for (int32 i = 0; i < MeshBones.Num(); ++i)
+        MeshParentIndices[i] = MeshBones[i].ParentIndex;
+
+    return ComputeWorldTransforms(BoneTransforms, MeshParentIndices);
 }
 
 // Helper: build mesh UE offsets from d3 transforms
@@ -882,5 +911,342 @@ bool FTest_SkeletonRetargeting_IdenticalLayoutsWithPose::RunTest(const FString& 
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     CheckPositions(this, Actual, Expected, 0.5f, TEXT("IdenticalLayoutsWithPose"));
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 12 — SkipCorrectionBasic
+// 4-bone chain: Hip -> Knee -> Ankle -> Foot.
+// Source foot is horizontal (d3 X), mesh foot tilts downward (d3 X+Z negative).
+// Without skip: Ankle gets orientation-corrected to point foot in source direction.
+// With "Foot" skipped: Ankle is NOT corrected, foot keeps mesh rest-pose direction.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_SkipCorrectionBasic,
+    "RenderStream.SkeletonRetargeting.SkipCorrectionBasic",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_SkipCorrectionBasic::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Hip", "Knee", "Ankle", "Foot"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    // Source: vertical chain then horizontal foot
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},   // Hip
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},   // Knee (down)
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},   // Ankle (down)
+        {0.1f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},   // Foot (horizontal, along d3 X)
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: same except foot tilts downward
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.08f, 0.f, -0.06f, 0.f, 0.f, 0.f, 1.f}, // Foot tilts down
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    // WITHOUT skip: ankle gets corrected, foot direction matches source (horizontal)
+    {
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+        const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+        // With correction, Ankle->Foot direction should match source direction (horizontal)
+        const FVector ActualDir = (Actual[3] - Actual[2]).GetSafeNormal();
+        const FVector ExpectedDir = (Expected[3] - Expected[2]).GetSafeNormal();
+        const float Dot = FMath::Clamp(FVector::DotProduct(ActualDir, ExpectedDir), -1.f, 1.f);
+        const float AngleDeg = FMath::RadiansToDegrees(FMath::Acos(Dot));
+        TestTrue(
+            FString::Printf(TEXT("SkipCorrectionBasic no-skip: Ankle->Foot within 2 deg of source (angle=%.2f)"), AngleDeg),
+            AngleDeg <= 2.f);
+    }
+
+    // WITH skip on "Ankle": Ankle->Foot direction keeps mesh rest-pose
+    {
+        TSet<FName> SkipSet;
+        SkipSet.Add(FName("Ankle"));
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose, SkipSet);
+
+        // With skip, Ankle->Foot direction should match MESH rest-pose direction (tilted down)
+        const TArray<FVector> MeshWorldPos = ComputeWorldPositions(
+            [&]() {
+                TArray<FTransform> T;
+                T.SetNum(MeshBones.Num());
+                for (int32 i = 0; i < MeshBones.Num(); ++i) T[i] = MeshBones[i].LocalTransform;
+                return T;
+            }(),
+            Parents);
+
+        const FVector MeshDir = (MeshWorldPos[3] - MeshWorldPos[2]).GetSafeNormal();
+        const FVector ActualDir = (Actual[3] - Actual[2]).GetSafeNormal();
+        const float Dot = FMath::Clamp(FVector::DotProduct(ActualDir, MeshDir), -1.f, 1.f);
+        const float AngleDeg = FMath::RadiansToDegrees(FMath::Acos(Dot));
+        TestTrue(
+            FString::Printf(TEXT("SkipCorrectionBasic with-skip: Ankle->Foot within 2 deg of mesh (angle=%.2f)"), AngleDeg),
+            AngleDeg <= 2.f);
+
+        // Also verify it does NOT match source direction (there should be a meaningful angle)
+        const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+        const FVector SourceDir = (Expected[3] - Expected[2]).GetSafeNormal();
+        const float DotSrc = FMath::Clamp(FVector::DotProduct(ActualDir, SourceDir), -1.f, 1.f);
+        const float AngleSrcDeg = FMath::RadiansToDegrees(FMath::Acos(DotSrc));
+        TestTrue(
+            FString::Printf(TEXT("SkipCorrectionBasic with-skip: Ankle->Foot differs from source (angle=%.2f)"), AngleSrcDeg),
+            AngleSrcDeg > 5.f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 13 — SkipCorrectionWithPose
+// Same skeleton as Test 12, but with a knee bend.
+// Upstream bones retarget normally; skipped bone gets direct pose rotation.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_SkipCorrectionWithPose,
+    "RenderStream.SkeletonRetargeting.SkipCorrectionWithPose",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_SkipCorrectionWithPose::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Hip", "Knee", "Ankle", "Foot"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.1f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+
+    // 30 deg knee bend around d3 Y
+    const float H = FMath::DegreesToRadians(30.f) * 0.5f;
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    Pose.joints[1].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.08f, 0.f, -0.06f, 0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    TSet<FName> SkipSet;
+    SkipSet.Add(FName("Ankle"));
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose, SkipSet);
+
+    // Verify ankle has moved (knee bend should move it)
+    const TArray<FVector> MeshWorldPos = ComputeWorldPositions(
+        [&]() {
+            TArray<FTransform> T;
+            T.SetNum(MeshBones.Num());
+            for (int32 i = 0; i < MeshBones.Num(); ++i) T[i] = MeshBones[i].LocalTransform;
+            return T;
+        }(),
+        Parents);
+
+    const float AnkleDist = FVector::Dist(Actual[2], MeshWorldPos[2]);
+    TestTrue(
+        FString::Printf(TEXT("SkipCorrectionWithPose: Ankle moved from rest (dist=%.2f cm)"), AnkleDist),
+        AnkleDist > 1.f);
+
+    // Foot should also have moved (it's a descendant of the bent knee)
+    const float FootDist = FVector::Dist(Actual[3], MeshWorldPos[3]);
+    TestTrue(
+        FString::Printf(TEXT("SkipCorrectionWithPose: Foot moved from rest (dist=%.2f cm)"), FootDist),
+        FootDist > 1.f);
+
+    // Bone count should be correct
+    TestEqual(TEXT("SkipCorrectionWithPose: bone count"), Actual.Num(), 4);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 14 — SkipCorrectionChainEffect
+// 5-bone chain A -> B -> C -> D -> E. Skip correction on C.
+// B->C correction is skipped, but C->D and D->E should still work.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_SkipCorrectionChainEffect,
+    "RenderStream.SkeletonRetargeting.SkipCorrectionChainEffect",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_SkipCorrectionChainEffect::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"A", "B", "C", "D", "E"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2, 3};
+
+    // Source: C goes along d3 X from B
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f,  0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.1f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},  // C along d3 X
+        {0.f,  0.f, 0.1f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.f, 0.1f,  0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: C goes along d3 Y from B (different direction)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f,  0.f,  0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.f,  0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.1f, 0.f,   0.f, 0.f, 0.f, 1.f},  // C along d3 Y
+        {0.f,  0.f,  0.1f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.f,  0.1f,  0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // WITH skip on B: B->C direction should match mesh, not source
+    TSet<FName> SkipSet;
+    SkipSet.Add(FName("B"));
+    const TArray<FVector> ActualSkip = RunRetargeting(MeshBones, Layout, NameMap, Pose, SkipSet);
+
+    // B->C direction should match MESH rest direction (not source)
+    const TArray<FVector> MeshWorldPos = ComputeWorldPositions(
+        [&]() {
+            TArray<FTransform> T;
+            T.SetNum(MeshBones.Num());
+            for (int32 i = 0; i < MeshBones.Num(); ++i) T[i] = MeshBones[i].LocalTransform;
+            return T;
+        }(),
+        Parents);
+
+    const FVector MeshDirBC = (MeshWorldPos[2] - MeshWorldPos[1]).GetSafeNormal();
+    const FVector ActualDirBC = (ActualSkip[2] - ActualSkip[1]).GetSafeNormal();
+    const float DotBC = FMath::Clamp(FVector::DotProduct(ActualDirBC, MeshDirBC), -1.f, 1.f);
+    const float AngleBC = FMath::RadiansToDegrees(FMath::Acos(DotBC));
+    TestTrue(
+        FString::Printf(TEXT("SkipChain: B->C matches mesh direction (angle=%.2f)"), AngleBC),
+        AngleBC <= 2.f);
+
+    // C->D direction should still match source (not skipped, single-child parent C)
+    const FVector SourceDirCD = (Expected[3] - Expected[2]).GetSafeNormal();
+    const FVector ActualDirCD = (ActualSkip[3] - ActualSkip[2]).GetSafeNormal();
+    const float DotCD = FMath::Clamp(FVector::DotProduct(ActualDirCD, SourceDirCD), -1.f, 1.f);
+    const float AngleCD = FMath::RadiansToDegrees(FMath::Acos(DotCD));
+    TestTrue(
+        FString::Printf(TEXT("SkipChain: C->D matches source direction (angle=%.2f)"), AngleCD),
+        AngleCD <= 2.f);
+
+    // D->E direction should also match source
+    const FVector SourceDirDE = (Expected[4] - Expected[3]).GetSafeNormal();
+    const FVector ActualDirDE = (ActualSkip[4] - ActualSkip[3]).GetSafeNormal();
+    const float DotDE = FMath::Clamp(FVector::DotProduct(ActualDirDE, SourceDirDE), -1.f, 1.f);
+    const float AngleDE = FMath::RadiansToDegrees(FMath::Acos(DotDE));
+    TestTrue(
+        FString::Printf(TEXT("SkipChain: D->E matches source direction (angle=%.2f)"), AngleDE),
+        AngleDE <= 2.f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 15 — SkipCorrectionPoseAxisAlignment
+// Same Hip->Knee->Ankle->Foot skeleton (source foot horizontal, mesh foot tilted).
+// Skip correction on Ankle (preserves Ankle->Foot mesh direction).
+// Apply a rotation to Ankle in pose. The Ankle's world rotation delta
+// (rest -> posed) should be the same on both source and retargeted sides,
+// ensuring the joint rotates around the same global axis.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_SkipCorrectionPoseAxisAlignment,
+    "RenderStream.SkeletonRetargeting.SkipCorrectionPoseAxisAlignment",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_SkipCorrectionPoseAxisAlignment::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Hip", "Knee", "Ankle", "Foot"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    // Source: vertical chain then horizontal foot
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.1f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+
+    // Mesh: same except foot tilts downward
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, -0.4f, 0.f, 0.f, 0.f, 1.f},
+        {0.08f, 0.f, -0.06f, 0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    TSet<FName> SkipSet;
+    SkipSet.Add(FName("Ankle"));
+
+    // 1) Compute REST-POSE world transforms
+    const RenderStreamLink::FSkeletalPose IdentityPose = BuildD3IdentityPose(Layout);
+    const TArray<FTransform> SourceRestTransforms = ComputeExpectedTransformsFromSource(Layout, IdentityPose);
+    const TArray<FTransform> ActualRestTransforms = RunRetargetingTransforms(
+        MeshBones, Layout, NameMap, IdentityPose, SkipSet);
+
+    // Verify skip worked: Ankle->Foot rest directions should differ
+    const FVector SourceRestDir = (SourceRestTransforms[3].GetTranslation() -
+        SourceRestTransforms[2].GetTranslation()).GetSafeNormal();
+    const FVector ActualRestDir = (ActualRestTransforms[3].GetTranslation() -
+        ActualRestTransforms[2].GetTranslation()).GetSafeNormal();
+    {
+        const float RestAngle = FMath::RadiansToDegrees(FMath::Acos(
+            FMath::Clamp(FVector::DotProduct(SourceRestDir, ActualRestDir), -1.f, 1.f)));
+        TestTrue(
+            FString::Printf(TEXT("SkipPoseAxis: Rest-pose foot directions differ (angle=%.1f)"), RestAngle),
+            RestAngle > 5.f);
+    }
+
+    // 2) Apply 45 deg rotation on Ankle around d3 Z (up axis)
+    const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
+
+    const TArray<FTransform> SourcePosedTransforms = ComputeExpectedTransformsFromSource(Layout, Pose);
+    const TArray<FTransform> ActualPosedTransforms = RunRetargetingTransforms(
+        MeshBones, Layout, NameMap, Pose, SkipSet);
+
+    // 3) Compare the Ankle world rotation DELTA (rest -> posed).
+    //    Both source and retargeted should apply the same global rotation.
+    const FQuat SourceRestRot = SourceRestTransforms[2].GetRotation();
+    const FQuat SourcePosedRot = SourcePosedTransforms[2].GetRotation();
+    const FQuat SourceDelta = SourcePosedRot * SourceRestRot.Inverse();
+
+    const FQuat ActualRestRot = ActualRestTransforms[2].GetRotation();
+    const FQuat ActualPosedRot = ActualPosedTransforms[2].GetRotation();
+    const FQuat ActualDelta = ActualPosedRot * ActualRestRot.Inverse();
+
+    // Compare rotation deltas: compute the angular distance between them
+    const FQuat DeltaDiff = SourceDelta * ActualDelta.Inverse();
+    const float DeltaAngleDeg = FMath::RadiansToDegrees(DeltaDiff.GetAngle());
+    TestTrue(
+        FString::Printf(TEXT("SkipPoseAxis: Ankle rotation deltas match (diff=%.1f deg)"), DeltaAngleDeg),
+        DeltaAngleDeg <= 5.f);
+
+    // 4) Verify the rotation is non-trivial (close to 45 deg)
+    const float SourceDeltaAngle = FMath::RadiansToDegrees(SourceDelta.GetAngle());
+    TestTrue(
+        FString::Printf(TEXT("SkipPoseAxis: Source rotation is ~45 deg (actual=%.1f)"), SourceDeltaAngle),
+        SourceDeltaAngle > 30.f && SourceDeltaAngle < 60.f);
+
     return true;
 }

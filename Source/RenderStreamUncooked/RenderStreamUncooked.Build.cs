@@ -12,12 +12,16 @@ public class RenderStreamUncooked : ModuleRules
 			"Core", 
             "InputCore"
         });
-        PrivateDependencyModuleNames.AddRange (new string[] { 
-			"CoreUObject", 
-            "Engine", 
+        PrivateDependencyModuleNames.AddRange (new string[] {
+			"CoreUObject",
+            "Engine",
 			"RenderStream",
 			"BlueprintGraph",
-            "AnimGraph"
+            "AnimGraph",
+            "PropertyEditor",
+            "Slate",
+            "SlateCore",
+            "UnrealEd"
         });
     }
 }

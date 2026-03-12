@@ -10,6 +10,7 @@
 #include "Animation/SkeletalMeshActor.h"
 
 #include "Animation/AnimBlueprintGeneratedClass.h"
+#include "Animation/Skeleton.h"
 
 #include "Engine/World.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -57,38 +58,61 @@ static TArray<FName> GetExpectedBonesForLayout(ERenderStreamSkeletonLayout Layou
     return ExpectedBones;
 }
 
-void FAnimNode_RenderStreamSkeletonSource::OnLayoutChanged()
+void FAnimNode_RenderStreamSkeletonSource::OnLayoutChanged(const USkeleton* TargetSkeleton)
 {
-    // Save the current visible map into the master cache
+    // Save the current visible list into the master cache
     // This captures any edits the user just made before switching layouts
-    for (const TPair<FName, FBoneReference>& Pair : BoneNameMap)
+    for (const FBoneMapping& Mapping : BoneNameMap)
     {
-        MasterBoneCache.Add(Pair.Key, Pair.Value.BoneName);
+        if (Mapping.SourceBone != NAME_None)
+        {
+            FBoneCacheEntry Entry;
+            Entry.BoneName = Mapping.Bone.BoneName;
+            Entry.bSkipOrientationCorrection = Mapping.bSkipOrientationCorrection;
+            MasterBoneCache.Add(Mapping.SourceBone, Entry);
+        }
     }
 
-    // Clear the visible map for the new layout
+    // Build a set of skeleton bone names for auto-matching
+    TSet<FName> SkeletonBoneNames;
+    if (TargetSkeleton)
+    {
+        const FReferenceSkeleton& RefSkel = TargetSkeleton->GetReferenceSkeleton();
+        for (int32 i = 0; i < RefSkel.GetNum(); ++i)
+        {
+            SkeletonBoneNames.Add(RefSkel.GetBoneName(i));
+        }
+    }
+
+    // Clear the visible list for the new layout
     BoneNameMap.Empty();
 
     // Get the expected bones for the new layout
     TArray<FName> ExpectedBones = GetExpectedBonesForLayout(SkeletonLayout);
 
-    // Populate the visible map
+    // Populate the visible list
     for (const FName& Bone : ExpectedBones)
     {
-        FBoneReference NewBoneRef;
+        FBoneMapping NewMapping;
+        NewMapping.SourceBone = Bone;
 
         // If we have a cached mapping for this bone, use it!
-        if (const FName* CachedMappedName = MasterBoneCache.Find(Bone))
+        if (const FBoneCacheEntry* CachedEntry = MasterBoneCache.Find(Bone))
         {
-            NewBoneRef.BoneName = *CachedMappedName;
+            NewMapping.Bone.BoneName = CachedEntry->BoneName;
+            NewMapping.bSkipOrientationCorrection = CachedEntry->bSkipOrientationCorrection;
+        }
+        else if (SkeletonBoneNames.Contains(Bone))
+        {
+            // Auto-match: source bone name exists in the target skeleton
+            NewMapping.Bone.BoneName = Bone;
         }
         else
         {
-            // Otherwise, default it to None
-            NewBoneRef.BoneName = NAME_None;
+            NewMapping.Bone.BoneName = NAME_None;
         }
 
-        BoneNameMap.Add(Bone, NewBoneRef);
+        BoneNameMap.Add(NewMapping);
     }
 }
 
@@ -306,9 +330,9 @@ void FAnimNode_RenderStreamSkeletonSource::CacheBones_AnyThread(const FAnimation
     BasePose.CacheBones(Context);
 
     // Initialize all our bone references against the current skeleton
-    for (TPair<FName, FBoneReference>& Pair : BoneNameMap)
+    for (FBoneMapping& Mapping : BoneNameMap)
     {
-        Pair.Value.Initialize(Context.AnimInstanceProxy->GetRequiredBones());
+        Mapping.Bone.Initialize(Context.AnimInstanceProxy->GetRequiredBones());
     }
 }
 
@@ -353,16 +377,21 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         MeshBones[i].ParentIndex = ParentCPIdx.GetInt();
     }
 
-    // Build source-name → mesh-index map from BoneNameMap
+    // Build source-name → mesh-index map and skip-correction set from BoneNameMap
     TMap<FName, int32> NameToIdx;
-    for (const TPair<FName, FBoneReference>& Pair : BoneNameMap)
+    TSet<FName> SkipCorrectionNames;
+    for (const FBoneMapping& Mapping : BoneNameMap)
     {
-        const FCompactPoseBoneIndex CPIdx = Pair.Value.GetCompactPoseIndex(BoneContainerRef);
+        if (Mapping.SourceBone == NAME_None)
+            continue;
+        const FCompactPoseBoneIndex CPIdx = Mapping.Bone.GetCompactPoseIndex(BoneContainerRef);
         if (CPIdx != INDEX_NONE)
-            NameToIdx.Add(Pair.Key, CPIdx.GetInt());
+            NameToIdx.Add(Mapping.SourceBone, CPIdx.GetInt());
+        if (Mapping.bSkipOrientationCorrection)
+            SkipCorrectionNames.Add(Mapping.SourceBone);
     }
 
-    RenderStreamRetargeting::InitialiseRetargeting(MeshBones, Layout, NameToIdx, CachedInitData);
+    RenderStreamRetargeting::InitialiseRetargeting(MeshBones, Layout, NameToIdx, SkipCorrectionNames, CachedInitData);
 
     UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
         *SkeletonName.ToString(), CachedInitData.MeshBoneCount);

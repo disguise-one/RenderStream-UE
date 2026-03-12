@@ -1,4 +1,5 @@
 #include "AnimGraphNode_RenderStreamSkeletonSource.h"
+#include "Animation/AnimBlueprint.h"
 
 #define LOCTEXT_NAMESPACE "RenderStream"
 
@@ -18,6 +19,18 @@ FText UAnimGraphNode_RenderStreamSkeletonSource::GetMenuCategory() const
 }
 
 #if WITH_EDITOR
+void UAnimGraphNode_RenderStreamSkeletonSource::PostPlacedNewNode()
+{
+    Super::PostPlacedNewNode();
+
+    USkeleton* TargetSkeleton = nullptr;
+    if (UAnimBlueprint* AnimBP = Cast<UAnimBlueprint>(GetBlueprint()))
+    {
+        TargetSkeleton = AnimBP->TargetSkeleton;
+    }
+    Node.OnLayoutChanged(TargetSkeleton);
+}
+
 void UAnimGraphNode_RenderStreamSkeletonSource::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
     Super::PostEditChangeProperty(PropertyChangedEvent);
@@ -26,7 +39,12 @@ void UAnimGraphNode_RenderStreamSkeletonSource::PostEditChangeProperty(FProperty
 
     if (PropertyName == GET_MEMBER_NAME_CHECKED(FAnimNode_RenderStreamSkeletonSource, SkeletonLayout))
     {
-        Node.OnLayoutChanged();
+        USkeleton* TargetSkeleton = nullptr;
+        if (UAnimBlueprint* AnimBP = Cast<UAnimBlueprint>(GetBlueprint()))
+        {
+            TargetSkeleton = AnimBP->TargetSkeleton;
+        }
+        Node.OnLayoutChanged(TargetSkeleton);
     }
 }
 #endif

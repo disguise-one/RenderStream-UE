@@ -18,6 +18,7 @@ struct FRetargetInitData
     TArray<int32>         SourceToMeshIndex;      // plain int32, not FCompactPoseBoneIndex
     TArray<int32>         SourceParentIndices;
     TArray<int32>         SourceMappedParentIndex; // nearest source ancestor that IS mapped (-1 if none)
+    TSet<int32>           SkipOrientationCorrectionSourceIndices;
     FTransform            RootBoneTransform;
 };
 
@@ -31,6 +32,7 @@ namespace RenderStreamRetargeting
         const TArray<FRetargetMeshBone>&         MeshBones,
         const RenderStreamLink::FSkeletalLayout& Layout,
         const TMap<FName, int32>&                SourceNameToMeshIndex,
+        const TSet<FName>&                       SkipOrientationCorrectionNames,
         FRetargetInitData&                       OutInitData);
 
     // Core pose-building pass (extracted from BuildPoseFromAnimationData)
