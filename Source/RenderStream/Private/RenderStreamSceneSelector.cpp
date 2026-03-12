@@ -14,6 +14,7 @@
 #include "ProfilingDebugging/RealtimeGPUProfiler.h"
 #include <Kismet/KismetRenderingLibrary.h>
 #include "OpenColorIOBlueprintLibrary.h"
+#include "RenderingThread.h"
 
 #include "Engine/Level.h"
 #include "Engine/World.h"
@@ -569,6 +570,13 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     {
         UE_LOG(LogRenderStream, Error, TEXT("Unable to get float frame parameters - %d"), res);
         return;
+    }
+    if (nImageParams > 0)
+    {
+        ENQUEUE_RENDER_COMMAND(RegisterTextureParams)([](FRHICommandListImmediate& RHICmdList) {
+            RenderStreamLink::instance().rs_registerTextureParams();
+        });
+        FlushRenderingCommands();
     }
     res = RenderStreamLink::instance().rs_getFrameImageData(params.hash, imageValues.data(), imageValues.size());
     if (res != RenderStreamLink::RS_ERROR_SUCCESS)
