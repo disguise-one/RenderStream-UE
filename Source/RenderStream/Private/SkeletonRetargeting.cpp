@@ -202,12 +202,10 @@ void InitialiseRetargeting(
     {
         const int32 MeshParentIndex = MeshBones[MeshIndex].ParentIndex;
 
-        // Set initial mesh-to-source space transform
         const int32 SourceIndex = MeshToSourceIndex[MeshIndex];
         if (SourceIndex == INDEX_NONE)
             continue;
 
-        OutInitData.MeshToSourceSpaceTransforms[SourceIndex].SetRotation(MeshBoneWorldTransforms[MeshIndex].GetRotation());
         OutInitData.MeshToSourceSpaceTransforms[SourceIndex].SetScale3D(MeshBoneWorldTransforms[MeshIndex].GetScale3D());
 
         // Find root bone transform
@@ -241,10 +239,6 @@ void InitialiseRetargeting(
         if (OutInitData.SkipOrientationCorrectionSourceIndices.Contains(MappedParentSourceIndex))
         {
             WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
-            OutInitData.MeshToSourceSpaceTransforms[MappedParentSourceIndex].SetRotation(
-                WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[ParentMeshIndex].GetRotation());
-            OutInitData.MeshToSourceSpaceTransforms[SourceIndex].SetRotation(
-                WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[MeshIndex].GetRotation());
             continue;
         }
 
@@ -278,8 +272,7 @@ void InitialiseRetargeting(
             bWODChanged = true;
         }
 
-        // Compute parent's local orientation correction and update
-        // MeshToSourceSpaceTransforms when the WOD changed at this level.
+        // Compute parent's local orientation correction when the WOD changed at this level.
         if (bWODChanged)
         {
             const FQuat ParentGlobalRotation = MeshBoneWorldTransforms[ParentMeshIndex].GetRotation();
@@ -291,13 +284,39 @@ void InitialiseRetargeting(
 
             OutInitData.LocalInitialOrientationDifferences[MappedParentSourceIndex] =
                 ParentParentGlobalRotation.Inverse() * OrientationDifferenceDelta * ParentParentGlobalRotation;
-
-            OutInitData.MeshToSourceSpaceTransforms[MappedParentSourceIndex].SetRotation(
-                WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[ParentMeshIndex].GetRotation());
         }
 
-        OutInitData.MeshToSourceSpaceTransforms[SourceIndex].SetRotation(
-            WorldInitialOrientationDifferences[MeshIndex] * MeshBoneWorldTransforms[MeshIndex].GetRotation());
+    }
+
+    // Compute MeshToSource rotations using the corrected rest-pose world rotations.
+    // MeshToSource must equal the world rotation that BuildRetargetedPose produces at
+    // rest (identity pose), so that the conjugation MeshToSource^{-1} * P * MeshToSource
+    // correctly transforms d3 pose rotations into each bone's actual local frame.
+    // CorrectedRestWorld accounts for accumulated InitialOrientationDifferences through
+    // the hierarchy — neither MeshWorldRot nor WOD*MeshWorldRot does this correctly when
+    // bones have non-trivial local rotations (e.g. the Pilot skeleton).
+    {
+        TArray<FQuat> CorrectedRestWorldRot;
+        CorrectedRestWorldRot.Init(FQuat::Identity, MeshBoneCount);
+
+        for (int32 m = 0; m < MeshBoneCount; ++m)
+        {
+            const int32 s = MeshToSourceIndex[m];
+            FQuat CorrectedLocalRot = MeshBones[m].LocalTransform.GetRotation();
+
+            // Apply orientation correction for non-root mapped bones
+            if (s != INDEX_NONE && OutInitData.SourceParentIndices[s] >= 0)
+                CorrectedLocalRot = OutInitData.LocalInitialOrientationDifferences[s] * CorrectedLocalRot;
+
+            const int32 p = MeshBones[m].ParentIndex;
+            if (p != INDEX_NONE && p < MeshBoneCount)
+                CorrectedRestWorldRot[m] = CorrectedRestWorldRot[p] * CorrectedLocalRot;
+            else
+                CorrectedRestWorldRot[m] = CorrectedLocalRot;
+
+            if (s != INDEX_NONE)
+                OutInitData.MeshToSourceSpaceTransforms[s].SetRotation(CorrectedRestWorldRot[m]);
+        }
     }
 
     // Compute bone length ratios for alignment.

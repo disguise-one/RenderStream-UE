@@ -20,6 +20,20 @@ static TArray<FRetargetMeshBone> BuildMeshBones(
     return Result;
 }
 
+static TArray<FRetargetMeshBone> BuildMeshBonesWithTransforms(
+    const TArray<FTransform>& LocalTransforms,
+    const TArray<int32>&      ParentIndices)
+{
+    TArray<FRetargetMeshBone> Result;
+    Result.SetNum(LocalTransforms.Num());
+    for (int32 i = 0; i < LocalTransforms.Num(); ++i)
+    {
+        Result[i].LocalTransform = LocalTransforms[i];
+        Result[i].ParentIndex    = ParentIndices[i];
+    }
+    return Result;
+}
+
 // Builds a layout where joint[i].id = i+1 and parentId = parent_index+1 (or 0 for root).
 static RenderStreamLink::FSkeletalLayout BuildD3Layout(
     const TArray<FString>&                     Names,
@@ -2110,6 +2124,672 @@ bool FTest_SkeletonRetargeting_MultiChildParent_NoHeadTilt::RunTest(const FStrin
     const TSet<int32> NoExclusions;
     CheckBoneDirections(this, ActualPositions, Expected, Parents, NoExclusions, 2.0f,
         TEXT("NoHeadTilt"));
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Build the simplified Pilot skeleton data used by Tests 28-29.
+// Returns d3 layout, UE mesh bones, name map, and parent arrays.
+// ---------------------------------------------------------------------------
+struct FPilotTestData
+{
+    RenderStreamLink::FSkeletalLayout Layout;
+    TArray<FRetargetMeshBone> MeshBones;
+    TMap<FName, int32> NameMap;
+    TArray<int32> D3Parents;
+    TArray<int32> UEParents;
+};
+
+static FPilotTestData BuildPilotTestData()
+{
+    using namespace RenderStreamRetargeting;
+
+    FPilotTestData Out;
+
+    // --- d3 source layout (meters, d3 coords) ---
+    // 0:Hips, 1:Spine, 2:Spine1, 3:Spine2, 4:Spine3, 5:Spine4,
+    // 6:Neck, 7:Head,
+    // 8:LeftShoulder, 9:LeftArm, 10:LeftForeArm,
+    // 11:RightShoulder, 12:RightArm, 13:RightForeArm,
+    // 14:LeftUpLeg, 15:LeftLeg,
+    // 16:RightUpLeg, 17:RightLeg
+    const TArray<FString> D3Names = {
+        "Hips", "Spine", "Spine1", "Spine2", "Spine3", "Spine4",
+        "Neck", "Head",
+        "LeftShoulder", "LeftArm", "LeftForeArm",
+        "RightShoulder", "RightArm", "RightForeArm",
+        "LeftUpLeg", "LeftLeg",
+        "RightUpLeg", "RightLeg"
+    };
+    Out.D3Parents = {
+        INDEX_NONE, 0, 1, 2, 3, 4,
+        5, 6,
+        4, 8, 9,
+        4, 11, 12,
+        0, 14,
+        0, 16
+    };
+    const TArray<RenderStreamLink::Transform> D3T = {
+        {0.f,        0.f,          0.f,         0.f, 0.f, 0.f, 1.f},  // Hips (zero root; actor manages world position)
+        {0.f,        0.0587707f,  0.0301453f,  0.f, 0.f, 0.f, 1.f},  // Spine
+        {0.f,        0.1019f,    -0.0272945f,  0.f, 0.f, 0.f, 1.f},  // Spine1
+        {0.f,        0.0772436f,  0.00827934f, 0.f, 0.f, 0.f, 1.f},  // Spine2
+        {0.f,        0.0924375f,  0.00564087f, 0.f, 0.f, 0.f, 1.f},  // Spine3
+        {0.f,        0.136837f,  -0.0103719f,  0.f, 0.f, 0.f, 1.f},  // Spine4
+        {0.f,        0.065325f,  -0.0457639f,  0.f, 0.f, 0.f, 1.f},  // Neck
+        {0.f,        0.0784263f, -0.0234733f,  0.f, 0.f, 0.f, 1.f},  // Head
+        {0.0393041f, 0.166315f,  -0.0747871f,  0.f, 0.f, 0.f, 1.f},  // LeftShoulder
+        {0.121187f, -0.0234733f,  0.0301152f,  0.f, 0.f, 0.f, 1.f},  // LeftArm
+        {0.238267f,  0.f,         0.f,         0.f, 0.f, 0.f, 1.f},  // LeftForeArm
+        {-0.0393041f,0.166315f,  -0.0747871f,  0.f, 0.f, 0.f, 1.f},  // RightShoulder
+        {-0.121187f,-0.0234733f,  0.0301152f,  0.f, 0.f, 0.f, 1.f},  // RightArm
+        {-0.238267f, 0.f,         0.f,         0.f, 0.f, 0.f, 1.f},  // RightForeArm
+        {0.0833753f,-0.0293853f, -0.0150727f,  0.f, 0.f, 0.f, 1.f},  // LeftUpLeg
+        {0.f,       -0.382898f,   0.f,         0.f, 0.f, 0.f, 1.f},  // LeftLeg
+        {-0.0833753f,-0.0293853f,-0.0150727f,  0.f, 0.f, 0.f, 1.f},  // RightUpLeg
+        {0.f,       -0.382898f,   0.f,         0.f, 0.f, 0.f, 1.f},  // RightLeg
+    };
+    Out.Layout = BuildD3Layout(D3Names, D3T, Out.D3Parents);
+
+    // --- UE mesh skeleton ---
+    // The mesh uses the SAME d3 offsets as source for world positions, but adds
+    // large local rotations to clavicle bones (like the Pilot's ~88 deg Y).
+    // Children's local translations are recomputed in the parent's rotated frame
+    // to maintain identical world positions.
+
+    // UE bones: 0:Hips, 1:Spine, 2:Spine1, 3:Spine2, 4:Neck, 5:Head,
+    //           6:LeftShoulder, 7:LeftArm, 8:LeftForeArm,
+    //           9:RightShoulder, 10:RightArm, 11:RightForeArm,
+    //           12:LeftUpLeg, 13:LeftLeg, 14:RightUpLeg, 15:RightLeg
+    Out.UEParents = {
+        INDEX_NONE, 0, 1, 2, 3, 4,
+        3, 6, 7,
+        3, 9, 10,
+        0, 12, 0, 14
+    };
+
+    // Mesh d3 offsets — same as source but with accumulated offsets for bones
+    // whose d3 parents are unmapped (Spine4 is unmapped).
+    const TArray<RenderStreamLink::Transform> MeshD3T = {
+        D3T[0],  // Hips
+        D3T[1],  // Spine (unmapped mesh bone, just passes through hierarchy)
+        D3T[2],  // Spine1
+        // Spine2 = d3 Spine3, accumulated through unmapped d3 Spine2
+        {D3T[3].x + D3T[4].x, D3T[3].y + D3T[4].y, D3T[3].z + D3T[4].z, 0.f, 0.f, 0.f, 1.f},
+        // Neck: accumulated through unmapped Spine4 (child of Spine3)
+        {D3T[5].x + D3T[6].x, D3T[5].y + D3T[6].y, D3T[5].z + D3T[6].z, 0.f, 0.f, 0.f, 1.f},
+        D3T[7],  // Head
+        D3T[8],  // LeftShoulder (direct child of Spine3, no intermediate)
+        D3T[9],  // LeftArm
+        D3T[10], // LeftForeArm
+        D3T[11], // RightShoulder (direct child of Spine3, no intermediate)
+        D3T[12], // RightArm
+        D3T[13], // RightForeArm
+        D3T[14], // LeftUpLeg
+        D3T[15], // LeftLeg
+        D3T[16], // RightUpLeg
+        D3T[17], // RightLeg
+    };
+
+    // Step 1: Compute desired world positions from d3-equivalent offsets
+    const TArray<FVector> MeshUEOffsets = D3ToUEOffsets(MeshD3T);
+    TArray<FVector> DesiredWorldPos;
+    DesiredWorldPos.SetNum(16);
+    {
+        TArray<FTransform> TempWorld;
+        TempWorld.SetNum(16);
+        for (int32 i = 0; i < 16; ++i)
+        {
+            TempWorld[i] = FTransform(FQuat::Identity, MeshUEOffsets[i]);
+            if (Out.UEParents[i] != INDEX_NONE)
+                TempWorld[i] = TempWorld[i] * TempWorld[Out.UEParents[i]];
+            DesiredWorldPos[i] = TempWorld[i].GetTranslation();
+        }
+    }
+
+    // Step 2: Assign local rotations. The real Pilot skeleton has non-trivial
+    // rotations on every bone. Using representative rotations ensures that
+    // orientation correction and MeshToSource are tested with realistic
+    // coordinate frame differences between mesh and source.
+    TArray<FQuat> MeshLocalRots;
+    MeshLocalRots.Init(FQuat::Identity, 16);
+    // Hips: 90° pitch — tilts the bone chain axis from default to upward
+    MeshLocalRots[0] = FQuat(FVector::YAxisVector, FMath::DegreesToRadians(90.f));
+    // Spine: slight backward lean
+    MeshLocalRots[1] = FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-5.5f));
+    // Spine1 (index 2): identity
+    // Spine2 (index 3): identity
+    // Neck: forward correction matching spine lean
+    MeshLocalRots[4] = FQuat(FVector::YAxisVector, FMath::DegreesToRadians(5.5f));
+    // Head (index 5): identity
+    // LeftShoulder (clavicle): large multi-axis rotation
+    MeshLocalRots[6] = (FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(88.f)) *
+                        FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-12.f)) *
+                        FQuat(FVector::XAxisVector, FMath::DegreesToRadians(-5.f))).GetNormalized();
+    // LeftArm: moderate pitch
+    MeshLocalRots[7] = FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-12.7f));
+    // LeftForeArm: small roll
+    MeshLocalRots[8] = FQuat(FVector::XAxisVector, FMath::DegreesToRadians(6.9f));
+    // RightShoulder: mirror of LeftShoulder
+    MeshLocalRots[9] = (FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(-88.f)) *
+                        FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-12.f)) *
+                        FQuat(FVector::XAxisVector, FMath::DegreesToRadians(5.f))).GetNormalized();
+    // RightArm: moderate pitch
+    MeshLocalRots[10] = FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-12.7f));
+    // RightForeArm: small roll (mirrored)
+    MeshLocalRots[11] = FQuat(FVector::XAxisVector, FMath::DegreesToRadians(-6.9f));
+    // LeftUpLeg: large roll to flip from upward to downward
+    MeshLocalRots[12] = (FQuat(FVector::XAxisVector, FMath::DegreesToRadians(-175.f)) *
+                         FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-4.4f))).GetNormalized();
+    // LeftLeg: small roll
+    MeshLocalRots[13] = FQuat(FVector::XAxisVector, FMath::DegreesToRadians(-1.0f));
+    // RightUpLeg: mirror of LeftUpLeg
+    MeshLocalRots[14] = (FQuat(FVector::XAxisVector, FMath::DegreesToRadians(175.f)) *
+                         FQuat(FVector::YAxisVector, FMath::DegreesToRadians(-4.1f))).GetNormalized();
+    // RightLeg: small roll (mirrored)
+    MeshLocalRots[15] = FQuat(FVector::XAxisVector, FMath::DegreesToRadians(1.0f));
+
+    // Step 3: Walk hierarchy top-down, computing local translations that preserve
+    // the desired world positions while respecting the local rotations.
+    TArray<FTransform> UELocal;
+    UELocal.SetNum(16);
+    TArray<FQuat> WorldRots;
+    WorldRots.Init(FQuat::Identity, 16);
+
+    for (int32 i = 0; i < 16; ++i)
+    {
+        const int32 Parent = Out.UEParents[i];
+        FVector LocalTrans;
+        if (Parent == INDEX_NONE)
+        {
+            LocalTrans = DesiredWorldPos[i];
+            WorldRots[i] = MeshLocalRots[i];
+        }
+        else
+        {
+            const FVector WorldOffset = DesiredWorldPos[i] - DesiredWorldPos[Parent];
+            LocalTrans = WorldRots[Parent].UnrotateVector(WorldOffset);
+            WorldRots[i] = WorldRots[Parent] * MeshLocalRots[i];
+        }
+        UELocal[i] = FTransform(MeshLocalRots[i], LocalTrans);
+    }
+
+    Out.MeshBones = BuildMeshBonesWithTransforms(UELocal, Out.UEParents);
+
+    // --- Bone name mapping ---
+    // d3 Spine(1), Spine2(3), Spine4(5) are unmapped
+    // d3 Spine3(4) → UE Spine2 (mesh index 3)
+    Out.NameMap.Add(FName("Hips"), 0);
+    Out.NameMap.Add(FName("Spine1"), 2);       // d3 Spine1 → UE Spine1 (index 2)
+    Out.NameMap.Add(FName("Spine3"), 3);       // d3 Spine3 → UE Spine2 (index 3)
+    Out.NameMap.Add(FName("Neck"), 4);
+    Out.NameMap.Add(FName("Head"), 5);
+    Out.NameMap.Add(FName("LeftShoulder"), 6);
+    Out.NameMap.Add(FName("LeftArm"), 7);
+    Out.NameMap.Add(FName("LeftForeArm"), 8);
+    Out.NameMap.Add(FName("RightShoulder"), 9);
+    Out.NameMap.Add(FName("RightArm"), 10);
+    Out.NameMap.Add(FName("RightForeArm"), 11);
+    Out.NameMap.Add(FName("LeftUpLeg"), 12);
+    Out.NameMap.Add(FName("LeftLeg"), 13);
+    Out.NameMap.Add(FName("RightUpLeg"), 14);
+    Out.NameMap.Add(FName("RightLeg"), 15);
+
+    return Out;
+}
+
+// Source-to-mesh index pairs for checking Pilot skeleton positions.
+struct FBoneCheck { int32 SourceIdx; int32 MeshIdx; const TCHAR* Name; };
+static const FBoneCheck PilotBoneChecks[] = {
+    {0,  0,  TEXT("Hips")},
+    {2,  2,  TEXT("Spine1")},
+    {4,  3,  TEXT("Spine3/UE_Spine2")},
+    {6,  4,  TEXT("Neck")},
+    {7,  5,  TEXT("Head")},
+    {8,  6,  TEXT("LeftShoulder")},
+    {9,  7,  TEXT("LeftArm")},
+    {10, 8,  TEXT("LeftForeArm")},
+    {11, 9,  TEXT("RightShoulder")},
+    {12, 10, TEXT("RightArm")},
+    {13, 11, TEXT("RightForeArm")},
+    {14, 12, TEXT("LeftUpLeg")},
+    {15, 13, TEXT("LeftLeg")},
+    {16, 14, TEXT("RightUpLeg")},
+    {17, 15, TEXT("RightLeg")},
+};
+
+// ---------------------------------------------------------------------------
+// Test 28 — PilotSkeleton_RestPose
+// Simplified Pilot skeleton with realistic d3/UE layouts and bone mapping.
+// d3 has extra spine bones; Spine4 is the unmapped multi-child parent.
+// UE clavicles have large local rotations (~88 deg Y).
+// Rest pose: mapped bone positions should match source oracle.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_PilotSkeleton_RestPose,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_RestPose",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_PilotSkeleton_RestPose::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+    const RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+
+    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(Actual[C.MeshIdx], Expected[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("PilotRest %s: dist=%.2f cm (want <=1.0)"), C.Name, Dist),
+            Dist <= 1.0f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 29 — PilotSkeleton_ShoulderYRotation
+// The key bug: rotating LeftArm around d3 Y axis should produce arm movement
+// in a horizontal plane. If MeshToSourceSpaceTransforms is wrong, the arm
+// moves out of plane instead.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_PilotSkeleton_ShoulderYRotation,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_ShoulderYRotation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_PilotSkeleton_ShoulderYRotation::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+
+    // Apply 45-degree rotation around d3 Y on LeftArm (source index 9)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        Pose.joints[9].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+    }
+
+    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+
+    // Check all mapped bone positions
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(Actual[C.MeshIdx], Expected[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("PilotShoulderYRot %s: dist=%.2f cm (want <=2.0)"), C.Name, Dist),
+            Dist <= 2.0f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 30 — PilotSkeleton_ShoulderXRotation
+// Rotating LeftArm around d3 X axis (forward) should swing the arm up/down.
+// This tests a different rotation axis to ensure all axes work correctly.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_PilotSkeleton_ShoulderXRotation,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_ShoulderXRotation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_PilotSkeleton_ShoulderXRotation::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+
+    // Apply 30-degree rotation around d3 X on LeftArm (source index 9)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+    {
+        const float H = FMath::DegreesToRadians(30.f) * 0.5f;
+        Pose.joints[9].transform = {0.f, 0.f, 0.f, FMath::Sin(H), 0.f, 0.f, FMath::Cos(H)};
+    }
+
+    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(Actual[C.MeshIdx], Expected[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("PilotShoulderXRot %s: dist=%.2f cm (want <=2.0)"), C.Name, Dist),
+            Dist <= 2.0f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 31 — PilotSkeleton_DifferentProportions_ShoulderYRotation
+// Key regression test: source and mesh have DIFFERENT spine proportions,
+// creating non-trivial orientation corrections (WOD != Identity).
+// The clavicle has a large Y rotation. A d3 Y rotation on LeftShoulder
+// should produce horizontal arm movement. Without including WOD in
+// MeshToSourceSpaceTransforms, the arm moves out of plane.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_DiffProportions_ShoulderYRot,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_DiffProportions_ShoulderYRot",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_DiffProportions_ShoulderYRot::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Build the standard Pilot d3 layout
+    const FPilotTestData P = BuildPilotTestData();
+
+    // Build a MODIFIED mesh with different spine proportions.
+    // Shift Spine2 (mesh 3, parent of clavicles) upward by 3cm,
+    // creating a different spine direction from source. This forces a
+    // non-trivial WOD on the spine chain that propagates to clavicles.
+    TArray<FRetargetMeshBone> ModifiedMesh = P.MeshBones;
+    {
+        FVector Trans = ModifiedMesh[3].LocalTransform.GetTranslation();
+        Trans.Z += 3.0f;  // shift Spine2 up by 3cm in UE coords
+        ModifiedMesh[3].LocalTransform.SetTranslation(Trans);
+    }
+
+    // Apply 45-degree rotation around d3 Y on LeftShoulder (source index 8)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        Pose.joints[8].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+    }
+
+    const TArray<FVector> Actual   = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+
+    // Check mapped bone positions — proportions differ so errors accumulate
+    // through the chain (3cm spine shift + 45° rotation + non-trivial bone rotations)
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(Actual[C.MeshIdx], Expected[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("DiffPropShoulderYRot %s: dist=%.2f cm (want <=8.0)"), C.Name, Dist),
+            Dist <= 8.0f);
+    }
+
+    // Specific check: LeftArm (mesh 7) should move primarily horizontally.
+    // Compute rest-pose position of LeftArm for reference.
+    const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
+    const TArray<FVector> RestActual = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, RestPose);
+    const FVector ArmDelta = Actual[7] - RestActual[7];
+    const float HorizontalMag = FMath::Sqrt(ArmDelta.X * ArmDelta.X + ArmDelta.Y * ArmDelta.Y);
+    const float VerticalMag = FMath::Abs(ArmDelta.Z);
+
+    // The horizontal component should dominate — vertical should be small
+    // relative to horizontal. A ratio > 0.3 indicates out-of-plane leakage.
+    const float Ratio = (HorizontalMag > KINDA_SMALL_NUMBER) ? VerticalMag / HorizontalMag : 0.f;
+    TestTrue(
+        FString::Printf(TEXT("DiffPropShoulderYRot: vertical/horizontal ratio=%.3f (want <=0.3)"), Ratio),
+        Ratio <= 0.3f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 32 — PilotSkeleton_DifferentProportions_ArmYRotation
+// Same as Test 31 but rotates LeftArm (source 9) instead of LeftShoulder.
+// Tests that WOD propagates correctly through the clavicle to arm bones.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_DiffProportions_ArmYRot,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_DiffProportions_ArmYRot",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_DiffProportions_ArmYRot::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+
+    // Modified mesh with different spine proportions
+    TArray<FRetargetMeshBone> ModifiedMesh = P.MeshBones;
+    {
+        FVector Trans = ModifiedMesh[3].LocalTransform.GetTranslation();
+        Trans.Z += 3.0f;
+        ModifiedMesh[3].LocalTransform.SetTranslation(Trans);
+    }
+
+    // Apply 45-degree d3 Y rotation on LeftArm (source index 9)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        Pose.joints[9].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+    }
+
+    const TArray<FVector> Actual   = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(Actual[C.MeshIdx], Expected[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("DiffPropArmYRot %s: dist=%.2f cm (want <=8.0)"), C.Name, Dist),
+            Dist <= 8.0f);
+    }
+
+    // Check LeftForeArm (mesh 8) moves primarily horizontally
+    const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
+    const TArray<FVector> RestActual = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, RestPose);
+    const FVector ForeArmDelta = Actual[8] - RestActual[8];
+    const float HorizontalMag = FMath::Sqrt(ForeArmDelta.X * ForeArmDelta.X + ForeArmDelta.Y * ForeArmDelta.Y);
+    const float VerticalMag = FMath::Abs(ForeArmDelta.Z);
+    const float Ratio = (HorizontalMag > KINDA_SMALL_NUMBER) ? VerticalMag / HorizontalMag : 0.f;
+    TestTrue(
+        FString::Printf(TEXT("DiffPropArmYRot: ForeArm vertical/horizontal ratio=%.3f (want <=0.3)"), Ratio),
+        Ratio <= 0.3f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 33 — PilotSkeleton_WorldRotations_YRotation
+// STRICT world rotation check: rotating LeftArm around d3 Y axis should
+// produce an exact rotation around UE Z axis in world space. No out-of-plane
+// component. Tests that MeshToSourceSpaceTransforms = CorrectedRestWorld.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_PilotWorldRotYRot,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_WorldRotations_YRotation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_PilotWorldRotYRot::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+
+    // Rest pose world transforms
+    const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
+    const TArray<FTransform> RestTransforms = RunRetargetingTransforms(
+        P.MeshBones, P.Layout, P.NameMap, RestPose);
+
+    // Posed: 45° d3 Y rotation on LeftArm (source index 9, mesh index 7)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        // d3 quat: (rx, ry, rz, rw) with Y rotation
+        Pose.joints[9].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+    }
+    const TArray<FTransform> PosedTransforms = RunRetargetingTransforms(
+        P.MeshBones, P.Layout, P.NameMap, Pose);
+
+    // d3 Y rotation → UE Z rotation (from ConvertD3TransformToUE coordinate mapping)
+    const FQuat ExpectedDelta = FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(45.f));
+
+    // Bones affected by the LeftArm pose: LeftArm (mesh 7) and descendants (LeftForeArm mesh 8)
+    const TSet<int32> AffectedMeshBones = {7, 8};
+
+    for (const auto& C : PilotBoneChecks)
+    {
+        const FQuat RestRot  = RestTransforms[C.MeshIdx].GetRotation();
+        const FQuat PosedRot = PosedTransforms[C.MeshIdx].GetRotation();
+        const FQuat Delta = PosedRot * RestRot.Inverse();
+
+        if (AffectedMeshBones.Contains(C.MeshIdx))
+        {
+            // Affected bones: delta should equal the d3 Y rotation (= UE Z rotation)
+            const FQuat DiffFromExpected = Delta * ExpectedDelta.Inverse();
+            const float DiffAngle = FMath::RadiansToDegrees(DiffFromExpected.GetAngle());
+            // Normalise to [0, 180]
+            const float NormAngle = FMath::Min(DiffAngle, 360.f - DiffAngle);
+            TestTrue(
+                FString::Printf(TEXT("WorldRotYRot %s: rotation delta error=%.2f deg (want <=2.0)"),
+                    C.Name, NormAngle),
+                NormAngle <= 2.0f);
+        }
+        else
+        {
+            // Unaffected bones: delta should be identity
+            const float DeltaAngle = FMath::RadiansToDegrees(Delta.GetAngle());
+            const float NormAngle = FMath::Min(DeltaAngle, 360.f - DeltaAngle);
+            TestTrue(
+                FString::Printf(TEXT("WorldRotYRot %s: unaffected rotation change=%.2f deg (want <=2.0)"),
+                    C.Name, NormAngle),
+                NormAngle <= 2.0f);
+        }
+    }
+
+    // Additionally check positions match oracle
+    const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> ExpectedPos = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(ActualPos[C.MeshIdx], ExpectedPos[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("WorldRotYRot %s: position dist=%.2f cm (want <=2.0)"), C.Name, Dist),
+            Dist <= 2.0f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 34 — PilotSkeleton_WorldRotations_ClavicleYRotation
+// Same strict rotation check but on LeftShoulder (clavicle, source index 8).
+// This bone is a child of a multi-child parent (Spine3) and has a large
+// local rotation in the mesh. Tests the full chain: multi-child parent →
+// clavicle → arm → forearm.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_PilotWorldRotClavicleYRot,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_WorldRotations_ClavicleYRotation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_PilotWorldRotClavicleYRot::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+
+    const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
+    const TArray<FTransform> RestTransforms = RunRetargetingTransforms(
+        P.MeshBones, P.Layout, P.NameMap, RestPose);
+
+    // 45° d3 Y rotation on LeftShoulder (source index 8, mesh index 6)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        Pose.joints[8].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+    }
+    const TArray<FTransform> PosedTransforms = RunRetargetingTransforms(
+        P.MeshBones, P.Layout, P.NameMap, Pose);
+
+    const FQuat ExpectedDelta = FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(45.f));
+
+    // Affected: LeftShoulder (6), LeftArm (7), LeftForeArm (8)
+    const TSet<int32> AffectedMeshBones = {6, 7, 8};
+
+    for (const auto& C : PilotBoneChecks)
+    {
+        const FQuat RestRot  = RestTransforms[C.MeshIdx].GetRotation();
+        const FQuat PosedRot = PosedTransforms[C.MeshIdx].GetRotation();
+        const FQuat Delta = PosedRot * RestRot.Inverse();
+
+        if (AffectedMeshBones.Contains(C.MeshIdx))
+        {
+            const FQuat DiffFromExpected = Delta * ExpectedDelta.Inverse();
+            const float DiffAngle = FMath::RadiansToDegrees(DiffFromExpected.GetAngle());
+            const float NormAngle = FMath::Min(DiffAngle, 360.f - DiffAngle);
+            TestTrue(
+                FString::Printf(TEXT("WorldRotClavicleYRot %s: rotation delta error=%.2f deg (want <=2.0)"),
+                    C.Name, NormAngle),
+                NormAngle <= 2.0f);
+        }
+        else
+        {
+            const float DeltaAngle = FMath::RadiansToDegrees(Delta.GetAngle());
+            const float NormAngle = FMath::Min(DeltaAngle, 360.f - DeltaAngle);
+            TestTrue(
+                FString::Printf(TEXT("WorldRotClavicleYRot %s: unaffected rotation change=%.2f deg (want <=2.0)"),
+                    C.Name, NormAngle),
+                NormAngle <= 2.0f);
+        }
+    }
+
+    const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> ExpectedPos = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+    for (const auto& C : PilotBoneChecks)
+    {
+        const float Dist = FVector::Dist(ActualPos[C.MeshIdx], ExpectedPos[C.SourceIdx]);
+        TestTrue(
+            FString::Printf(TEXT("WorldRotClavicleYRot %s: position dist=%.2f cm (want <=2.0)"), C.Name, Dist),
+            Dist <= 2.0f);
+    }
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 35 — PilotSkeleton_WorldRotations_SweepAngles
+// Sweep LeftForeArm d3 Y rotation from 0 to 360 in 45° steps.
+// At every angle, check that the rotation is purely around UE Z (no vertical
+// displacement component following a sin(θ) pattern — the original bug).
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_PilotWorldRotSweep,
+    "RenderStream.SkeletonRetargeting.PilotSkeleton_WorldRotations_SweepAngles",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_PilotWorldRotSweep::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const FPilotTestData P = BuildPilotTestData();
+
+    const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
+    const TArray<FTransform> RestTransforms = RunRetargetingTransforms(
+        P.MeshBones, P.Layout, P.NameMap, RestPose);
+
+    // Sweep d3 Y rotation on LeftForeArm (source index 10, mesh index 8)
+    for (float AngleDeg = 0.f; AngleDeg < 360.f; AngleDeg += 45.f)
+    {
+        RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
+        {
+            const float H = FMath::DegreesToRadians(AngleDeg) * 0.5f;
+            Pose.joints[10].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
+        }
+        const TArray<FTransform> PosedTransforms = RunRetargetingTransforms(
+            P.MeshBones, P.Layout, P.NameMap, Pose);
+
+        const FQuat ExpectedDelta = FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(AngleDeg));
+
+        // Check LeftForeArm (mesh 8) rotation delta
+        const FQuat RestRot  = RestTransforms[8].GetRotation();
+        const FQuat PosedRot = PosedTransforms[8].GetRotation();
+        const FQuat Delta = PosedRot * RestRot.Inverse();
+        const FQuat DiffFromExpected = Delta * ExpectedDelta.Inverse();
+        const float DiffAngle = FMath::RadiansToDegrees(DiffFromExpected.GetAngle());
+        const float NormAngle = FMath::Min(DiffAngle, 360.f - DiffAngle);
+        TestTrue(
+            FString::Printf(TEXT("WorldRotSweep %.0f°: ForeArm rotation error=%.2f deg (want <=2.0)"),
+                AngleDeg, NormAngle),
+            NormAngle <= 2.0f);
+
+        // Check positions match oracle
+        const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+        const TArray<FVector> ExpectedPos = ComputeExpectedPositionsFromSource(P.Layout, Pose);
+        const float Dist = FVector::Dist(ActualPos[8], ExpectedPos[10]);
+        TestTrue(
+            FString::Printf(TEXT("WorldRotSweep %.0f°: ForeArm position dist=%.2f cm (want <=2.0)"),
+                AngleDeg, Dist),
+            Dist <= 2.0f);
+    }
 
     return true;
 }
