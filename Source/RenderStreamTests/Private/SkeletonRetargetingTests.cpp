@@ -147,12 +147,13 @@ static TArray<FVector> RunRetargeting(
     const RenderStreamLink::FSkeletalLayout& Layout,
     const TMap<FName, int32>&                NameMap,
     const RenderStreamLink::FSkeletalPose&   Pose,
-    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>())
+    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>(),
+    bool                                     bAlignBoneLengths = false)
 {
     using namespace RenderStreamRetargeting;
 
     FRetargetInitData InitData;
-    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, InitData);
+    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, bAlignBoneLengths, InitData);
 
     TArray<FTransform> BoneTransforms;
     BoneTransforms.SetNum(MeshBones.Num());
@@ -175,12 +176,13 @@ static TArray<FTransform> RunRetargetingTransforms(
     const RenderStreamLink::FSkeletalLayout& Layout,
     const TMap<FName, int32>&                NameMap,
     const RenderStreamLink::FSkeletalPose&   Pose,
-    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>())
+    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>(),
+    bool                                     bAlignBoneLengths = false)
 {
     using namespace RenderStreamRetargeting;
 
     FRetargetInitData InitData;
-    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, InitData);
+    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, bAlignBoneLengths, InitData);
 
     TArray<FTransform> BoneTransforms;
     BoneTransforms.SetNum(MeshBones.Num());
@@ -318,8 +320,8 @@ bool FTest_SkeletonRetargeting_OutOfPlaneSingleChild::RunTest(const FString& Par
 // ---------------------------------------------------------------------------
 // Test 4 — OutOfPlaneMultiChild
 // 5-bone skeleton: Pelvis -> Spine -> {Neck, LeftShoulder, RightShoulder}.
-// Spine has 3 children: children of Spine are skipped in direction check.
-// No single-child descendants to check here, so this just verifies no crash.
+// Spine has 3 children with out-of-plane offsets. Averaged multi-child
+// orientation correction should align all children's directions.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_OutOfPlaneMultiChild,
     "RenderStream.SkeletonRetargeting.OutOfPlaneMultiChild",
@@ -355,10 +357,10 @@ bool FTest_SkeletonRetargeting_OutOfPlaneMultiChild::RunTest(const FString& Para
     const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
-    const TSet<int32> MultiChildParents = FindMultiChildParents(Parents);
-    // All non-root bones are children of Spine (multi-child), so direction checks are skipped.
-    // This test validates no crash and correct bone count.
-    CheckBoneDirections(this, Actual, Expected, Parents, MultiChildParents, 1.0f, TEXT("OutOfPlaneMultiChild"));
+    // With multi-child orientation correction, all children should have correct directions.
+    // Use direction check with no multi-child exclusions.
+    const TSet<int32> NoExclusions;
+    CheckBoneDirections(this, Actual, Expected, Parents, NoExclusions, 2.0f, TEXT("OutOfPlaneMultiChild"));
     return true;
 }
 
@@ -515,8 +517,9 @@ bool FTest_SkeletonRetargeting_RealisticAlternativeLayout::RunTest(const FString
     const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
-    const TSet<int32> MultiChildParents = FindMultiChildParents(Parents);
-    CheckBoneDirections(this, Actual, Expected, Parents, MultiChildParents, 2.0f, TEXT("RealisticAlternativeLayout"));
+    // With multi-child orientation correction, all bones should have correct directions.
+    const TSet<int32> NoExclusions;
+    CheckBoneDirections(this, Actual, Expected, Parents, NoExclusions, 2.0f, TEXT("RealisticAlternativeLayout"));
     return true;
 }
 
@@ -1247,6 +1250,866 @@ bool FTest_SkeletonRetargeting_SkipCorrectionPoseAxisAlignment::RunTest(const FS
     TestTrue(
         FString::Printf(TEXT("SkipPoseAxis: Source rotation is ~45 deg (actual=%.1f)"), SourceDeltaAngle),
         SourceDeltaAngle > 30.f && SourceDeltaAngle < 60.f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 16 — BoneLengthAlignment_IdenticalSkeletons
+// Source == mesh, alignment enabled. All ratios should be 1.0, so output
+// should be identical to alignment disabled.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_IdenticalSkeletons,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_IdenticalSkeletons",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_IdenticalSkeletons::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Pelvis", "Spine", "Chest", "Neck"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    const RenderStreamLink::Transform D3Root   = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+    const RenderStreamLink::Transform D3Offset = {0.1f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+    const TArray<RenderStreamLink::Transform> D3T = {D3Root, D3Offset, D3Offset, D3Offset};
+
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, D3T, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> WithAlign    = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    CheckPositions(this, WithAlign, WithoutAlign, 0.1f, TEXT("BoneLengthAlign_Identical"));
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 17 — BoneLengthAlignment_DifferentLengths
+// 4-bone collinear chain. Source bones: 15cm each. Mesh bones: 10cm each.
+// Identity pose. With alignment: positions match source oracle.
+// Without alignment: positions differ from source oracle.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_DifferentLengths,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_DifferentLengths",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_DifferentLengths::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Pelvis", "Spine", "Chest", "Neck"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    // Source: 15cm offsets along d3 Z
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: 10cm offsets along d3 Z (same direction, shorter)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // Without alignment: positions differ from source (mesh bones are shorter)
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+
+    // Neck (index 3) should be at 30cm (mesh) vs 45cm (source) — significant difference
+    const float NeckDiffWithout = FVector::Dist(WithoutAlign[3], Expected[3]);
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_Diff without: Neck differs from source (dist=%.1f cm)"), NeckDiffWithout),
+        NeckDiffWithout > 10.f);
+
+    // With alignment: positions match source oracle
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("BoneLengthAlign_Diff with align"));
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 18 — BoneLengthAlignment_WithOrientationCorrection
+// 3-bone chain. Source and mesh have different bone directions AND different
+// bone lengths. With alignment: positions match source oracle.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_WithOrientationCorrection,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_WithOrientationCorrection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_WithOrientationCorrection::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Root", "A", "B"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1};
+
+    // Source: A is 15cm up (d3 Z), B is 10cm to the right (d3 X)
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f,  0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.10f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: A is 15cm up (same), B is 8cm along d3 Y (different direction AND length)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f,  0.f,  0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.f,  0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,  0.08f, 0.f,  0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With alignment: orientation correction aligns direction, length alignment adjusts magnitude
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("BoneLengthAlign_WithOrientation"));
+
+    // Without alignment: direction is correct but distance is wrong
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const float BDiffWithout = FVector::Dist(WithoutAlign[2], Expected[2]);
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_WithOrientation without: B differs (dist=%.1f cm)"), BDiffWithout),
+        BDiffWithout > 1.f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 19 — BoneLengthAlignment_ZeroLengthBone
+// Chain includes a zero-length mesh bone. Should not crash or produce NaN.
+// Other bones should still be correct.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_ZeroLengthBone,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_ZeroLengthBone",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_ZeroLengthBone::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Root -> A -> B (zero-length in mesh) -> C
+    const TArray<FString> Names   = {"Root", "A", "B", "C"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    // Source: all bones have non-zero offsets
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: B has zero offset (co-located with A)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},  // zero-length!
+        {0.f, 0.f, 0.1f, 0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    // Should not crash
+    const TArray<FVector> Result = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    // Verify no NaN
+    for (int32 i = 0; i < Result.Num(); ++i)
+    {
+        TestFalse(
+            FString::Printf(TEXT("BoneLengthAlign_ZeroLen bone[%d] no NaN"), i),
+            Result[i].ContainsNaN());
+    }
+
+    // Verify bone count
+    TestEqual(TEXT("BoneLengthAlign_ZeroLen bone count"), Result.Num(), 4);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 20 — BoneLengthAlignment_MultiChildParent
+// Multi-child parent with children having different length ratios.
+// Each child should be adjusted independently.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_MultiChildParent,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_MultiChildParent",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_MultiChildParent::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Root -> A -> {B, C}
+    const TArray<FString> Names   = {"Root", "A", "B", "C"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 1};
+
+    // Source: B is 15cm right (d3 Y), C is 10cm left (d3 -Y)
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.15f, 0.f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, -0.10f, 0.f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: B is 10cm right, C is 20cm left (different ratios)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.10f, 0.f, 0.f, 0.f, 0.f, 1.f},   // ratio = 15/10 = 1.5
+        {0.f, -0.20f, 0.f, 0.f, 0.f, 0.f, 1.f},   // ratio = 10/20 = 0.5
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With alignment: each child adjusted to match source distances
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    // B distance from A should match source (15cm)
+    const float BDistActual   = FVector::Dist(WithAlign[2], WithAlign[1]);
+    const float BDistExpected = FVector::Dist(Expected[2], Expected[1]);
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_MultiChild: B dist actual=%.1f expected=%.1f"), BDistActual, BDistExpected),
+        FMath::Abs(BDistActual - BDistExpected) < 0.5f);
+
+    // C distance from A should match source (10cm)
+    const float CDistActual   = FVector::Dist(WithAlign[3], WithAlign[1]);
+    const float CDistExpected = FVector::Dist(Expected[3], Expected[1]);
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_MultiChild: C dist actual=%.1f expected=%.1f"), CDistActual, CDistExpected),
+        FMath::Abs(CDistActual - CDistExpected) < 0.5f);
+
+    // Without alignment: multi-child children still get positional corrections
+    // (the offset compensates for the Kabsch rotation's directional residuals,
+    // which inherently adjusts distances to match source for those children).
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const float BDistNoAlign = FVector::Dist(WithoutAlign[2], WithoutAlign[1]);
+    const float CDistNoAlign = FVector::Dist(WithoutAlign[3], WithoutAlign[1]);
+
+    // Multi-child children match source positions even without bone length alignment
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_MultiChild: B without align also matches (dist=%.1f vs expected=%.1f)"),
+            BDistNoAlign, BDistExpected),
+        FMath::Abs(BDistNoAlign - BDistExpected) < 0.5f);
+
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_MultiChild: C without align also matches (dist=%.1f vs expected=%.1f)"),
+            CDistNoAlign, CDistExpected),
+        FMath::Abs(CDistNoAlign - CDistExpected) < 0.5f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 21 — BoneLengthAlignment_UnmappedMeshIntermediate
+// Mesh has an extra bone between two mapped bones.
+// Source (3 bones): Root -> A -> B
+// Mesh (4 bones):   Root -> A -> X(unmapped) -> B
+// The ratio must compensate for X's contribution to the chain so that B's
+// world position matches source B exactly.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedMeshIntermediate,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_UnmappedMeshIntermediate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedMeshIntermediate::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // --- Source skeleton (3 bones) ---
+    const TArray<FString> SourceNames   = {"Root", "A", "B"};
+    const TArray<int32>   SourceParents = {INDEX_NONE, 0, 1};
+
+    // Source: A is 10cm up from Root, B is 10cm up from A
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(SourceNames, SourceD3, SourceParents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // --- Mesh skeleton (4 bones, X is unmapped intermediate) ---
+    const TArray<int32> MeshParents = {INDEX_NONE, 0, 1, 2};
+
+    // Mesh: A is 5cm up, X is 3cm up from A, B is 5cm up from X
+    // Total mesh dist(A,B) = 8cm, but B's local offset is only 5cm
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.05f, 0.f, 0.f, 0.f, 1.f},  // A: 5cm
+        {0.f, 0.f, 0.03f, 0.f, 0.f, 0.f, 1.f},  // X: 3cm (unmapped intermediate)
+        {0.f, 0.f, 0.05f, 0.f, 0.f, 0.f, 1.f},  // B: 5cm from X
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
+
+    // Map only Root, A, B (X at mesh index 2 is NOT mapped)
+    TMap<FName, int32> NameMap;
+    NameMap.Add(FName("Root"), 0);
+    NameMap.Add(FName("A"), 1);
+    NameMap.Add(FName("B"), 3);  // B is mesh index 3
+
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With alignment: mapped bones should match source positions
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    // Source A world = (0, 10, 0) in UE coords (d3 Z -> UE Y)
+    // Source B world = (0, 20, 0)
+    // A (mesh index 1) should match source A (source index 1)
+    const float ADist = FVector::Dist(Actual[1], Expected[1]);
+    TestTrue(
+        FString::Printf(TEXT("MeshIntermediate: A position (dist=%.2f cm)"), ADist),
+        ADist < 0.5f);
+
+    // B (mesh index 3) should match source B (source index 2)
+    const float BDist = FVector::Dist(Actual[3], Expected[2]);
+    TestTrue(
+        FString::Printf(TEXT("MeshIntermediate: B position (dist=%.2f cm)"), BDist),
+        BDist < 0.5f);
+
+    // Without alignment: B should NOT match source (mesh chain is shorter)
+    const TArray<FVector> NoAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const float BDistNoAlign = FVector::Dist(NoAlign[3], Expected[2]);
+    TestTrue(
+        FString::Printf(TEXT("MeshIntermediate: B without align differs (dist=%.2f cm)"), BDistNoAlign),
+        BDistNoAlign > 2.f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 22 — BoneLengthAlignment_UnmappedSourceIntermediate
+// Source has an extra unmapped bone between two mapped bones.
+// Source (4 bones): Root -> A -> B(unmapped) -> C
+// Mesh (3 bones):   Root -> A -> C
+// The ratio should account for the accumulated source distance through B.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedSourceIntermediate,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_UnmappedSourceIntermediate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedSourceIntermediate::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // --- Source skeleton (4 bones, B is unmapped) ---
+    const TArray<FString> SourceNames   = {"Root", "A", "B", "C"};
+    const TArray<int32>   SourceParents = {INDEX_NONE, 0, 1, 2};
+
+    // Source: each bone 10cm up. Total Root-to-C = 30cm, A-to-C = 20cm through B
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},  // B (unmapped)
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(SourceNames, SourceD3, SourceParents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // --- Mesh skeleton (3 bones, no B) ---
+    const TArray<int32> MeshParents = {INDEX_NONE, 0, 1};
+
+    // Mesh: A is 10cm up, C is 8cm up from A (shorter than source A-to-C = 20cm)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.08f, 0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
+
+    // Map Root, A, C (B not mapped)
+    TMap<FName, int32> NameMap;
+    NameMap.Add(FName("Root"), 0);
+    NameMap.Add(FName("A"), 1);
+    NameMap.Add(FName("C"), 2);
+
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With alignment: C should match source C
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    // Source C world = (0, 30, 0), source index 3
+    const float CDist = FVector::Dist(Actual[2], Expected[3]);
+    TestTrue(
+        FString::Printf(TEXT("SourceIntermediate: C position (dist=%.2f cm)"), CDist),
+        CDist < 0.5f);
+
+    // A should also match (same length in both)
+    const float ADist = FVector::Dist(Actual[1], Expected[1]);
+    TestTrue(
+        FString::Printf(TEXT("SourceIntermediate: A position (dist=%.2f cm)"), ADist),
+        ADist < 0.5f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 23 — BoneLengthAlignment_WithPoseRotation
+// Different bone lengths with a non-trivial pose. Verifies that length
+// alignment and pose rotations compose correctly.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_BoneLengthAlignment_WithPoseRotation,
+    "RenderStream.SkeletonRetargeting.BoneLengthAlignment_WithPoseRotation",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_BoneLengthAlignment_WithPoseRotation::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // 4-bone collinear chain with different lengths
+    const TArray<FString> Names   = {"Root", "A", "B", "C"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2};
+
+    // Source: 15cm offsets
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.15f, 0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+
+    // Apply 45 deg rotation on A around d3 Z
+    const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    Pose.joints[1].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
+
+    // Mesh: 10cm offsets (same direction, shorter)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f, 0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With alignment: positions should match source oracle despite different bone lengths
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+
+    CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("BoneLengthAlign_WithPose"));
+
+    // Without alignment: positions differ because bone lengths don't match
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const float CDist = FVector::Dist(WithoutAlign[3], Expected[3]);
+    TestTrue(
+        FString::Printf(TEXT("BoneLengthAlign_WithPose without: C differs (dist=%.1f cm)"), CDist),
+        CDist > 5.f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 24 — MultiChildExactPositions
+// Verifies that multi-child parent children end up at exact source POSITIONS
+// (not just correct directions) both with and without bone length alignment.
+// Uses the realistic 18-bone skeleton with out-of-plane clavicle/hip offsets.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_MultiChildExactPositions,
+    "RenderStream.SkeletonRetargeting.MultiChildExactPositions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_MultiChildExactPositions::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names = {
+        "Pelvis", "Spine", "Chest", "Neck",
+        "LeftClavicle", "LeftShoulder", "LeftElbow", "LeftWrist",
+        "LeftHip", "LeftKnee", "LeftAnkle",
+        "RightClavicle", "RightShoulder", "RightElbow", "RightWrist",
+        "RightHip", "RightKnee", "RightAnkle"
+    };
+    const TArray<int32> Parents = {
+        INDEX_NONE, 0, 1, 2,
+        2, 4, 5, 6,
+        0, 8, 9,
+        2, 11, 12, 13,
+        0, 15, 16,
+    };
+
+    // Source has forward offsets on clavicles/hips
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f,    0.f,    0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.05f,  0.12f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.05f,  0.12f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.f,    0.15f,  0.f, 0.f, 0.f, 1.f},
+        {0.05f, 0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.28f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.25f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {-0.05f, 0.1f, -0.05f,  0.f, 0.f, 0.f, 1.f},
+        {-0.42f, 0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+        {-0.4f,  0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.05f,-0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.28f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.25f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {-0.05f,-0.1f, -0.05f,  0.f, 0.f, 0.f, 1.f},
+        {-0.42f, 0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+        {-0.4f,  0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: purely lateral (no forward offsets on clavicles/hips)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f,    0.f,    0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.05f,  0.12f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.05f,  0.12f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.f,    0.15f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.28f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.25f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.1f,  -0.05f,  0.f, 0.f, 0.f, 1.f},
+        {-0.42f, 0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+        {-0.4f,  0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.15f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.28f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.25f,  0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.1f,  -0.05f,  0.f, 0.f, 0.f, 1.f},
+        {-0.42f, 0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+        {-0.4f,  0.f,   0.f,    0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With bone length alignment: all positions should match source oracle
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("MultiChildPositions_WithAlign"));
+
+    // Without bone length alignment: directions should still be correct
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TSet<int32> NoExclusions;
+    CheckBoneDirections(this, WithoutAlign, Expected, Parents, NoExclusions, 2.0f,
+        TEXT("MultiChildPositions_WithoutAlign"));
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 25 — MultiChildWithPose
+// Apply non-trivial pose rotations to a skeleton with multi-child parents
+// and different source/mesh layouts. Verify positions match oracle.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_MultiChildWithPose,
+    "RenderStream.SkeletonRetargeting.MultiChildWithPose",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_MultiChildWithPose::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // 7-bone skeleton: Root → Spine → {Neck, LeftArm, RightArm}
+    //                  LeftArm → LeftHand, RightArm → RightHand
+    const TArray<FString> Names = {
+        "Root", "Spine", "Neck", "LeftArm", "RightArm", "LeftHand", "RightHand"
+    };
+    const TArray<int32> Parents = {INDEX_NONE, 0, 1, 1, 1, 3, 4};
+
+    // Source: shoulders have forward offset (z component in d3)
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f,   0.f,   0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.f,  0.15f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.f,  0.12f,  0.f, 0.f, 0.f, 1.f},
+        {0.06f, 0.2f, 0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.06f,-0.2f, 0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.25f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.25f, 0.f,   0.f, 0.f, 0.f, 1.f},
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+
+    // Mesh: shoulders are purely lateral (no forward offset)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f,   0.f,   0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.f,  0.15f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.f,  0.12f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.2f, 0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.2f, 0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f,   0.25f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,  -0.25f, 0.f,   0.f, 0.f, 0.f, 1.f},
+    };
+
+    // Pose: 30° rotation on Spine (d3 Z axis), 45° on LeftArm (d3 X axis)
+    RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    {
+        const float H = FMath::DegreesToRadians(30.f) * 0.5f;
+        Pose.joints[1].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
+    }
+    {
+        const float H = FMath::DegreesToRadians(45.f) * 0.5f;
+        Pose.joints[3].transform = {0.f, 0.f, 0.f, FMath::Sin(H), 0.f, 0.f, FMath::Cos(H)};
+    }
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
+
+    // With bone length alignment: positions should match source oracle
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
+        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("MultiChildWithPose_Aligned"));
+
+    // Without alignment: directions should still be correct
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TSet<int32> NoExclusions;
+    CheckBoneDirections(this, WithoutAlign, Expected, Parents, NoExclusions, 2.0f,
+        TEXT("MultiChildWithPose_Unaligned"));
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 26 — MultiChildParent_NoRootTilt
+// Regression test: when Pelvis is a multi-child root (children: Spine,
+// LeftHip, RightHip) and source/mesh differ in hip offsets, the root bone
+// must NOT be tilted. We verify by checking that the rest-pose world
+// rotation of Pelvis is unchanged from the mesh rest-pose rotation.
+// A bug where Kabsch WOD leaked into LIOD caused the root to tilt forward.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_MultiChildParent_NoRootTilt,
+    "RenderStream.SkeletonRetargeting.MultiChildParent_NoRootTilt",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_MultiChildParent_NoRootTilt::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Pelvis(0) -> {Spine(1), LeftHip(2), RightHip(3)}
+    // Spine -> Chest(4) -> Neck(5)
+    // LeftHip -> LeftKnee(6), RightHip -> RightKnee(7)
+    const TArray<FString> Names = {
+        "Pelvis", "Spine", "LeftHip", "RightHip",
+        "Chest", "Neck", "LeftKnee", "RightKnee"
+    };
+    const TArray<int32> Parents = {
+        INDEX_NONE, 0, 0, 0,
+        1, 4, 2, 3
+    };
+
+    // Source: hips have d3 X forward offset
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f,    0.f,   0.f,   0.f, 0.f, 0.f, 1.f},  // Pelvis
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},  // Spine
+        {-0.05f, 0.1f, -0.05f, 0.f, 0.f, 0.f, 1.f},  // LeftHip (forward offset)
+        {-0.05f,-0.1f, -0.05f, 0.f, 0.f, 0.f, 1.f},  // RightHip (forward offset)
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},  // Chest
+        {0.f,    0.f,   0.12f, 0.f, 0.f, 0.f, 1.f},  // Neck
+        {-0.42f, 0.f,   0.f,   0.f, 0.f, 0.f, 1.f},  // LeftKnee
+        {-0.42f, 0.f,   0.f,   0.f, 0.f, 0.f, 1.f},  // RightKnee
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: hips are purely lateral (no forward offset)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f,    0.f,   0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.1f, -0.05f, 0.f, 0.f, 0.f, 1.f},  // LeftHip (no forward)
+        {0.f,   -0.1f, -0.05f, 0.f, 0.f, 0.f, 1.f},  // RightHip (no forward)
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.f,   0.12f, 0.f, 0.f, 0.f, 1.f},
+        {-0.42f, 0.f,   0.f,   0.f, 0.f, 0.f, 1.f},
+        {-0.42f, 0.f,   0.f,   0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    // Get retargeted rest-pose transforms
+    const TArray<FTransform> ActualTransforms = RunRetargetingTransforms(
+        MeshBones, Layout, NameMap, Pose);
+
+    // Get mesh rest-pose transforms
+    TArray<FTransform> MeshLocalTransforms;
+    MeshLocalTransforms.SetNum(MeshBones.Num());
+    for (int32 i = 0; i < MeshBones.Num(); ++i)
+        MeshLocalTransforms[i] = MeshBones[i].LocalTransform;
+    TArray<int32> MeshParents;
+    MeshParents.SetNum(Parents.Num());
+    for (int32 i = 0; i < Parents.Num(); ++i)
+        MeshParents[i] = Parents[i];
+    const TArray<FTransform> MeshWorldTransforms = ComputeWorldTransforms(MeshLocalTransforms, MeshParents);
+
+    // Pelvis (root, multi-child parent) rotation should be unchanged
+    {
+        const FQuat ActualRot = ActualTransforms[0].GetRotation();
+        const FQuat MeshRot   = MeshWorldTransforms[0].GetRotation();
+        const FQuat Diff = ActualRot * MeshRot.Inverse();
+        const float DiffAngle = FMath::RadiansToDegrees(Diff.GetAngle());
+        TestTrue(
+            FString::Printf(TEXT("NoRootTilt: Pelvis rotation unchanged (diff=%.2f deg)"), DiffAngle),
+            DiffAngle <= 1.0f);
+    }
+
+    // Spine rotation should also be unchanged (single-child of Pelvis,
+    // should not get compensating LIOD for a non-existent Pelvis WOD)
+    {
+        const FQuat ActualRot = ActualTransforms[1].GetRotation();
+        const FQuat MeshRot   = MeshWorldTransforms[1].GetRotation();
+        const FQuat Diff = ActualRot * MeshRot.Inverse();
+        const float DiffAngle = FMath::RadiansToDegrees(Diff.GetAngle());
+        TestTrue(
+            FString::Printf(TEXT("NoRootTilt: Spine rotation unchanged (diff=%.2f deg)"), DiffAngle),
+            DiffAngle <= 1.0f);
+    }
+
+    // Positions should still be correct
+    const TArray<FVector> ActualPositions = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+    const TSet<int32> NoExclusions;
+    CheckBoneDirections(this, ActualPositions, Expected, Parents, NoExclusions, 2.0f,
+        TEXT("NoRootTilt"));
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 27 — MultiChildParent_NoHeadTilt
+// Regression test: when Chest is a non-root multi-child parent (children:
+// Neck, LeftClavicle, RightClavicle) and source has forward clavicle
+// offsets, the Chest/Neck/Head chain must NOT be tilted backward.
+// A bug where Kabsch WOD leaked into LIOD caused backward head tilt.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_MultiChildParent_NoHeadTilt,
+    "RenderStream.SkeletonRetargeting.MultiChildParent_NoHeadTilt",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_MultiChildParent_NoHeadTilt::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Pelvis(0) -> Spine(1) -> Chest(2) -> {Neck(3), LeftClav(4), RightClav(5)}
+    // Neck -> Head(6)
+    // LeftClav -> LeftShoulder(7), RightClav -> RightShoulder(8)
+    const TArray<FString> Names = {
+        "Pelvis", "Spine", "Chest", "Neck", "LeftClavicle", "RightClavicle",
+        "Head", "LeftShoulder", "RightShoulder"
+    };
+    const TArray<int32> Parents = {
+        INDEX_NONE, 0, 1, 2, 2, 2,
+        3, 4, 5
+    };
+
+    // Source: clavicles have forward d3 X offset
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f,    0.f,   0.f,   0.f, 0.f, 0.f, 1.f},  // Pelvis
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},  // Spine
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},  // Chest
+        {0.f,    0.f,   0.12f, 0.f, 0.f, 0.f, 1.f},  // Neck
+        {0.05f,  0.15f, 0.f,   0.f, 0.f, 0.f, 1.f},  // LeftClav (forward)
+        {0.05f, -0.15f, 0.f,   0.f, 0.f, 0.f, 1.f},  // RightClav (forward)
+        {0.f,    0.f,   0.1f,  0.f, 0.f, 0.f, 1.f},  // Head
+        {0.f,    0.2f,  0.f,   0.f, 0.f, 0.f, 1.f},  // LeftShoulder
+        {0.f,   -0.2f,  0.f,   0.f, 0.f, 0.f, 1.f},  // RightShoulder
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: clavicles are purely lateral
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f,    0.f,   0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.f,   0.15f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.f,   0.12f, 0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.15f, 0.f,   0.f, 0.f, 0.f, 1.f},  // LeftClav (no forward)
+        {0.f,   -0.15f, 0.f,   0.f, 0.f, 0.f, 1.f},  // RightClav (no forward)
+        {0.f,    0.f,   0.1f,  0.f, 0.f, 0.f, 1.f},
+        {0.f,    0.2f,  0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f,   -0.2f,  0.f,   0.f, 0.f, 0.f, 1.f},
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    const TArray<FTransform> ActualTransforms = RunRetargetingTransforms(
+        MeshBones, Layout, NameMap, Pose);
+
+    TArray<FTransform> MeshLocalTransforms;
+    MeshLocalTransforms.SetNum(MeshBones.Num());
+    for (int32 i = 0; i < MeshBones.Num(); ++i)
+        MeshLocalTransforms[i] = MeshBones[i].LocalTransform;
+    TArray<int32> MeshParents;
+    MeshParents.SetNum(Parents.Num());
+    for (int32 i = 0; i < Parents.Num(); ++i)
+        MeshParents[i] = Parents[i];
+    const TArray<FTransform> MeshWorldTransforms = ComputeWorldTransforms(MeshLocalTransforms, MeshParents);
+
+    // Chest (multi-child parent) rotation should be unchanged
+    {
+        const FQuat ActualRot = ActualTransforms[2].GetRotation();
+        const FQuat MeshRot   = MeshWorldTransforms[2].GetRotation();
+        const FQuat Diff = ActualRot * MeshRot.Inverse();
+        const float DiffAngle = FMath::RadiansToDegrees(Diff.GetAngle());
+        TestTrue(
+            FString::Printf(TEXT("NoHeadTilt: Chest rotation unchanged (diff=%.2f deg)"), DiffAngle),
+            DiffAngle <= 1.0f);
+    }
+
+    // Neck rotation should be unchanged (Neck→Head is same direction in source and mesh)
+    {
+        const FQuat ActualRot = ActualTransforms[3].GetRotation();
+        const FQuat MeshRot   = MeshWorldTransforms[3].GetRotation();
+        const FQuat Diff = ActualRot * MeshRot.Inverse();
+        const float DiffAngle = FMath::RadiansToDegrees(Diff.GetAngle());
+        TestTrue(
+            FString::Printf(TEXT("NoHeadTilt: Neck rotation unchanged (diff=%.2f deg)"), DiffAngle),
+            DiffAngle <= 1.0f);
+    }
+
+    // Head rotation should be unchanged
+    {
+        const FQuat ActualRot = ActualTransforms[6].GetRotation();
+        const FQuat MeshRot   = MeshWorldTransforms[6].GetRotation();
+        const FQuat Diff = ActualRot * MeshRot.Inverse();
+        const float DiffAngle = FMath::RadiansToDegrees(Diff.GetAngle());
+        TestTrue(
+            FString::Printf(TEXT("NoHeadTilt: Head rotation unchanged (diff=%.2f deg)"), DiffAngle),
+            DiffAngle <= 1.0f);
+    }
+
+    // Positions should still be correct
+    const TArray<FVector> ActualPositions = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
+    const TSet<int32> NoExclusions;
+    CheckBoneDirections(this, ActualPositions, Expected, Parents, NoExclusions, 2.0f,
+        TEXT("NoHeadTilt"));
 
     return true;
 }

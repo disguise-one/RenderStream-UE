@@ -66,7 +66,11 @@ public:
 
     // When ticked, the root offsets applied to the actor are scaled by the actor's scale
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
-        bool ScaleRootOffsets;
+        bool ScaleRootOffsets = false;
+
+    // When ticked, bone translation offsets are adjusted to match source bone lengths
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+        bool bAlignBoneLengths = false;
 
 public:
     FAnimNode_RenderStreamSkeletonSource();

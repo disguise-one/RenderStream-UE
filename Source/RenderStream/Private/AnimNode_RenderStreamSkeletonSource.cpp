@@ -391,7 +391,7 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
             SkipCorrectionNames.Add(Mapping.SourceBone);
     }
 
-    RenderStreamRetargeting::InitialiseRetargeting(MeshBones, Layout, NameToIdx, SkipCorrectionNames, CachedInitData);
+    RenderStreamRetargeting::InitialiseRetargeting(MeshBones, Layout, NameToIdx, SkipCorrectionNames, bAlignBoneLengths, CachedInitData);
 
     UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
         *SkeletonName.ToString(), CachedInitData.MeshBoneCount);
