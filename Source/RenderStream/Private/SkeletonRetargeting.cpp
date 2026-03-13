@@ -348,6 +348,11 @@ void InitialiseRetargeting(
             if (MappedParent == INDEX_NONE)
                 continue;
 
+            // Skip bone length alignment for children of skip-corrected joints.
+            // "Skip" on a joint preserves both direction and length from mesh rest-pose.
+            if (OutInitData.SkipOrientationCorrectionSourceIndices.Contains(MappedParent))
+                continue;
+
             const int32 ParentMeshIndex = OutInitData.SourceToMeshIndex[MappedParent];
             if (ParentMeshIndex == INDEX_NONE)
                 continue;

@@ -2793,3 +2793,84 @@ bool FTest_SkeletonRetargeting_PilotWorldRotSweep::RunTest(const FString& Parame
 
     return true;
 }
+
+// ---------------------------------------------------------------------------
+// Test 36 — SkipCorrection_SkipsBoneLengthAlignment
+// When a joint has Skip selected, children should not have their bone length
+// adjusted even when bone length alignment is enabled.
+// Skeleton: Hip → Thigh → Ankle → Foot → Toe
+// Source has a longer Foot than mesh. Skip on Ankle.
+// With alignment: Thigh length SHOULD be adjusted, Foot length should NOT.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_SkipCorrectionSkipsBoneLength,
+    "RenderStream.SkeletonRetargeting.SkipCorrection_SkipsBoneLengthAlignment",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_SkipCorrectionSkipsBoneLength::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names   = {"Hip", "Thigh", "Ankle", "Foot", "Toe"};
+    const TArray<int32>   Parents = {INDEX_NONE, 0, 1, 2, 3};
+
+    // Source: Thigh 45cm, Ankle-Foot 10cm, Foot-Toe 15cm
+    const TArray<RenderStreamLink::Transform> SourceD3 = {
+        {0.f, 0.f, 0.f,    0.f, 0.f, 0.f, 1.f},   // Hip
+        {0.f, 0.f, -0.45f, 0.f, 0.f, 0.f, 1.f},   // Thigh (45cm down)
+        {0.f, 0.f, -0.45f, 0.f, 0.f, 0.f, 1.f},   // Ankle (45cm down)
+        {0.1f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},   // Foot (10cm forward in d3 X)
+        {0.15f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},   // Toe (15cm forward)
+    };
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, SourceD3, Parents);
+    const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
+
+    // Mesh: Thigh 40cm (shorter), Foot 8cm (shorter than source 10cm)
+    const TArray<RenderStreamLink::Transform> MeshD3 = {
+        {0.f, 0.f, 0.f,    0.f, 0.f, 0.f, 1.f},   // Hip
+        {0.f, 0.f, -0.40f, 0.f, 0.f, 0.f, 1.f},   // Thigh (40cm)
+        {0.f, 0.f, -0.40f, 0.f, 0.f, 0.f, 1.f},   // Ankle (40cm)
+        {0.08f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},   // Foot (8cm, shorter)
+        {0.12f, 0.f, 0.f,  0.f, 0.f, 0.f, 1.f},   // Toe (12cm)
+    };
+
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
+    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+
+    TSet<FName> SkipSet;
+    SkipSet.Add(FName("Ankle"));
+
+    // With alignment + skip on Ankle
+    const TArray<FVector> WithAlignSkip = RunRetargeting(
+        MeshBones, Layout, NameMap, Pose, SkipSet, /*bAlignBoneLengths=*/true);
+    // Without alignment + skip on Ankle
+    const TArray<FVector> WithoutAlignSkip = RunRetargeting(
+        MeshBones, Layout, NameMap, Pose, SkipSet, /*bAlignBoneLengths=*/false);
+    // With alignment, no skip
+    const TArray<FVector> WithAlignNoSkip = RunRetargeting(
+        MeshBones, Layout, NameMap, Pose, TSet<FName>(), /*bAlignBoneLengths=*/true);
+
+    // Ankle→Foot distance should be UNCHANGED by alignment when Skip is on Ankle.
+    const float FootDistWithAlign    = FVector::Dist(WithAlignSkip[3], WithAlignSkip[2]);
+    const float FootDistWithoutAlign = FVector::Dist(WithoutAlignSkip[3], WithoutAlignSkip[2]);
+    const float FootLenDiff = FMath::Abs(FootDistWithAlign - FootDistWithoutAlign);
+    TestTrue(
+        FString::Printf(TEXT("SkipBoneLen: Foot length unchanged by alignment when Ankle skipped (diff=%.2f cm)"),
+            FootLenDiff),
+        FootLenDiff <= 0.1f);
+
+    // Thigh length SHOULD be adjusted (Hip→Thigh is not skipped).
+    const float ThighDistWithAlign = FVector::Dist(WithAlignSkip[1], WithAlignSkip[0]);
+    const float ThighDistNoAlign   = FVector::Dist(WithoutAlignSkip[1], WithoutAlignSkip[0]);
+    TestTrue(
+        FString::Printf(TEXT("SkipBoneLen: Thigh length changed by alignment (with=%.2f, without=%.2f)"),
+            ThighDistWithAlign, ThighDistNoAlign),
+        FMath::Abs(ThighDistWithAlign - ThighDistNoAlign) > 1.0f);
+
+    // Without skip, Foot length SHOULD be adjusted.
+    const float FootDistNoSkip = FVector::Dist(WithAlignNoSkip[3], WithAlignNoSkip[2]);
+    TestTrue(
+        FString::Printf(TEXT("SkipBoneLen: Foot length IS adjusted without skip (withSkip=%.2f, noSkip=%.2f)"),
+            FootDistWithAlign, FootDistNoSkip),
+        FMath::Abs(FootDistNoSkip - FootDistWithAlign) > 0.5f);
+
+    return true;
+}
