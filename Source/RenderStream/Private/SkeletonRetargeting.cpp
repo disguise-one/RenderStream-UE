@@ -6,19 +6,34 @@
 namespace RenderStreamRetargeting
 {
 
+// Build parent index array for a source layout by matching joint IDs.
+static TArray<int32> BuildSourceParentIndices(const RenderStreamLink::FSkeletalLayout& Layout)
+{
+    const int32 N = Layout.joints.Num();
+    TArray<int32> Parents;
+    Parents.SetNum(N);
+    for (int32 i = 0; i < N; ++i)
+    {
+        const auto& Joint = Layout.joints[i];
+        Parents[i] = Layout.joints.IndexOfByPredicate(
+            [&Joint](const RenderStreamLink::SkeletonJointDesc& Other)
+            { return Other.id == Joint.parentId; });
+    }
+    return Parents;
+}
+
 FTransform ConvertD3TransformToUE(const RenderStreamLink::Transform& T)
 {
-    // Standard d3 to Unreal coordinate system transform: d3(x,y,z) -> UE(z,x,y)
+    // d3(x,y,z) -> UE(z,x,y) in centimeters
     const FVector Pos(
         FUnitConversion::Convert(T.z, EUnit::Meters, EUnit::Centimeters),
         FUnitConversion::Convert(T.x, EUnit::Meters, EUnit::Centimeters),
         FUnitConversion::Convert(T.y, EUnit::Meters, EUnit::Centimeters));
     const FQuat Rotation(T.rz, T.rx, T.ry, T.rw);
-    const FTransform JointPoseUE(Rotation, Pos);
 
-    // Unreal skeletons are defined with X sideways rather than Y, so apply 90 degree yaw
+    // Apply 90° yaw to align d3 Y-forward with UE X-forward
     const FTransform ToSkeletonSpace(FQuat::MakeFromRotator(FRotator(0, 90, 0)));
-    return ToSkeletonSpace * JointPoseUE * ToSkeletonSpace.Inverse();
+    return ToSkeletonSpace * FTransform(Rotation, Pos) * ToSkeletonSpace.Inverse();
 }
 
 void InitialiseRetargeting(
@@ -29,94 +44,76 @@ void InitialiseRetargeting(
     bool                                     bAlignBoneLengths,
     FRetargetInitData&                       OutInitData)
 {
-    const int32 MeshBoneCount  = MeshBones.Num();
+    const int32 MeshBoneCount   = MeshBones.Num();
     const int32 SourceBoneCount = Layout.joints.Num();
+    OutInitData.MeshBoneCount   = MeshBoneCount;
 
-    OutInitData.MeshBoneCount = MeshBoneCount;
+    // --- Phase 1: Build bone mappings ---
 
-    // Initialise bone info vectors
-    OutInitData.SourceParentIndices.Init(INDEX_NONE, SourceBoneCount);
-    TArray<int32> SourceNumberOfChildren; SourceNumberOfChildren.Init(0, SourceBoneCount);
-    TArray<int32> MeshToSourceIndex;      MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
+    OutInitData.SourceParentIndices = BuildSourceParentIndices(Layout);
+
+    TArray<int32> SourceNumberOfChildren;
+    SourceNumberOfChildren.Init(0, SourceBoneCount);
+    for (int32 i = 0; i < SourceBoneCount; ++i)
+        if (OutInitData.SourceParentIndices[i] != INDEX_NONE)
+            SourceNumberOfChildren[OutInitData.SourceParentIndices[i]]++;
+
+    TArray<int32> MeshToSourceIndex;
+    MeshToSourceIndex.Init(INDEX_NONE, MeshBoneCount);
     OutInitData.SourceToMeshIndex.Init(INDEX_NONE, SourceBoneCount);
-    TArray<FTransform> SourceInitialPose; SourceInitialPose.Init(FTransform::Identity, SourceBoneCount);
 
-    // Loop through source layout and find mapping to mesh bones
-    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
+    TArray<FTransform> SourceInitialPose;
+    SourceInitialPose.SetNum(SourceBoneCount);
+    for (int32 i = 0; i < SourceBoneCount; ++i)
     {
-        const RenderStreamLink::SkeletonJointDesc& Joint = Layout.joints[SourceIndex];
-        const FName SourceBoneName(Layout.jointNames[SourceIndex]);
-
-        const int32 SourceParentBoneIndex = Layout.joints.IndexOfByPredicate(
-            [&Joint](const RenderStreamLink::SkeletonJointDesc& OtherJoint)
-            { return OtherJoint.id == Joint.parentId; });
-
-        OutInitData.SourceParentIndices[SourceIndex] = SourceParentBoneIndex;
-        SourceInitialPose[SourceIndex] = ConvertD3TransformToUE(Joint.transform);
-
-        int32 MeshIndex = INDEX_NONE;
-        if (const int32* Found = SourceNameToMeshIndex.Find(SourceBoneName))
-            MeshIndex = *Found;
-
-        if (MeshIndex != INDEX_NONE)
+        SourceInitialPose[i] = ConvertD3TransformToUE(Layout.joints[i].transform);
+        if (const int32* Found = SourceNameToMeshIndex.Find(FName(Layout.jointNames[i])))
         {
-            MeshToSourceIndex[MeshIndex] = SourceIndex;
-            OutInitData.SourceToMeshIndex[SourceIndex] = MeshIndex;
-        }
-        if (SourceParentBoneIndex != INDEX_NONE)
-        {
-            SourceNumberOfChildren[SourceParentBoneIndex] += 1;
+            MeshToSourceIndex[*Found] = i;
+            OutInitData.SourceToMeshIndex[i] = *Found;
         }
     }
 
-    // Convert skip-correction names to source indices
     OutInitData.SkipOrientationCorrectionSourceIndices.Empty();
-    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; ++SourceIndex)
-    {
-        if (SkipOrientationCorrectionNames.Contains(FName(Layout.jointNames[SourceIndex])))
-            OutInitData.SkipOrientationCorrectionSourceIndices.Add(SourceIndex);
-    }
+    for (int32 i = 0; i < SourceBoneCount; ++i)
+        if (SkipOrientationCorrectionNames.Contains(FName(Layout.jointNames[i])))
+            OutInitData.SkipOrientationCorrectionSourceIndices.Add(i);
 
-    // Compute SourceMappedParentIndex: for each source bone, walk up the source
-    // parent chain to find the nearest ancestor that is mapped to a mesh bone.
+    // Nearest mapped ancestor for each source bone
     OutInitData.SourceMappedParentIndex.Init(INDEX_NONE, SourceBoneCount);
-    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; ++SourceIndex)
+    for (int32 i = 0; i < SourceBoneCount; ++i)
     {
-        int32 Walk = OutInitData.SourceParentIndices[SourceIndex];
+        int32 Walk = OutInitData.SourceParentIndices[i];
         while (Walk != INDEX_NONE)
         {
             if (OutInitData.SourceToMeshIndex[Walk] != INDEX_NONE)
             {
-                OutInitData.SourceMappedParentIndex[SourceIndex] = Walk;
+                OutInitData.SourceMappedParentIndex[i] = Walk;
                 break;
             }
             Walk = OutInitData.SourceParentIndices[Walk];
         }
     }
 
-    // Initialise persistent per-bone arrays
+    // --- Phase 2: Pre-compute mesh world transforms ---
+
     OutInitData.MeshToSourceSpaceTransforms.Init(FTransform::Identity, SourceBoneCount);
     OutInitData.LocalInitialOrientationDifferences.Init(FQuat::Identity, SourceBoneCount);
     OutInitData.SourceInitialPoseRotations.Init(FQuat::Identity, SourceBoneCount);
+    OutInitData.RootBoneTransform = FTransform::Identity;
 
-    // Temporary arrays
-    TArray<FTransform> MeshBoneWorldTransforms; MeshBoneWorldTransforms.Init(FTransform::Identity, MeshBoneCount);
-    TArray<FQuat> WorldInitialOrientationDifferences; WorldInitialOrientationDifferences.Init(FQuat::Identity, MeshBoneCount);
-
-    // Pre-compute mesh bone world transforms (rest pose)
-    for (int32 MeshIndex = 0; MeshIndex < MeshBoneCount; ++MeshIndex)
+    TArray<FTransform> MeshWorldTransforms;
+    MeshWorldTransforms.SetNum(MeshBoneCount);
+    for (int32 i = 0; i < MeshBoneCount; ++i)
     {
-        MeshBoneWorldTransforms[MeshIndex] = MeshBones[MeshIndex].LocalTransform;
-        const int32 MeshParentIndex = MeshBones[MeshIndex].ParentIndex;
-        if (MeshParentIndex != INDEX_NONE && MeshParentIndex < MeshBoneCount)
-        {
-            MeshBoneWorldTransforms[MeshIndex] =
-                MeshBoneWorldTransforms[MeshIndex] * MeshBoneWorldTransforms[MeshParentIndex];
-        }
+        MeshWorldTransforms[i] = MeshBones[i].LocalTransform;
+        const int32 p = MeshBones[i].ParentIndex;
+        if (p != INDEX_NONE && p < MeshBoneCount)
+            MeshWorldTransforms[i] = MeshWorldTransforms[i] * MeshWorldTransforms[p];
     }
 
-    // Helper: accumulate the source-space offset from a source bone up to
-    // a specified ancestor, walking through unmapped intermediate bones.
+    // Accumulate source-space offset from a bone up to a mapped ancestor,
+    // walking through unmapped intermediate bones.
     auto AccumulateSourceOffset = [&](int32 ChildSource, int32 AncestorSource) -> FVector
     {
         FVector Offset = SourceInitialPose[ChildSource].GetTranslation();
@@ -130,13 +127,10 @@ void InitialiseRetargeting(
         return Offset;
     };
 
-    // Compute per-child translation corrections for multi-child parents.
-    // A single rotation cannot perfectly align all children of a multi-child
-    // parent, and applying one (Kabsch) visibly tilts the parent bone (e.g.
-    // forward hip tilt on root, backward head tilt on chest). Instead, the
-    // multi-child parent is "transparent" in the orientation correction chain
-    // and per-child translation offsets place each child at its exact source
-    // rest-pose position.
+    // --- Phase 3: Multi-child translation offsets ---
+    // A single rotation can't align all children of a multi-child parent, so
+    // per-child translation offsets place each child at its source rest position.
+
     OutInitData.MultiChildTranslationOffsets.Init(FVector::ZeroVector, SourceBoneCount);
     TSet<int32> CorrectedMeshBones;
 
@@ -144,15 +138,12 @@ void InitialiseRetargeting(
     {
         if (SourceNumberOfChildren[SourceParent] <= 1)
             continue;
-
         const int32 ParentMesh = OutInitData.SourceToMeshIndex[SourceParent];
         if (ParentMesh == INDEX_NONE)
             continue;
 
-        const FQuat ParentWorldRot =
-            MeshBoneWorldTransforms[ParentMesh].GetRotation();
-        const FVector ParentWorldPos =
-            MeshBoneWorldTransforms[ParentMesh].GetTranslation();
+        const FQuat ParentWorldRot = MeshWorldTransforms[ParentMesh].GetRotation();
+        const FVector ParentWorldPos = MeshWorldTransforms[ParentMesh].GetTranslation();
 
         for (int32 Child = 0; Child < SourceBoneCount; ++Child)
         {
@@ -166,135 +157,114 @@ void InitialiseRetargeting(
                 continue;
 
             const FVector SrcOffset = AccumulateSourceOffset(Child, MappedParent);
-            const FVector MeshLocalTrans =
-                MeshBones[ChildMesh].LocalTransform.GetTranslation();
-
-            // Where the source puts this child, in parent local space
-            const FVector TargetLocal =
-                ParentWorldRot.UnrotateVector(SrcOffset);
-            const FVector Correction = TargetLocal - MeshLocalTrans;
+            const FVector TargetLocal = ParentWorldRot.UnrotateVector(SrcOffset);
+            const FVector Correction =
+                TargetLocal - MeshBones[ChildMesh].LocalTransform.GetTranslation();
 
             if (!Correction.IsNearlyZero())
             {
                 OutInitData.MultiChildTranslationOffsets[Child] = Correction;
-                // Update mesh world positions so descendants see corrected geometry
-                MeshBoneWorldTransforms[ChildMesh].SetTranslation(
-                    ParentWorldPos + SrcOffset);
+                MeshWorldTransforms[ChildMesh].SetTranslation(ParentWorldPos + SrcOffset);
                 CorrectedMeshBones.Add(ChildMesh);
             }
         }
     }
 
-    // Recompute MeshBoneWorldTransforms for descendants of corrected bones
-    // (hierarchy order guarantees parents are processed before children)
+    // Recompute world transforms for descendants of corrected bones
     for (int32 m = 0; m < MeshBoneCount; ++m)
     {
         if (CorrectedMeshBones.Contains(m))
             continue;
         const int32 p = MeshBones[m].ParentIndex;
         if (p != INDEX_NONE && p < MeshBoneCount)
-            MeshBoneWorldTransforms[m] =
-                MeshBones[m].LocalTransform * MeshBoneWorldTransforms[p];
+            MeshWorldTransforms[m] = MeshBones[m].LocalTransform * MeshWorldTransforms[p];
     }
 
-    // Loop over mesh bones (must be in hierarchy order)
+    // --- Phase 4: Find root bone transform ---
+
+    for (int32 m = 0; m < MeshBoneCount; ++m)
+    {
+        const int32 s = MeshToSourceIndex[m];
+        if (s == INDEX_NONE || OutInitData.SourceParentIndices[s] >= 0)
+            continue;
+        const int32 p = MeshBones[m].ParentIndex;
+        if (p != INDEX_NONE && p < MeshBoneCount)
+        {
+            OutInitData.RootBoneTransform = MeshWorldTransforms[p].Inverse();
+            OutInitData.RootBoneTransform.SetScale3D(FVector::OneVector);
+        }
+        break;
+    }
+
+    // --- Phase 5: Orientation corrections ---
+    // For each bone, compute the world-space orientation difference (WOD)
+    // between source and mesh rest poses, then convert to a local correction.
+
+    TArray<FQuat> WorldOrientDiff;
+    WorldOrientDiff.Init(FQuat::Identity, MeshBoneCount);
+
     for (int32 MeshIndex = 0; MeshIndex < MeshBoneCount; ++MeshIndex)
     {
-        const int32 MeshParentIndex = MeshBones[MeshIndex].ParentIndex;
-
         const int32 SourceIndex = MeshToSourceIndex[MeshIndex];
         if (SourceIndex == INDEX_NONE)
             continue;
-
-        OutInitData.MeshToSourceSpaceTransforms[SourceIndex].SetScale3D(MeshBoneWorldTransforms[MeshIndex].GetScale3D());
-
-        // Find root bone transform
-        if (OutInitData.SourceParentIndices[SourceIndex] < 0 &&
-            MeshParentIndex != INDEX_NONE && MeshParentIndex < MeshBoneCount)
-        {
-            OutInitData.RootBoneTransform = MeshBoneWorldTransforms[MeshParentIndex].Inverse();
-            OutInitData.RootBoneTransform.SetScale3D(FVector::OneVector);
-        }
 
         const int32 SourceParentIndex = OutInitData.SourceParentIndices[SourceIndex];
         if (SourceParentIndex == INDEX_NONE)
             continue;
 
-        // Find the nearest mapped source ancestor's mesh index.
-        // If the direct source parent is mapped, use it. Otherwise walk up.
-        const int32 MappedParentSourceIndex = OutInitData.SourceMappedParentIndex[SourceIndex];
-        if (MappedParentSourceIndex == INDEX_NONE)
+        const int32 MappedParent = OutInitData.SourceMappedParentIndex[SourceIndex];
+        if (MappedParent == INDEX_NONE)
             continue;
 
-        const int32 ParentMeshIndex = OutInitData.SourceToMeshIndex[MappedParentSourceIndex];
+        const int32 ParentMeshIndex = OutInitData.SourceToMeshIndex[MappedParent];
         if (ParentMeshIndex == INDEX_NONE || ParentMeshIndex >= MeshBoneCount)
             continue;
 
-        // Find source initial pose rotation (set for all non-root bones with valid parent)
-        const FQuat InitialRotation = SourceInitialPose[SourceIndex].GetRotation();
-        OutInitData.SourceInitialPoseRotations[SourceIndex] = InitialRotation;
+        OutInitData.SourceInitialPoseRotations[SourceIndex] =
+            SourceInitialPose[SourceIndex].GetRotation();
 
-        // Skip orientation correction when the mapped parent is marked.
-        // Ticking bone X means "preserve X→child direction from mesh rest-pose."
-        if (OutInitData.SkipOrientationCorrectionSourceIndices.Contains(MappedParentSourceIndex))
+        // Skip correction: preserve parent→child direction from mesh rest-pose
+        if (OutInitData.SkipOrientationCorrectionSourceIndices.Contains(MappedParent))
         {
-            WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
+            WorldOrientDiff[MeshIndex] = WorldOrientDiff[ParentMeshIndex];
             continue;
         }
 
-        // Compute the accumulated source-space offset from the mapped parent to this bone,
-        // walking through any unmapped intermediate bones.
-        const FVector SourceInitialOffset = AccumulateSourceOffset(SourceIndex, MappedParentSourceIndex);
+        const FVector SourceOffset = AccumulateSourceOffset(SourceIndex, MappedParent);
+        const FVector MeshOffset =
+            MeshWorldTransforms[MeshIndex].GetTranslation() -
+            MeshWorldTransforms[ParentMeshIndex].GetTranslation();
 
-        // Find offset between mesh joint and the mapped source parent's mesh bone
-        const FVector MeshInitialOffset =
-            MeshBoneWorldTransforms[MeshIndex].GetTranslation() -
-            MeshBoneWorldTransforms[ParentMeshIndex].GetTranslation();
+        // Single-child parent with non-zero offset: compute exact correction.
+        // Multi-child parents and zero-offset bones: inherit from parent.
+        const bool bComputeWOD = SourceNumberOfChildren[SourceParentIndex] <= 1
+            && SourceOffset != FVector::ZeroVector;
 
-        // Determine the world-space orientation difference (WOD) for this bone.
-        // For multi-child parents, inherit from grandparent — the parent is
-        // "transparent" in the WOD chain. The Kabsch rotation is used only for
-        // computing per-child translation offsets, not for bone rotation.
-        // For single-child parents, use exact FindBetween.
-        bool bWODChanged = false;
-        if (SourceNumberOfChildren[SourceParentIndex] > 1)
+        if (bComputeWOD)
         {
-            WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
-        }
-        else if (SourceInitialOffset == FVector(0.f, 0.f, 0.f))
-        {
-            WorldInitialOrientationDifferences[MeshIndex] = WorldInitialOrientationDifferences[ParentMeshIndex];
+            WorldOrientDiff[MeshIndex] = FQuat::FindBetween(MeshOffset, SourceOffset);
+
+            // Convert world-space delta to parent's local space
+            const FQuat ParentWorldRot = MeshWorldTransforms[ParentMeshIndex].GetRotation();
+            const FQuat ParentLocalRot = MeshBones[ParentMeshIndex].LocalTransform.GetRotation();
+            const FQuat GrandparentWorldRot = ParentWorldRot * ParentLocalRot.Inverse();
+            const FQuat DeltaWOD =
+                WorldOrientDiff[ParentMeshIndex].Inverse() * WorldOrientDiff[MeshIndex];
+
+            OutInitData.LocalInitialOrientationDifferences[MappedParent] =
+                GrandparentWorldRot.Inverse() * DeltaWOD * GrandparentWorldRot;
         }
         else
         {
-            WorldInitialOrientationDifferences[MeshIndex] =
-                FQuat::FindBetween(MeshInitialOffset, SourceInitialOffset);
-            bWODChanged = true;
+            WorldOrientDiff[MeshIndex] = WorldOrientDiff[ParentMeshIndex];
         }
-
-        // Compute parent's local orientation correction when the WOD changed at this level.
-        if (bWODChanged)
-        {
-            const FQuat ParentGlobalRotation = MeshBoneWorldTransforms[ParentMeshIndex].GetRotation();
-            const FQuat ParentLocalRotation  = MeshBones[ParentMeshIndex].LocalTransform.GetRotation();
-            const FQuat ParentParentGlobalRotation = ParentGlobalRotation * ParentLocalRotation.Inverse();
-            const FQuat OrientationDifferenceDelta =
-                WorldInitialOrientationDifferences[ParentMeshIndex].Inverse() *
-                WorldInitialOrientationDifferences[MeshIndex];
-
-            OutInitData.LocalInitialOrientationDifferences[MappedParentSourceIndex] =
-                ParentParentGlobalRotation.Inverse() * OrientationDifferenceDelta * ParentParentGlobalRotation;
-        }
-
     }
 
-    // Compute MeshToSource rotations using the corrected rest-pose world rotations.
-    // MeshToSource must equal the world rotation that BuildRetargetedPose produces at
-    // rest (identity pose), so that the conjugation MeshToSource^{-1} * P * MeshToSource
-    // correctly transforms d3 pose rotations into each bone's actual local frame.
-    // CorrectedRestWorld accounts for accumulated InitialOrientationDifferences through
-    // the hierarchy — neither MeshWorldRot nor WOD*MeshWorldRot does this correctly when
-    // bones have non-trivial local rotations (e.g. the Pilot skeleton).
+    // --- Phase 6: MeshToSource rotations from corrected rest-pose ---
+    // MeshToSource must equal the world rotation that BuildRetargetedPose
+    // produces at rest, so that the conjugation MeshToSource^{-1} * P * MeshToSource
+    // correctly transforms pose rotations into each bone's local frame.
     {
         TArray<FQuat> CorrectedRestWorldRot;
         CorrectedRestWorldRot.Init(FQuat::Identity, MeshBoneCount);
@@ -304,52 +274,38 @@ void InitialiseRetargeting(
             const int32 s = MeshToSourceIndex[m];
             FQuat CorrectedLocalRot = MeshBones[m].LocalTransform.GetRotation();
 
-            // Apply orientation correction for non-root mapped bones
             if (s != INDEX_NONE && OutInitData.SourceParentIndices[s] >= 0)
                 CorrectedLocalRot = OutInitData.LocalInitialOrientationDifferences[s] * CorrectedLocalRot;
 
             const int32 p = MeshBones[m].ParentIndex;
-            if (p != INDEX_NONE && p < MeshBoneCount)
-                CorrectedRestWorldRot[m] = CorrectedRestWorldRot[p] * CorrectedLocalRot;
-            else
-                CorrectedRestWorldRot[m] = CorrectedLocalRot;
+            CorrectedRestWorldRot[m] = (p != INDEX_NONE && p < MeshBoneCount)
+                ? CorrectedRestWorldRot[p] * CorrectedLocalRot
+                : CorrectedLocalRot;
 
             if (s != INDEX_NONE)
                 OutInitData.MeshToSourceSpaceTransforms[s].SetRotation(CorrectedRestWorldRot[m]);
         }
     }
 
-    // Compute bone length ratios for alignment.
-    // Multiplying a mesh bone's local translation by its ratio adjusts the offset
-    // magnitude to match the source bone lengths without perpendicular distortion.
-    //
-    // The ratio accounts for unmapped mesh intermediate bones between a bone and
-    // its mapped parent: the intermediates contribute a fixed portion of the total
-    // chain length, so the ratio adjusts only the bone's own local offset by the
-    // exact amount needed to close the gap.
-    //
-    //   ratio = 1 + (source_world_dist - mesh_world_dist) / bone_local_length
-    //
-    // When there are no intermediates, mesh_world_dist == bone_local_length and
-    // this simplifies to source_world_dist / mesh_world_dist.
+    // --- Phase 7: Bone length ratios ---
+    // ratio = 1 + (source_dist - mesh_dist) / bone_local_length
     OutInitData.BoneLengthRatios.Init(1.0f, SourceBoneCount);
     if (bAlignBoneLengths)
     {
         const TArray<FTransform> SourceWorldTransforms = ComputeWorldTransforms(
             SourceInitialPose, OutInitData.SourceParentIndices);
 
-        for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; ++SourceIndex)
+        for (int32 i = 0; i < SourceBoneCount; ++i)
         {
-            const int32 MeshIndex = OutInitData.SourceToMeshIndex[SourceIndex];
+            const int32 MeshIndex = OutInitData.SourceToMeshIndex[i];
             if (MeshIndex == INDEX_NONE)
                 continue;
 
-            const int32 MappedParent = OutInitData.SourceMappedParentIndex[SourceIndex];
+            const int32 MappedParent = OutInitData.SourceMappedParentIndex[i];
             if (MappedParent == INDEX_NONE)
                 continue;
 
-            // Skip bone length alignment for children of skip-corrected joints.
-            // "Skip" on a joint preserves both direction and length from mesh rest-pose.
+            // Skip: preserves both direction and length from mesh rest-pose
             if (OutInitData.SkipOrientationCorrectionSourceIndices.Contains(MappedParent))
                 continue;
 
@@ -358,16 +314,16 @@ void InitialiseRetargeting(
                 continue;
 
             const float SourceLength = FVector::Dist(
-                SourceWorldTransforms[SourceIndex].GetTranslation(),
+                SourceWorldTransforms[i].GetTranslation(),
                 SourceWorldTransforms[MappedParent].GetTranslation());
             const float MeshLength = FVector::Dist(
-                MeshBoneWorldTransforms[MeshIndex].GetTranslation(),
-                MeshBoneWorldTransforms[ParentMeshIndex].GetTranslation());
+                MeshWorldTransforms[MeshIndex].GetTranslation(),
+                MeshWorldTransforms[ParentMeshIndex].GetTranslation());
             const float BoneLocalLength =
                 MeshBones[MeshIndex].LocalTransform.GetTranslation().Size();
 
             if (BoneLocalLength > KINDA_SMALL_NUMBER)
-                OutInitData.BoneLengthRatios[SourceIndex] =
+                OutInitData.BoneLengthRatios[i] =
                     1.0f + (SourceLength - MeshLength) / BoneLocalLength;
         }
     }
@@ -381,99 +337,86 @@ void BuildRetargetedPose(
     const int32 SourceBoneCount = Pose.joints.Num();
     check(InitData.SourceToMeshIndex.Num() == SourceBoneCount);
 
-    // For each source bone, compute the accumulated pose rotation from all unmapped
-    // ancestors between it and its nearest mapped ancestor. This is composed
-    // with the bone's own pose rotation so mapped descendants feel the effect.
-    // AccumulatedPoseRotation[i] = product of pose rotations from unmapped bones
-    // between SourceMappedParentIndex[i] and i (exclusive of the mapped parent,
-    // inclusive of unmapped intermediates, exclusive of i itself).
-    TArray<FQuat> AccumulatedUnmappedPoseRotation;
-    AccumulatedUnmappedPoseRotation.Init(FQuat::Identity, SourceBoneCount);
-
-    // First pass: convert all pose joints to UE space
-    TArray<FQuat> SourcePoseRotations;
-    SourcePoseRotations.SetNum(SourceBoneCount);
+    // Convert all pose joints to UE space (cached to avoid double conversion)
+    TArray<FTransform> PoseTransforms;
+    PoseTransforms.SetNum(SourceBoneCount);
     for (int32 i = 0; i < SourceBoneCount; ++i)
-        SourcePoseRotations[i] = ConvertD3TransformToUE(Pose.joints[i].transform).GetRotation();
+        PoseTransforms[i] = ConvertD3TransformToUE(Pose.joints[i].transform);
 
-    // Second pass: for each mapped bone, walk from its direct source parent up to the
-    // mapped ancestor, accumulating unmapped pose rotations.
-    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; ++SourceIndex)
+    // For each mapped bone, accumulate pose rotations from unmapped ancestors
+    // between it and its nearest mapped ancestor.
+    TArray<FQuat> UnmappedPoseRot;
+    UnmappedPoseRot.Init(FQuat::Identity, SourceBoneCount);
+
+    for (int32 i = 0; i < SourceBoneCount; ++i)
     {
-        if (InitData.SourceToMeshIndex[SourceIndex] == INDEX_NONE)
-            continue; // only compute for mapped bones
-
-        const int32 MappedParent = InitData.SourceMappedParentIndex[SourceIndex];
+        if (InitData.SourceToMeshIndex[i] == INDEX_NONE)
+            continue;
+        const int32 MappedParent = InitData.SourceMappedParentIndex[i];
         if (MappedParent == INDEX_NONE)
             continue;
 
-        // Walk from direct parent up to (but not including) the mapped ancestor,
-        // collecting unmapped bone indices.
+        // Collect unmapped bones from direct parent up to mapped ancestor
         TArray<int32, TInlineAllocator<8>> UnmappedChain;
-        int32 Walk = InitData.SourceParentIndices[SourceIndex];
+        int32 Walk = InitData.SourceParentIndices[i];
         while (Walk != MappedParent && Walk != INDEX_NONE)
         {
             UnmappedChain.Add(Walk);
             Walk = InitData.SourceParentIndices[Walk];
         }
 
-        // Compose rotations from mapped parent downward (reverse order)
+        // Compose rotations in parent-to-child order (reverse of walk order)
         FQuat Accumulated = FQuat::Identity;
         for (int32 j = UnmappedChain.Num() - 1; j >= 0; --j)
-        {
-            const int32 UnmappedIdx = UnmappedChain[j];
-            Accumulated = Accumulated * SourcePoseRotations[UnmappedIdx];
-        }
-        AccumulatedUnmappedPoseRotation[SourceIndex] = Accumulated;
+            Accumulated = Accumulated * PoseTransforms[UnmappedChain[j]].GetRotation();
+        UnmappedPoseRot[i] = Accumulated;
     }
 
-    for (int32 SourceIndex = 0; SourceIndex < SourceBoneCount; SourceIndex++)
+    // Apply pose to each mapped bone
+    for (int32 i = 0; i < SourceBoneCount; ++i)
     {
-        const int32 MeshIndex = InitData.SourceToMeshIndex[SourceIndex];
+        const int32 MeshIndex = InitData.SourceToMeshIndex[i];
         if (MeshIndex == INDEX_NONE)
             continue;
 
-        const RenderStreamLink::SkeletonJointPose& Joint = Pose.joints[SourceIndex];
-
-        if (InitData.SourceParentIndices[SourceIndex] < 0) // root bone
+        if (InitData.SourceParentIndices[i] < 0)
         {
-            // Root pose is applied directly to the SkeletalMeshActor transform
-            InOutMeshBoneTransforms[MeshIndex].SetTranslation(InitData.RootBoneTransform.GetTranslation());
+            // Root: translation only (rotation/world-position handled by actor)
+            InOutMeshBoneTransforms[MeshIndex].SetTranslation(
+                InitData.RootBoneTransform.GetTranslation());
+            continue;
         }
-        else
-        {
-            const FTransform SourceBoneTransform = ConvertD3TransformToUE(Joint.transform);
 
-            // Compose this bone's pose rotation with accumulated unmapped ancestor rotations
-            const FQuat CombinedPoseRotation =
-                (AccumulatedUnmappedPoseRotation[SourceIndex] * SourceBoneTransform.GetRotation()).GetNormalized();
+        const FTransform& PoseTransform = PoseTransforms[i];
+        const FQuat CombinedPoseRotation =
+            (UnmappedPoseRot[i] * PoseTransform.GetRotation()).GetNormalized();
 
-            {
-                // Apply rotation with orientation correction
-                const FQuat& MeshToSource = InitData.MeshToSourceSpaceTransforms[SourceIndex].GetRotation();
-                const FQuat SourceRotation =
-                    MeshToSource.Inverse() * InitData.SourceInitialPoseRotations[SourceIndex] *
-                    CombinedPoseRotation * MeshToSource;
-                const FQuat MeshRotation = InOutMeshBoneTransforms[MeshIndex].GetRotation();
-                const FQuat& InitialOrientationOffset = InitData.LocalInitialOrientationDifferences[SourceIndex];
-                InOutMeshBoneTransforms[MeshIndex].SetRotation(
-                    (InitialOrientationOffset * MeshRotation * SourceRotation).GetNormalized());
+        // Conjugate pose rotation into mesh bone's local frame
+        const FQuat& MeshToSource = InitData.MeshToSourceSpaceTransforms[i].GetRotation();
+        const FQuat SourceRotation =
+            MeshToSource.Inverse() * InitData.SourceInitialPoseRotations[i] *
+            CombinedPoseRotation * MeshToSource;
 
-                // Apply position (with optional bone length alignment)
-                FVector MeshPosition = InOutMeshBoneTransforms[MeshIndex].GetTranslation();
-                MeshPosition *= InitData.BoneLengthRatios[SourceIndex];
-                MeshPosition += InitData.MultiChildTranslationOffsets[SourceIndex];
-                const int32 MappedParentSourceIndex = InitData.SourceMappedParentIndex[SourceIndex];
-                const FQuat ParentMeshToSource = (MappedParentSourceIndex != INDEX_NONE)
-                    ? InitData.MeshToSourceSpaceTransforms[MappedParentSourceIndex].GetRotation()
-                    : FQuat::Identity;
-                const FTransform SourceInitialTransform(InitData.SourceInitialPoseRotations[SourceIndex]);
-                const FVector SourcePosition =
-                    (SourceInitialTransform * FTransform(ParentMeshToSource).Inverse()).TransformVector(
-                        SourceBoneTransform.GetTranslation());
-                InOutMeshBoneTransforms[MeshIndex].SetTranslation(MeshPosition + SourcePosition);
-            }
-        }
+        InOutMeshBoneTransforms[MeshIndex].SetRotation(
+            (InitData.LocalInitialOrientationDifferences[i] *
+             InOutMeshBoneTransforms[MeshIndex].GetRotation() *
+             SourceRotation).GetNormalized());
+
+        // Position: bone length alignment + multi-child offset + pose translation
+        FVector MeshPosition = InOutMeshBoneTransforms[MeshIndex].GetTranslation();
+        MeshPosition *= InitData.BoneLengthRatios[i];
+        MeshPosition += InitData.MultiChildTranslationOffsets[i];
+
+        const int32 MappedParent = InitData.SourceMappedParentIndex[i];
+        const FQuat ParentMeshToSource = (MappedParent != INDEX_NONE)
+            ? InitData.MeshToSourceSpaceTransforms[MappedParent].GetRotation()
+            : FQuat::Identity;
+        const FVector SourcePosition =
+            (FTransform(InitData.SourceInitialPoseRotations[i]) *
+             FTransform(ParentMeshToSource).Inverse()).TransformVector(
+                PoseTransform.GetTranslation());
+
+        InOutMeshBoneTransforms[MeshIndex].SetTranslation(MeshPosition + SourcePosition);
     }
 }
 
@@ -482,29 +425,27 @@ TArray<FTransform> ComputeWorldTransforms(
     const TArray<int32>&      ParentIndices)
 {
     const int32 N = LocalTransforms.Num();
-    TArray<FTransform> WorldTransforms;
-    WorldTransforms.SetNum(N);
-
+    TArray<FTransform> World;
+    World.SetNum(N);
     for (int32 i = 0; i < N; ++i)
     {
-        WorldTransforms[i] = LocalTransforms[i];
-        const int32 ParentIdx = ParentIndices[i];
-        if (ParentIdx != INDEX_NONE && ParentIdx < N)
-            WorldTransforms[i] = WorldTransforms[i] * WorldTransforms[ParentIdx];
+        World[i] = LocalTransforms[i];
+        const int32 p = ParentIndices[i];
+        if (p != INDEX_NONE && p < N)
+            World[i] = World[i] * World[p];
     }
-    return WorldTransforms;
+    return World;
 }
 
 TArray<FVector> ComputeWorldPositions(
     const TArray<FTransform>& LocalTransforms,
     const TArray<int32>&      ParentIndices)
 {
-    const TArray<FTransform> WorldTransforms = ComputeWorldTransforms(LocalTransforms, ParentIndices);
-
+    const TArray<FTransform> World = ComputeWorldTransforms(LocalTransforms, ParentIndices);
     TArray<FVector> Positions;
-    Positions.SetNum(WorldTransforms.Num());
-    for (int32 i = 0; i < WorldTransforms.Num(); ++i)
-        Positions[i] = WorldTransforms[i].GetTranslation();
+    Positions.SetNum(World.Num());
+    for (int32 i = 0; i < World.Num(); ++i)
+        Positions[i] = World[i].GetTranslation();
     return Positions;
 }
 
@@ -513,33 +454,25 @@ TArray<FTransform> ComputeExpectedTransformsFromSource(
     const RenderStreamLink::FSkeletalPose&   Pose)
 {
     const int32 N = Layout.joints.Num();
+    const TArray<int32> ParentIndices = BuildSourceParentIndices(Layout);
 
-    // Build parent index array
-    TArray<int32> ParentIndices;
-    ParentIndices.SetNum(N);
-    for (int32 i = 0; i < N; ++i)
-    {
-        const RenderStreamLink::SkeletonJointDesc& Joint = Layout.joints[i];
-        ParentIndices[i] = Layout.joints.IndexOfByPredicate(
-            [&Joint](const RenderStreamLink::SkeletonJointDesc& OtherJoint)
-            { return OtherJoint.id == Joint.parentId; });
-    }
-
-    // Convert layout rest-pose local transforms to UE space, applying pose delta rotations
     TArray<FTransform> LocalTransforms;
     LocalTransforms.SetNum(N);
     for (int32 i = 0; i < N; ++i)
     {
         FTransform RestLocal = ConvertD3TransformToUE(Layout.joints[i].transform);
 
-        const RenderStreamLink::SkeletonJointPose* PoseJoint = Pose.joints.FindByPredicate(
-            [&](const RenderStreamLink::SkeletonJointPose& PJ) { return PJ.id == Layout.joints[i].id; });
+        const auto* PoseJoint = Pose.joints.FindByPredicate(
+            [&](const RenderStreamLink::SkeletonJointPose& PJ)
+            { return PJ.id == Layout.joints[i].id; });
 
         if (PoseJoint)
         {
-            FTransform PoseDelta = ConvertD3TransformToUE(PoseJoint->transform);
-            FQuat CombinedRotation = RestLocal.GetRotation() * PoseDelta.GetRotation();
-            LocalTransforms[i] = FTransform(CombinedRotation, RestLocal.GetTranslation(), RestLocal.GetScale3D());
+            FQuat PoseDeltaRot = ConvertD3TransformToUE(PoseJoint->transform).GetRotation();
+            LocalTransforms[i] = FTransform(
+                RestLocal.GetRotation() * PoseDeltaRot,
+                RestLocal.GetTranslation(),
+                RestLocal.GetScale3D());
         }
         else
         {
@@ -554,12 +487,11 @@ TArray<FVector> ComputeExpectedPositionsFromSource(
     const RenderStreamLink::FSkeletalLayout& Layout,
     const RenderStreamLink::FSkeletalPose&   Pose)
 {
-    const TArray<FTransform> WorldTransforms = ComputeExpectedTransformsFromSource(Layout, Pose);
-
+    const TArray<FTransform> World = ComputeExpectedTransformsFromSource(Layout, Pose);
     TArray<FVector> Positions;
-    Positions.SetNum(WorldTransforms.Num());
-    for (int32 i = 0; i < WorldTransforms.Num(); ++i)
-        Positions[i] = WorldTransforms[i].GetTranslation();
+    Positions.SetNum(World.Num());
+    for (int32 i = 0; i < World.Num(); ++i)
+        Positions[i] = World[i].GetTranslation();
     return Positions;
 }
 
