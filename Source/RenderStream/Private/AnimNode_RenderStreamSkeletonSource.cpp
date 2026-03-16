@@ -377,21 +377,21 @@ void FAnimNode_RenderStreamSkeletonSource::InitialiseAnimationData(const RenderS
         MeshBones[i].ParentIndex = ParentCPIdx.GetInt();
     }
 
-    // Build source-name → mesh-index map and skip-correction set from BoneNameMap
-    TMap<FName, int32> NameToIdx;
-    TSet<FName> SkipCorrectionNames;
+    // Resolve BoneNameMap into animation-free bone mapping
+    TMap<FName, FSourceBoneMapping> BoneMap;
     for (const FBoneMapping& Mapping : BoneNameMap)
     {
         if (Mapping.SourceBone == NAME_None)
             continue;
+        FSourceBoneMapping Entry;
         const FCompactPoseBoneIndex CPIdx = Mapping.Bone.GetCompactPoseIndex(BoneContainerRef);
         if (CPIdx != INDEX_NONE)
-            NameToIdx.Add(Mapping.SourceBone, CPIdx.GetInt());
-        if (Mapping.bSkipOrientationCorrection)
-            SkipCorrectionNames.Add(Mapping.SourceBone);
+            Entry.MeshIndex = CPIdx.GetInt();
+        Entry.bSkipOrientationCorrection = Mapping.bSkipOrientationCorrection;
+        BoneMap.Add(Mapping.SourceBone, Entry);
     }
 
-    RenderStreamRetargeting::InitialiseRetargeting(MeshBones, Layout, NameToIdx, SkipCorrectionNames, bAlignBoneLengths, CachedInitData);
+    RenderStreamRetargeting::InitialiseRetargeting(MeshBones, Layout, BoneMap, bAlignBoneLengths, CachedInitData);
 
     UE_LOG(LogRenderStream, Log, TEXT("%s: Initialised pose with %d bones"),
         *SkeletonName.ToString(), CachedInitData.MeshBoneCount);
@@ -419,5 +419,5 @@ void FAnimNode_RenderStreamSkeletonSource::BuildPoseFromAnimationData(const Rend
 
 bool FAnimNode_RenderStreamSkeletonSource::IsRootBone(int32 SourceIndex)
 {
-    return CachedInitData.SourceParentIndices[SourceIndex] < 0;
+    return CachedInitData.SourceBones[SourceIndex].ParentIndex < 0;
 }

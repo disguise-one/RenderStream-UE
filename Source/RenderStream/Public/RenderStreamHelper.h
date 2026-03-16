@@ -10,7 +10,7 @@ namespace d3ToUEHelpers
         const FMatrix YUpMatrixInv(YUpMatrix.Inverse());
 
         FTransform v(YUpMatrix * d3Mat * YUpMatrixInv);
-        
+
         //Scale - with updated axes
         FVector scale = d3Mat.GetScaleVector();
 
@@ -19,7 +19,7 @@ namespace d3ToUEHelpers
 
         scale = FVector(scale.Y, scale.X, scale.Z);
         v.SetScale3D(scale);
-        
+
         // Translation seems to be in cm always, whatever unit is set in project settings
         v.ScaleTranslation(FUnitConversion::Convert(1.f, EUnit::Meters, EUnit::Centimeters));
 

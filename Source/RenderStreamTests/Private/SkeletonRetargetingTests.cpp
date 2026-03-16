@@ -76,11 +76,11 @@ static RenderStreamLink::FSkeletalPose BuildD3IdentityPose(
 }
 
 // 1:1 mapping: source bone at index i (named Names[i]) -> mesh bone index i
-static TMap<FName, int32> BuildIdentityNameMap(const TArray<FString>& Names)
+static TMap<FName, FSourceBoneMapping> BuildIdentityBoneMap(const TArray<FString>& Names)
 {
-    TMap<FName, int32> Result;
+    TMap<FName, FSourceBoneMapping> Result;
     for (int32 i = 0; i < Names.Num(); ++i)
-        Result.Add(FName(*Names[i]), i);
+        Result.Add(FName(*Names[i]), {i});
     return Result;
 }
 
@@ -159,15 +159,14 @@ static void CheckBoneDirections(
 static TArray<FVector> RunRetargeting(
     const TArray<FRetargetMeshBone>&         MeshBones,
     const RenderStreamLink::FSkeletalLayout& Layout,
-    const TMap<FName, int32>&                NameMap,
+    const TMap<FName, FSourceBoneMapping>&   BoneMapping,
     const RenderStreamLink::FSkeletalPose&   Pose,
-    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>(),
     bool                                     bAlignBoneLengths = false)
 {
     using namespace RenderStreamRetargeting;
 
     FRetargetInitData InitData;
-    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, bAlignBoneLengths, InitData);
+    InitialiseRetargeting(MeshBones, Layout, BoneMapping, bAlignBoneLengths, InitData);
 
     TArray<FTransform> BoneTransforms;
     BoneTransforms.SetNum(MeshBones.Num());
@@ -188,15 +187,14 @@ static TArray<FVector> RunRetargeting(
 static TArray<FTransform> RunRetargetingTransforms(
     const TArray<FRetargetMeshBone>&         MeshBones,
     const RenderStreamLink::FSkeletalLayout& Layout,
-    const TMap<FName, int32>&                NameMap,
+    const TMap<FName, FSourceBoneMapping>&   BoneMapping,
     const RenderStreamLink::FSkeletalPose&   Pose,
-    const TSet<FName>&                       SkipCorrectionNames = TSet<FName>(),
     bool                                     bAlignBoneLengths = false)
 {
     using namespace RenderStreamRetargeting;
 
     FRetargetInitData InitData;
-    InitialiseRetargeting(MeshBones, Layout, NameMap, SkipCorrectionNames, bAlignBoneLengths, InitData);
+    InitialiseRetargeting(MeshBones, Layout, BoneMapping, bAlignBoneLengths, InitData);
 
     TArray<FTransform> BoneTransforms;
     BoneTransforms.SetNum(MeshBones.Num());
@@ -246,9 +244,9 @@ bool FTest_SkeletonRetargeting_IdentityPose::RunTest(const FString& Parameters)
     const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     CheckPositions(this, Actual, Expected, 0.1f, TEXT("IdentityPose"));
@@ -281,9 +279,9 @@ bool FTest_SkeletonRetargeting_SimpleRotation::RunTest(const FString& Parameters
     Pose.joints[1].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(HalfAngle), FMath::Cos(HalfAngle)};
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     CheckPositions(this, Actual, Expected, 0.5f, TEXT("SimpleRotation"));
@@ -321,9 +319,9 @@ bool FTest_SkeletonRetargeting_OutOfPlaneSingleChild::RunTest(const FString& Par
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     const TSet<int32> MultiChildParents = FindMultiChildParents(Parents);
@@ -366,9 +364,9 @@ bool FTest_SkeletonRetargeting_OutOfPlaneMultiChild::RunTest(const FString& Para
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With multi-child orientation correction, all children should have correct directions.
@@ -430,9 +428,9 @@ bool FTest_SkeletonRetargeting_FullDefaultLayoutIdentityPose::RunTest(const FStr
     const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     CheckPositions(this, Actual, Expected, 0.1f, TEXT("FullDefaultLayoutIdentityPose"));
@@ -526,9 +524,9 @@ bool FTest_SkeletonRetargeting_RealisticAlternativeLayout::RunTest(const FString
     }
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With multi-child orientation correction, all bones should have correct directions.
@@ -594,9 +592,9 @@ bool FTest_SkeletonRetargeting_MultiChildWithSingleChildDescendants::RunTest(con
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     const TSet<int32> MultiChildParents = FindMultiChildParents(Parents);
@@ -645,9 +643,9 @@ bool FTest_SkeletonRetargeting_RotationWithDifferentLayout::RunTest(const FStrin
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     const TSet<int32> MultiChildParents = FindMultiChildParents(Parents);
@@ -699,17 +697,17 @@ bool FTest_SkeletonRetargeting_UnmappedMiddleBone::RunTest(const FString& Parame
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
 
     // Name map: source -> mesh (SpineMiddle is NOT in the map)
-    TMap<FName, int32> NameMap;
-    NameMap.Add(FName("Root"), 0);
-    NameMap.Add(FName("SpineLower"), 1);
+    TMap<FName, FSourceBoneMapping> BoneMap;
+    BoneMap.Add(FName("Root"), {0});
+    BoneMap.Add(FName("SpineLower"), {1});
     // SpineMiddle intentionally unmapped
-    NameMap.Add(FName("SpineUpper"), 2);
-    NameMap.Add(FName("Head"), 3);
+    BoneMap.Add(FName("SpineUpper"), {2});
+    BoneMap.Add(FName("Head"), {3});
 
     // --- Test A: Identity pose (baseline) ---
     {
         const RenderStreamLink::FSkeletalPose IdentityPose = BuildD3IdentityPose(Layout);
-        const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, IdentityPose);
+        const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, IdentityPose);
         const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, IdentityPose);
 
         // Expected source positions (all along Z): Root(0,0,0), SL(0,0,10), SM(0,0,20), SU(0,0,30), Head(0,0,40)
@@ -725,7 +723,7 @@ bool FTest_SkeletonRetargeting_UnmappedMiddleBone::RunTest(const FString& Parame
         // SpineMiddle is source index 2
         Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
 
-        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
         const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
         // With 90 deg rotation on SpineMiddle, SpineUpper and Head should move sideways.
@@ -760,7 +758,7 @@ bool FTest_SkeletonRetargeting_UnmappedMiddleBone::RunTest(const FString& Parame
         RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
         Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H), FMath::Cos(H)};
 
-        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
         const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
         // Check that SpineUpper->Head direction matches expected
@@ -817,11 +815,11 @@ bool FTest_SkeletonRetargeting_UnmappedMultipleMiddleBones::RunTest(const FStrin
     };
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
 
-    TMap<FName, int32> NameMap;
-    NameMap.Add(FName("Root"), 0);
-    NameMap.Add(FName("A"), 1);
-    NameMap.Add(FName("D"), 2);
-    NameMap.Add(FName("E"), 3);
+    TMap<FName, FSourceBoneMapping> BoneMap;
+    BoneMap.Add(FName("Root"), {0});
+    BoneMap.Add(FName("A"), {1});
+    BoneMap.Add(FName("D"), {2});
+    BoneMap.Add(FName("E"), {3});
 
     // Rotate B by 45 deg and C by 45 deg around d3 Z (total 90 deg)
     const float H45 = FMath::DegreesToRadians(45.f) * 0.5f;
@@ -829,7 +827,7 @@ bool FTest_SkeletonRetargeting_UnmappedMultipleMiddleBones::RunTest(const FStrin
     Pose.joints[2].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H45), FMath::Cos(H45)};
     Pose.joints[3].transform = {0.f, 0.f, 0.f, 0.f, 0.f, FMath::Sin(H45), FMath::Cos(H45)};
 
-    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // D (mesh 2) should have significant lateral offset from A (mesh 1)
@@ -922,9 +920,9 @@ bool FTest_SkeletonRetargeting_IdenticalLayoutsWithPose::RunTest(const FString& 
     }
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     CheckPositions(this, Actual, Expected, 0.5f, TEXT("IdenticalLayoutsWithPose"));
@@ -967,11 +965,11 @@ bool FTest_SkeletonRetargeting_SkipCorrectionBasic::RunTest(const FString& Param
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
     // WITHOUT skip: ankle gets corrected, foot direction matches source (horizontal)
     {
-        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
         const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
         // With correction, Ankle->Foot direction should match source direction (horizontal)
@@ -986,9 +984,8 @@ bool FTest_SkeletonRetargeting_SkipCorrectionBasic::RunTest(const FString& Param
 
     // WITH skip on "Ankle": Ankle->Foot direction keeps mesh rest-pose
     {
-        TSet<FName> SkipSet;
-        SkipSet.Add(FName("Ankle"));
-        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose, SkipSet);
+        BoneMap.Find(FName("Ankle"))->bSkipOrientationCorrection = true;
+        const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
 
         // With skip, Ankle->Foot direction should match MESH rest-pose direction (tilted down)
         const TArray<FVector> MeshWorldPos = ComputeWorldPositions(
@@ -1057,11 +1054,10 @@ bool FTest_SkeletonRetargeting_SkipCorrectionWithPose::RunTest(const FString& Pa
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    TSet<FName> SkipSet;
-    SkipSet.Add(FName("Ankle"));
-    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose, SkipSet);
+    BoneMap.Find(FName("Ankle"))->bSkipOrientationCorrection = true;
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
 
     // Verify ankle has moved (knee bend should move it)
     const TArray<FVector> MeshWorldPos = ComputeWorldPositions(
@@ -1126,13 +1122,12 @@ bool FTest_SkeletonRetargeting_SkipCorrectionChainEffect::RunTest(const FString&
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // WITH skip on B: B->C direction should match mesh, not source
-    TSet<FName> SkipSet;
-    SkipSet.Add(FName("B"));
-    const TArray<FVector> ActualSkip = RunRetargeting(MeshBones, Layout, NameMap, Pose, SkipSet);
+    BoneMap.Find(FName("B"))->bSkipOrientationCorrection = true;
+    const TArray<FVector> ActualSkip = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
 
     // B->C direction should match MESH rest direction (not source)
     const TArray<FVector> MeshWorldPos = ComputeWorldPositions(
@@ -1209,16 +1204,15 @@ bool FTest_SkeletonRetargeting_SkipCorrectionPoseAxisAlignment::RunTest(const FS
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    TSet<FName> SkipSet;
-    SkipSet.Add(FName("Ankle"));
+    BoneMap.Find(FName("Ankle"))->bSkipOrientationCorrection = true;
 
     // 1) Compute REST-POSE world transforms
     const RenderStreamLink::FSkeletalPose IdentityPose = BuildD3IdentityPose(Layout);
     const TArray<FTransform> SourceRestTransforms = ComputeExpectedTransformsFromSource(Layout, IdentityPose);
     const TArray<FTransform> ActualRestTransforms = RunRetargetingTransforms(
-        MeshBones, Layout, NameMap, IdentityPose, SkipSet);
+        MeshBones, Layout, BoneMap, IdentityPose);
 
     // Verify skip worked: Ankle->Foot rest directions should differ
     const FVector SourceRestDir = (SourceRestTransforms[3].GetTranslation() -
@@ -1240,7 +1234,7 @@ bool FTest_SkeletonRetargeting_SkipCorrectionPoseAxisAlignment::RunTest(const FS
 
     const TArray<FTransform> SourcePosedTransforms = ComputeExpectedTransformsFromSource(Layout, Pose);
     const TArray<FTransform> ActualPosedTransforms = RunRetargetingTransforms(
-        MeshBones, Layout, NameMap, Pose, SkipSet);
+        MeshBones, Layout, BoneMap, Pose);
 
     // 3) Compare the Ankle world rotation DELTA (rest -> posed).
     //    Both source and retargeted should apply the same global rotation.
@@ -1291,12 +1285,12 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_IdenticalSkeletons::RunTest(c
     const RenderStreamLink::FSkeletalPose   Pose   = BuildD3IdentityPose(Layout);
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ false);
-    const TArray<FVector> WithAlign    = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> WithAlign    = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     CheckPositions(this, WithAlign, WithoutAlign, 0.1f, TEXT("BoneLengthAlign_Identical"));
     return true;
@@ -1337,12 +1331,12 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_DifferentLengths::RunTest(con
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // Without alignment: positions differ from source (mesh bones are shorter)
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ false);
 
     // Neck (index 3) should be at 30cm (mesh) vs 45cm (source) — significant difference
     const float NeckDiffWithout = FVector::Dist(WithoutAlign[3], Expected[3]);
@@ -1351,8 +1345,8 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_DifferentLengths::RunTest(con
         NeckDiffWithout > 10.f);
 
     // With alignment: positions match source oracle
-    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("BoneLengthAlign_Diff with align"));
     return true;
@@ -1390,18 +1384,18 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_WithOrientationCorrection::Ru
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With alignment: orientation correction aligns direction, length alignment adjusts magnitude
-    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("BoneLengthAlign_WithOrientation"));
 
     // Without alignment: direction is correct but distance is wrong
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ false);
     const float BDiffWithout = FVector::Dist(WithoutAlign[2], Expected[2]);
     TestTrue(
         FString::Printf(TEXT("BoneLengthAlign_WithOrientation without: B differs (dist=%.1f cm)"), BDiffWithout),
@@ -1445,11 +1439,11 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_ZeroLengthBone::RunTest(const
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
     // Should not crash
-    const TArray<FVector> Result = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> Result = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     // Verify no NaN
     for (int32 i = 0; i < Result.Num(); ++i)
@@ -1500,12 +1494,12 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_MultiChildParent::RunTest(con
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With alignment: each child adjusted to match source distances
-    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     // B distance from A should match source (15cm)
     const float BDistActual   = FVector::Dist(WithAlign[2], WithAlign[1]);
@@ -1524,8 +1518,8 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_MultiChildParent::RunTest(con
     // Without alignment: multi-child children still get positional corrections
     // (the offset compensates for the Kabsch rotation's directional residuals,
     // which inherently adjusts distances to match source for those children).
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ false);
     const float BDistNoAlign = FVector::Dist(WithoutAlign[2], WithoutAlign[1]);
     const float CDistNoAlign = FVector::Dist(WithoutAlign[3], WithoutAlign[1]);
 
@@ -1586,16 +1580,16 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedMeshIntermediate::Run
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
 
     // Map only Root, A, B (X at mesh index 2 is NOT mapped)
-    TMap<FName, int32> NameMap;
-    NameMap.Add(FName("Root"), 0);
-    NameMap.Add(FName("A"), 1);
-    NameMap.Add(FName("B"), 3);  // B is mesh index 3
+    TMap<FName, FSourceBoneMapping> BoneMap;
+    BoneMap.Add(FName("Root"), {0});
+    BoneMap.Add(FName("A"), {1});
+    BoneMap.Add(FName("B"), {3});  // B is mesh index 3
 
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With alignment: mapped bones should match source positions
-    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     // Source A world = (0, 10, 0) in UE coords (d3 Z -> UE Y)
     // Source B world = (0, 20, 0)
@@ -1612,8 +1606,8 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedMeshIntermediate::Run
         BDist < 0.5f);
 
     // Without alignment: B should NOT match source (mesh chain is shorter)
-    const TArray<FVector> NoAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> NoAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ false);
     const float BDistNoAlign = FVector::Dist(NoAlign[3], Expected[2]);
     TestTrue(
         FString::Printf(TEXT("MeshIntermediate: B without align differs (dist=%.2f cm)"), BDistNoAlign),
@@ -1663,16 +1657,16 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_UnmappedSourceIntermediate::R
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), MeshParents);
 
     // Map Root, A, C (B not mapped)
-    TMap<FName, int32> NameMap;
-    NameMap.Add(FName("Root"), 0);
-    NameMap.Add(FName("A"), 1);
-    NameMap.Add(FName("C"), 2);
+    TMap<FName, FSourceBoneMapping> BoneMap;
+    BoneMap.Add(FName("Root"), {0});
+    BoneMap.Add(FName("A"), {1});
+    BoneMap.Add(FName("C"), {2});
 
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With alignment: C should match source C
-    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     // Source C world = (0, 30, 0), source index 3
     const float CDist = FVector::Dist(Actual[2], Expected[3]);
@@ -1728,18 +1722,18 @@ bool FTest_SkeletonRetargeting_BoneLengthAlignment_WithPoseRotation::RunTest(con
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With alignment: positions should match source oracle despite different bone lengths
-    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
 
     CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("BoneLengthAlign_WithPose"));
 
     // Without alignment: positions differ because bone lengths don't match
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ false);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ false);
     const float CDist = FVector::Dist(WithoutAlign[3], Expected[3]);
     TestTrue(
         FString::Printf(TEXT("BoneLengthAlign_WithPose without: C differs (dist=%.1f cm)"), CDist),
@@ -1823,16 +1817,16 @@ bool FTest_SkeletonRetargeting_MultiChildExactPositions::RunTest(const FString& 
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With bone length alignment: all positions should match source oracle
-    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
     CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("MultiChildPositions_WithAlign"));
 
     // Without bone length alignment: directions should still be correct
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TSet<int32> NoExclusions;
     CheckBoneDirections(this, WithoutAlign, Expected, Parents, NoExclusions, 2.0f,
         TEXT("MultiChildPositions_WithoutAlign"));
@@ -1894,16 +1888,16 @@ bool FTest_SkeletonRetargeting_MultiChildWithPose::RunTest(const FString& Parame
     }
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
     const TArray<FVector>           Expected  = ComputeExpectedPositionsFromSource(Layout, Pose);
 
     // With bone length alignment: positions should match source oracle
-    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose,
-        TSet<FName>(), /*bAlignBoneLengths=*/ true);
+    const TArray<FVector> WithAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose,
+        /*bAlignBoneLengths=*/ true);
     CheckPositions(this, WithAlign, Expected, 0.5f, TEXT("MultiChildWithPose_Aligned"));
 
     // Without alignment: directions should still be correct
-    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> WithoutAlign = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TSet<int32> NoExclusions;
     CheckBoneDirections(this, WithoutAlign, Expected, Parents, NoExclusions, 2.0f,
         TEXT("MultiChildWithPose_Unaligned"));
@@ -1965,11 +1959,11 @@ bool FTest_SkeletonRetargeting_MultiChildParent_NoRootTilt::RunTest(const FStrin
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
     // Get retargeted rest-pose transforms
     const TArray<FTransform> ActualTransforms = RunRetargetingTransforms(
-        MeshBones, Layout, NameMap, Pose);
+        MeshBones, Layout, BoneMap, Pose);
 
     // Get mesh rest-pose transforms
     TArray<FTransform> MeshLocalTransforms;
@@ -2006,7 +2000,7 @@ bool FTest_SkeletonRetargeting_MultiChildParent_NoRootTilt::RunTest(const FStrin
     }
 
     // Positions should still be correct
-    const TArray<FVector> ActualPositions = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> ActualPositions = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
     const TSet<int32> NoExclusions;
     CheckBoneDirections(this, ActualPositions, Expected, Parents, NoExclusions, 2.0f,
@@ -2070,10 +2064,10 @@ bool FTest_SkeletonRetargeting_MultiChildParent_NoHeadTilt::RunTest(const FStrin
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
     const TArray<FTransform> ActualTransforms = RunRetargetingTransforms(
-        MeshBones, Layout, NameMap, Pose);
+        MeshBones, Layout, BoneMap, Pose);
 
     TArray<FTransform> MeshLocalTransforms;
     MeshLocalTransforms.SetNum(MeshBones.Num());
@@ -2119,7 +2113,7 @@ bool FTest_SkeletonRetargeting_MultiChildParent_NoHeadTilt::RunTest(const FStrin
     }
 
     // Positions should still be correct
-    const TArray<FVector> ActualPositions = RunRetargeting(MeshBones, Layout, NameMap, Pose);
+    const TArray<FVector> ActualPositions = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(Layout, Pose);
     const TSet<int32> NoExclusions;
     CheckBoneDirections(this, ActualPositions, Expected, Parents, NoExclusions, 2.0f,
@@ -2136,7 +2130,7 @@ struct FPilotTestData
 {
     RenderStreamLink::FSkeletalLayout Layout;
     TArray<FRetargetMeshBone> MeshBones;
-    TMap<FName, int32> NameMap;
+    TMap<FName, FSourceBoneMapping> BoneMap;
     TArray<int32> D3Parents;
     TArray<int32> UEParents;
 };
@@ -2320,21 +2314,21 @@ static FPilotTestData BuildPilotTestData()
     // --- Bone name mapping ---
     // d3 Spine(1), Spine2(3), Spine4(5) are unmapped
     // d3 Spine3(4) → UE Spine2 (mesh index 3)
-    Out.NameMap.Add(FName("Hips"), 0);
-    Out.NameMap.Add(FName("Spine1"), 2);       // d3 Spine1 → UE Spine1 (index 2)
-    Out.NameMap.Add(FName("Spine3"), 3);       // d3 Spine3 → UE Spine2 (index 3)
-    Out.NameMap.Add(FName("Neck"), 4);
-    Out.NameMap.Add(FName("Head"), 5);
-    Out.NameMap.Add(FName("LeftShoulder"), 6);
-    Out.NameMap.Add(FName("LeftArm"), 7);
-    Out.NameMap.Add(FName("LeftForeArm"), 8);
-    Out.NameMap.Add(FName("RightShoulder"), 9);
-    Out.NameMap.Add(FName("RightArm"), 10);
-    Out.NameMap.Add(FName("RightForeArm"), 11);
-    Out.NameMap.Add(FName("LeftUpLeg"), 12);
-    Out.NameMap.Add(FName("LeftLeg"), 13);
-    Out.NameMap.Add(FName("RightUpLeg"), 14);
-    Out.NameMap.Add(FName("RightLeg"), 15);
+    Out.BoneMap.Add(FName("Hips"), {0});
+    Out.BoneMap.Add(FName("Spine1"), {2});       // d3 Spine1 → UE Spine1 (index 2)
+    Out.BoneMap.Add(FName("Spine3"), {3});       // d3 Spine3 → UE Spine2 (index 3)
+    Out.BoneMap.Add(FName("Neck"), {4});
+    Out.BoneMap.Add(FName("Head"), {5});
+    Out.BoneMap.Add(FName("LeftShoulder"), {6});
+    Out.BoneMap.Add(FName("LeftArm"), {7});
+    Out.BoneMap.Add(FName("LeftForeArm"), {8});
+    Out.BoneMap.Add(FName("RightShoulder"), {9});
+    Out.BoneMap.Add(FName("RightArm"), {10});
+    Out.BoneMap.Add(FName("RightForeArm"), {11});
+    Out.BoneMap.Add(FName("LeftUpLeg"), {12});
+    Out.BoneMap.Add(FName("LeftLeg"), {13});
+    Out.BoneMap.Add(FName("RightUpLeg"), {14});
+    Out.BoneMap.Add(FName("RightLeg"), {15});
 
     return Out;
 }
@@ -2376,7 +2370,7 @@ bool FTest_SkeletonRetargeting_PilotSkeleton_RestPose::RunTest(const FString& Pa
     const FPilotTestData P = BuildPilotTestData();
     const RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
 
-    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
 
     for (const auto& C : PilotBoneChecks)
@@ -2412,7 +2406,7 @@ bool FTest_SkeletonRetargeting_PilotSkeleton_ShoulderYRotation::RunTest(const FS
         Pose.joints[9].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
     }
 
-    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
 
     // Check all mapped bone positions
@@ -2448,7 +2442,7 @@ bool FTest_SkeletonRetargeting_PilotSkeleton_ShoulderXRotation::RunTest(const FS
         Pose.joints[9].transform = {0.f, 0.f, 0.f, FMath::Sin(H), 0.f, 0.f, FMath::Cos(H)};
     }
 
-    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(P.MeshBones, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
 
     for (const auto& C : PilotBoneChecks)
@@ -2498,7 +2492,7 @@ bool FTest_SkeletonRetargeting_DiffProportions_ShoulderYRot::RunTest(const FStri
         Pose.joints[8].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
     }
 
-    const TArray<FVector> Actual   = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(ModifiedMesh, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
 
     // Check mapped bone positions — proportions differ so errors accumulate
@@ -2514,7 +2508,7 @@ bool FTest_SkeletonRetargeting_DiffProportions_ShoulderYRot::RunTest(const FStri
     // Specific check: LeftArm (mesh 7) should move primarily horizontally.
     // Compute rest-pose position of LeftArm for reference.
     const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
-    const TArray<FVector> RestActual = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, RestPose);
+    const TArray<FVector> RestActual = RunRetargeting(ModifiedMesh, P.Layout, P.BoneMap, RestPose);
     const FVector ArmDelta = Actual[7] - RestActual[7];
     const float HorizontalMag = FMath::Sqrt(ArmDelta.X * ArmDelta.X + ArmDelta.Y * ArmDelta.Y);
     const float VerticalMag = FMath::Abs(ArmDelta.Z);
@@ -2558,7 +2552,7 @@ bool FTest_SkeletonRetargeting_DiffProportions_ArmYRot::RunTest(const FString& P
         Pose.joints[9].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
     }
 
-    const TArray<FVector> Actual   = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> Actual   = RunRetargeting(ModifiedMesh, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> Expected = ComputeExpectedPositionsFromSource(P.Layout, Pose);
 
     for (const auto& C : PilotBoneChecks)
@@ -2571,7 +2565,7 @@ bool FTest_SkeletonRetargeting_DiffProportions_ArmYRot::RunTest(const FString& P
 
     // Check LeftForeArm (mesh 8) moves primarily horizontally
     const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
-    const TArray<FVector> RestActual = RunRetargeting(ModifiedMesh, P.Layout, P.NameMap, RestPose);
+    const TArray<FVector> RestActual = RunRetargeting(ModifiedMesh, P.Layout, P.BoneMap, RestPose);
     const FVector ForeArmDelta = Actual[8] - RestActual[8];
     const float HorizontalMag = FMath::Sqrt(ForeArmDelta.X * ForeArmDelta.X + ForeArmDelta.Y * ForeArmDelta.Y);
     const float VerticalMag = FMath::Abs(ForeArmDelta.Z);
@@ -2601,7 +2595,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotYRot::RunTest(const FString& Paramet
     // Rest pose world transforms
     const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
     const TArray<FTransform> RestTransforms = RunRetargetingTransforms(
-        P.MeshBones, P.Layout, P.NameMap, RestPose);
+        P.MeshBones, P.Layout, P.BoneMap, RestPose);
 
     // Posed: 45° d3 Y rotation on LeftArm (source index 9, mesh index 7)
     RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
@@ -2611,7 +2605,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotYRot::RunTest(const FString& Paramet
         Pose.joints[9].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
     }
     const TArray<FTransform> PosedTransforms = RunRetargetingTransforms(
-        P.MeshBones, P.Layout, P.NameMap, Pose);
+        P.MeshBones, P.Layout, P.BoneMap, Pose);
 
     // d3 Y rotation → UE Z rotation (from ConvertD3TransformToUE coordinate mapping)
     const FQuat ExpectedDelta = FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(45.f));
@@ -2650,7 +2644,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotYRot::RunTest(const FString& Paramet
     }
 
     // Additionally check positions match oracle
-    const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> ExpectedPos = ComputeExpectedPositionsFromSource(P.Layout, Pose);
     for (const auto& C : PilotBoneChecks)
     {
@@ -2681,7 +2675,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotClavicleYRot::RunTest(const FString&
 
     const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
     const TArray<FTransform> RestTransforms = RunRetargetingTransforms(
-        P.MeshBones, P.Layout, P.NameMap, RestPose);
+        P.MeshBones, P.Layout, P.BoneMap, RestPose);
 
     // 45° d3 Y rotation on LeftShoulder (source index 8, mesh index 6)
     RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(P.Layout);
@@ -2690,7 +2684,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotClavicleYRot::RunTest(const FString&
         Pose.joints[8].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
     }
     const TArray<FTransform> PosedTransforms = RunRetargetingTransforms(
-        P.MeshBones, P.Layout, P.NameMap, Pose);
+        P.MeshBones, P.Layout, P.BoneMap, Pose);
 
     const FQuat ExpectedDelta = FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(45.f));
 
@@ -2724,7 +2718,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotClavicleYRot::RunTest(const FString&
         }
     }
 
-    const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+    const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.BoneMap, Pose);
     const TArray<FVector> ExpectedPos = ComputeExpectedPositionsFromSource(P.Layout, Pose);
     for (const auto& C : PilotBoneChecks)
     {
@@ -2754,7 +2748,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotSweep::RunTest(const FString& Parame
 
     const RenderStreamLink::FSkeletalPose RestPose = BuildD3IdentityPose(P.Layout);
     const TArray<FTransform> RestTransforms = RunRetargetingTransforms(
-        P.MeshBones, P.Layout, P.NameMap, RestPose);
+        P.MeshBones, P.Layout, P.BoneMap, RestPose);
 
     // Sweep d3 Y rotation on LeftForeArm (source index 10, mesh index 8)
     for (float AngleDeg = 0.f; AngleDeg < 360.f; AngleDeg += 45.f)
@@ -2765,7 +2759,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotSweep::RunTest(const FString& Parame
             Pose.joints[10].transform = {0.f, 0.f, 0.f, 0.f, FMath::Sin(H), 0.f, FMath::Cos(H)};
         }
         const TArray<FTransform> PosedTransforms = RunRetargetingTransforms(
-            P.MeshBones, P.Layout, P.NameMap, Pose);
+            P.MeshBones, P.Layout, P.BoneMap, Pose);
 
         const FQuat ExpectedDelta = FQuat(FVector::ZAxisVector, FMath::DegreesToRadians(AngleDeg));
 
@@ -2782,7 +2776,7 @@ bool FTest_SkeletonRetargeting_PilotWorldRotSweep::RunTest(const FString& Parame
             NormAngle <= 2.0f);
 
         // Check positions match oracle
-        const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.NameMap, Pose);
+        const TArray<FVector> ActualPos = RunRetargeting(P.MeshBones, P.Layout, P.BoneMap, Pose);
         const TArray<FVector> ExpectedPos = ComputeExpectedPositionsFromSource(P.Layout, Pose);
         const float Dist = FVector::Dist(ActualPos[8], ExpectedPos[10]);
         TestTrue(
@@ -2833,20 +2827,23 @@ bool FTest_SkeletonRetargeting_SkipCorrectionSkipsBoneLength::RunTest(const FStr
     };
 
     const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(MeshD3), Parents);
-    const TMap<FName, int32>        NameMap   = BuildIdentityNameMap(Names);
+    TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
 
-    TSet<FName> SkipSet;
-    SkipSet.Add(FName("Ankle"));
+    // Set skip on Ankle for the skip variants
+    BoneMap.Find(FName("Ankle"))->bSkipOrientationCorrection = true;
 
     // With alignment + skip on Ankle
     const TArray<FVector> WithAlignSkip = RunRetargeting(
-        MeshBones, Layout, NameMap, Pose, SkipSet, /*bAlignBoneLengths=*/true);
+        MeshBones, Layout, BoneMap, Pose, /*bAlignBoneLengths=*/true);
     // Without alignment + skip on Ankle
     const TArray<FVector> WithoutAlignSkip = RunRetargeting(
-        MeshBones, Layout, NameMap, Pose, SkipSet, /*bAlignBoneLengths=*/false);
+        MeshBones, Layout, BoneMap, Pose, /*bAlignBoneLengths=*/false);
+
+    // Reset skip for the no-skip variant
+    BoneMap.Find(FName("Ankle"))->bSkipOrientationCorrection = false;
     // With alignment, no skip
     const TArray<FVector> WithAlignNoSkip = RunRetargeting(
-        MeshBones, Layout, NameMap, Pose, TSet<FName>(), /*bAlignBoneLengths=*/true);
+        MeshBones, Layout, BoneMap, Pose, /*bAlignBoneLengths=*/true);
 
     // Ankle→Foot distance should be UNCHANGED by alignment when Skip is on Ankle.
     const float FootDistWithAlign    = FVector::Dist(WithAlignSkip[3], WithAlignSkip[2]);
