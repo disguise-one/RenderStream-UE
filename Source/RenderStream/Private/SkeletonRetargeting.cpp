@@ -64,7 +64,7 @@ static void ExtractMeshArrays(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 1: Build source-to-mesh topology and convert rest poses to UE space.
+// Build source-to-mesh topology and convert rest poses to UE space.
 // Populates OutInitData.SourceBones with parent indices, mesh indices,
 // initial pose rotations, skip flags, and mapped parent indices.
 // Also produces per-bone child counts, mesh-to-source index mapping,
@@ -124,7 +124,7 @@ static void BuildTopologyAndMapping(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3: Compute per-child translation offsets for multi-child parents.
+// Compute per-child translation offsets for multi-child parents.
 // A single rotation can't align all children of a multi-child parent, so
 // per-child offsets place each child at its source-space position.
 // Also recomputes world transforms for descendants of corrected bones.
@@ -202,7 +202,7 @@ static void ComputeMultiChildOffsets(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 4: Compute orientation corrections.
+// Compute orientation corrections.
 // For each mesh bone mapped to a source bone, compute the world-space
 // orientation difference (WOD) between source and mesh rest poses, then
 // convert to a local correction applied to the parent bone.
@@ -291,7 +291,7 @@ static void ComputeOrientationCorrections(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 5: Build corrected rest-pose world rotations for pose conjugation.
+// Build corrected rest-pose world rotations for pose conjugation.
 // MeshToSourceRotation must equal the world rotation that BuildRetargetedPose
 // produces at rest, so that the conjugation
 // MeshToSource^{-1} * P * MeshToSource correctly transforms pose rotations.
@@ -324,7 +324,7 @@ static void ComputeMeshToSourceRotations(
 }
 
 // ---------------------------------------------------------------------------
-// Phase 6: Compute bone length ratios for positional alignment.
+// Compute bone length ratios for positional alignment.
 // ratio = 1 + (source_dist - mesh_dist) / bone_local_length
 // Skipped for children of parents with bSkipOrientationCorrection.
 // ---------------------------------------------------------------------------
