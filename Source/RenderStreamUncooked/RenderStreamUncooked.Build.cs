@@ -21,6 +21,7 @@ public class RenderStreamUncooked : ModuleRules
             "PropertyEditor",
             "Slate",
             "SlateCore",
+            "ToolWidgets",
             "UnrealEd"
         });
     }

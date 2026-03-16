@@ -6,7 +6,7 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
 #include "IDetailChildrenBuilder.h"
-#include "Widgets/Input/SComboBox.h"
+#include "SSearchableComboBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 
@@ -95,7 +95,7 @@ void FBoneMappingCustomization::CustomizeHeader(
             + SHorizontalBox::Slot()
             .FillWidth(1.f)
             [
-                SNew(SComboBox<TSharedPtr<FString>>)
+                SNew(SSearchableComboBox)
                 .OptionsSource(&BoneNameOptions)
                 .InitiallySelectedItem(InitialSelection)
                 .OnGenerateWidget(this, &FBoneMappingCustomization::OnGenerateComboWidget)

@@ -191,11 +191,10 @@ void FAnimNode_RenderStreamSkeletonSource::AddIfCorrespondingSkeletonActor(AActo
             if (AnimClass == ThisAnimClass)
             {
                 TWeakObjectPtr<AActor> SkeletonWeakPtr(SkeletonActor);
-                if (SkeletonWeakPtr.IsValid() &&
-                    std::find(SkeletonActors.begin(), SkeletonActors.end(), SkeletonWeakPtr) == SkeletonActors.end())
+                if (SkeletonWeakPtr.IsValid() && !SkeletonActors.Contains(SkeletonWeakPtr))
                 {
                     UE_LOG(LogRenderStream, Log, TEXT("Found actor %s for skeleton %s"), *SkeletonActor->GetActorNameOrLabel(), *SkeletonName);
-                    SkeletonActors.push_back(SkeletonWeakPtr);
+                    SkeletonActors.Add(SkeletonWeakPtr);
                 }
             }
         }
@@ -217,7 +216,7 @@ void FAnimNode_RenderStreamSkeletonSource::PreUpdate(const UAnimInstance* InAnim
     // Find and cache skeleton actors using this animnode
     if (!SkeletonActorsCached)
     {
-        SkeletonActors.clear();
+        SkeletonActors.Empty();
         CacheSkeletonActors(ParamName);
         SkeletonActorsCached = true;
 
@@ -256,7 +255,7 @@ void FAnimNode_RenderStreamSkeletonSource::ApplyRootPose(const FName& ParamName)
         * FQuat::MakeFromRotator(FRotator(0, 90, 0));  // Apply 90 degree yaw to account for skeleton default orientation
 
     // Check skeleton actors have been cached
-    if (SkeletonActors.empty())
+    if (SkeletonActors.IsEmpty())
     {
         UE_LOG(LogRenderStream, Warning, TEXT("Error applying skeleton data for %s. No corresponding skeletal mesh actors found"), *ParamName.ToString());
     }

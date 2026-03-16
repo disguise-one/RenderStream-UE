@@ -8,7 +8,7 @@
 
 #include "Engine/SkeletalMesh.h"
 
-#include <vector>
+
 
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
 
@@ -101,13 +101,13 @@ protected:
     bool IsRootBone(int32 SourceIndex);
 
 private:
-    std::vector<TWeakObjectPtr<AActor>> SkeletonActors;
-    bool SkeletonActorsCached;
+    TArray<TWeakObjectPtr<AActor>> SkeletonActors;
+    bool SkeletonActorsCached = false;
     FDelegateHandle OnActorSpawnedHandle;
 
     // Cached pose info
     FRetargetInitData CachedInitData;
-    bool PoseInitialised;
+    bool PoseInitialised = false;
 
     // Hidden cache that remembers every bone mapping ever set
     UPROPERTY()

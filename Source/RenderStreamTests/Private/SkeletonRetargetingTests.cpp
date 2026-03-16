@@ -2871,3 +2871,185 @@ bool FTest_SkeletonRetargeting_SkipCorrectionSkipsBoneLength::RunTest(const FStr
 
     return true;
 }
+
+// ---------------------------------------------------------------------------
+// Test 37 — EmptyLayout
+// Edge case: zero bones in source layout. InitialiseRetargeting should not
+// crash and BuildRetargetedPose should be a no-op.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_EmptyLayout,
+    "RenderStream.SkeletonRetargeting.EdgeCase_EmptyLayout",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_EmptyLayout::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names;
+    const TArray<RenderStreamLink::Transform> D3Transforms;
+    const TArray<int32> Parents;
+
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, D3Transforms, Parents);
+    const RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    const TMap<FName, FSourceBoneMapping> BoneMap;
+
+    const TArray<FRetargetMeshBone> MeshBones;
+
+    FRetargetInitData InitData;
+    InitialiseRetargeting(MeshBones, Layout, BoneMap, false, InitData);
+
+    TestEqual(TEXT("EmptyLayout: SourceBones count"), InitData.SourceBones.Num(), 0);
+    TestEqual(TEXT("EmptyLayout: MeshBoneCount"), InitData.MeshBoneCount, 0);
+
+    // BuildRetargetedPose should be a no-op with no crash
+    TArray<FTransform> Transforms;
+    BuildRetargetedPose(Pose, InitData, Transforms);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 38 — SingleBoneSkeleton
+// Edge case: skeleton with only a root bone. No children to retarget.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_SingleBone,
+    "RenderStream.SkeletonRetargeting.EdgeCase_SingleBone",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_SingleBone::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    const TArray<FString> Names = {"Root"};
+    const TArray<int32> Parents = {INDEX_NONE};
+    const TArray<RenderStreamLink::Transform> D3T = {
+        {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f}
+    };
+
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, D3T, Parents);
+    const RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
+
+    const TArray<FVector> Actual = RunRetargeting(MeshBones, Layout, BoneMap, Pose);
+
+    TestEqual(TEXT("SingleBone: bone count"), Actual.Num(), 1);
+    const float Dist = Actual[0].Size();
+    TestTrue(
+        FString::Printf(TEXT("SingleBone: root near origin (dist=%.4f cm)"), Dist),
+        Dist <= 0.1f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 39 — AllBonesUnmappedExceptRoot
+// Only the root bone is mapped. Other source bones exist but have no mesh
+// counterpart. Should not crash and root should be positioned correctly.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_OnlyRootMapped,
+    "RenderStream.SkeletonRetargeting.EdgeCase_OnlyRootMapped",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_OnlyRootMapped::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Source has 4 bones but only root is mapped
+    const TArray<FString> Names = {"Pelvis", "Spine", "Chest", "Neck"};
+    const TArray<int32> Parents = {INDEX_NONE, 0, 1, 2};
+    const TArray<RenderStreamLink::Transform> D3T = {
+        {0.f, 0.f, 0.f,    0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.10f,  0.f, 0.f, 0.f, 1.f},
+    };
+
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, D3T, Parents);
+    const RenderStreamLink::FSkeletalPose Pose = BuildD3IdentityPose(Layout);
+
+    // Mesh has only 1 bone
+    const TArray<FVector> MeshOffsets = {FVector::ZeroVector};
+    const TArray<int32> MeshParents = {INDEX_NONE};
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(MeshOffsets, MeshParents);
+
+    // Only map root
+    TMap<FName, FSourceBoneMapping> BoneMap;
+    BoneMap.Add(FName("Pelvis"), {0});
+
+    FRetargetInitData InitData;
+    InitialiseRetargeting(MeshBones, Layout, BoneMap, false, InitData);
+
+    TArray<FTransform> Transforms;
+    Transforms.SetNum(1);
+    Transforms[0] = MeshBones[0].LocalTransform;
+    BuildRetargetedPose(Pose, InitData, Transforms);
+
+    // Root should exist and be near origin
+    TestEqual(TEXT("OnlyRootMapped: bone count"), Transforms.Num(), 1);
+    const float Dist = Transforms[0].GetTranslation().Size();
+    TestTrue(
+        FString::Printf(TEXT("OnlyRootMapped: root near origin (dist=%.4f cm)"), Dist),
+        Dist <= 0.1f);
+
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// Test 40 — MismatchedBoneCounts
+// Source layout has fewer bones than the mapping references. BuildRetargetedPose
+// should early-return without crashing when counts don't match.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_SkeletonRetargeting_MismatchedCounts,
+    "RenderStream.SkeletonRetargeting.EdgeCase_MismatchedCounts",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_SkeletonRetargeting_MismatchedCounts::RunTest(const FString& Parameters)
+{
+    using namespace RenderStreamRetargeting;
+
+    // Init with 3-bone skeleton
+    const TArray<FString> Names = {"Root", "Spine", "Chest"};
+    const TArray<int32> Parents = {INDEX_NONE, 0, 1};
+    const TArray<RenderStreamLink::Transform> D3T = {
+        {0.f, 0.f, 0.f,   0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f,  0.f, 0.f, 0.f, 1.f},
+        {0.f, 0.f, 0.1f,  0.f, 0.f, 0.f, 1.f},
+    };
+
+    const RenderStreamLink::FSkeletalLayout Layout = BuildD3Layout(Names, D3T, Parents);
+    const TMap<FName, FSourceBoneMapping> BoneMap = BuildIdentityBoneMap(Names);
+    const TArray<FRetargetMeshBone> MeshBones = BuildMeshBones(D3ToUEOffsets(D3T), Parents);
+
+    FRetargetInitData InitData;
+    InitialiseRetargeting(MeshBones, Layout, BoneMap, false, InitData);
+
+    // Build pose with DIFFERENT bone count (2 instead of 3)
+    RenderStreamLink::FSkeletalPose MismatchedPose;
+    MismatchedPose.layoutId = 0;
+    MismatchedPose.layoutVersion = Layout.version;
+    MismatchedPose.rootPosition = FVector3f::ZeroVector;
+    MismatchedPose.rootOrientation = FQuat4f::Identity;
+    MismatchedPose.joints.SetNum(2);  // Mismatch!
+    for (int32 i = 0; i < 2; ++i)
+    {
+        MismatchedPose.joints[i].id = Layout.joints[i].id;
+        MismatchedPose.joints[i].transform = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 1.f};
+    }
+
+    // Snapshot transforms before
+    TArray<FTransform> Transforms;
+    Transforms.SetNum(MeshBones.Num());
+    for (int32 i = 0; i < MeshBones.Num(); ++i)
+        Transforms[i] = MeshBones[i].LocalTransform;
+    const TArray<FTransform> OriginalTransforms = Transforms;
+
+    // Should early-return without modifying transforms
+    BuildRetargetedPose(MismatchedPose, InitData, Transforms);
+
+    // Transforms should be unchanged (early return due to mismatch)
+    for (int32 i = 0; i < Transforms.Num(); ++i)
+    {
+        TestTrue(
+            FString::Printf(TEXT("MismatchedCounts: bone[%d] unchanged"), i),
+            Transforms[i].Equals(OriginalTransforms[i]));
+    }
+
+    return true;
+}
