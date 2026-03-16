@@ -816,35 +816,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     if (Texture->OverrideFormat != EPixelFormat::PF_FloatRGBA)
                     {
                         Texture->InitCustomFormat(frameData.width, frameData.height, EPixelFormat::PF_FloatRGBA, false);
-                    Texture->bGPUSharedFlag = true;
-                    Texture->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, false);
-                }
-                else
-                {
-                    Texture->ResizeTarget(frameData.width, frameData.height);
-                }
-
-                ENQUEUE_RENDER_COMMAND(GetTex)(
-                [this, toggle, Texture, frameData, iImage](FRHICommandListImmediate& RHICmdList)
-                {
-                    SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Block %d"), iImage);
-                    const auto rtResource = Texture->GetRenderTargetResource();
-                    if (!rtResource)
-                    {
-                        return;
-                    }
-                    void* resource = rtResource->TextureRHI->GetNativeResource();
-
-                    RenderStreamLink::SenderFrame data = {};
-                    if (toggle == "D3D11")
-                    {
-                        {
-                            SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
-                            RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
-                        }
-                        data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
-                        data.dx11.resource = static_cast<ID3D11Resource*>(resource);
-                        auto err = RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data);
                     }
                     else if (Texture->SizeX != frameData.width || Texture->SizeY != frameData.height)
                     {
