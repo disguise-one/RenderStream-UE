@@ -75,7 +75,8 @@ namespace {
 
 RenderStreamLink::RenderStreamLink()
 {
-    loadExplicit();
+    FString unused;
+    loadExplicit(unused);
 }
 
 RenderStreamLink::~RenderStreamLink()
@@ -88,8 +89,9 @@ bool RenderStreamLink::isAvailable()
     return m_dll && m_loaded;
 }
 
-bool RenderStreamLink::loadExplicit()
+bool RenderStreamLink::loadExplicit(FString& outError)
 {
+    outError.Empty();
     if (isAvailable())
         return true;
 
@@ -158,7 +160,7 @@ bool RenderStreamLink::loadExplicit()
             FString osMsg = e.message().c_str();
             UE_LOG(LogRenderStream, Error, TEXT("Failed to get function %s from DLL. %s (%i)"), fnName, *osMsg, e.value());
             m_loaded = false;
-            LogFatalIfNotInEditor("A function failed to load from the RenderStream DLL, this suggests an incompatible version is installed.");
+            outError = fnName;
             return false;
         }
         return true;
@@ -167,6 +169,8 @@ bool RenderStreamLink::loadExplicit()
 #define LOAD_FN(FUNC) \
     if (!loadFn(FUNC, TEXT(#FUNC))) \
         return false;
+
+
     
     LOAD_FN(rs_initialise);
     LOAD_FN(rs_initialiseGpGpuWithDX11Device);
@@ -175,6 +179,10 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_initialiseGpGpuWithVulkanDevice);
     LOAD_FN(rs_shutdown);
 
+    LOAD_FN(rs_logToD3);
+    LOAD_FN(rs_sendProfilingData);
+    LOAD_FN(rs_setNewStatusMessage);
+
     LOAD_FN(rs_registerLoggingFunc);
     LOAD_FN(rs_registerErrorLoggingFunc);
     LOAD_FN(rs_registerVerboseLoggingFunc);
@@ -182,6 +190,10 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_unregisterLoggingFunc);
     LOAD_FN(rs_unregisterErrorLoggingFunc);
     LOAD_FN(rs_unregisterVerboseLoggingFunc);
+
+    rs_registerLoggingFunc(&log_default);
+    rs_registerErrorLoggingFunc(&log_error);
+    rs_registerVerboseLoggingFunc(&log_verbose);
 
     LOAD_FN(rs_useDX12SharedHeapFlag);
 
@@ -199,6 +211,7 @@ bool RenderStreamLink::loadExplicit()
     LOAD_FN(rs_getFrameImageData);
     LOAD_FN(rs_getFrameImage2);
     LOAD_FN(rs_registerTextureParams);
+
     LOAD_FN(rs_getFrameText);
 
     LOAD_FN(rs_getSkeletonLayout);
@@ -210,15 +223,9 @@ bool RenderStreamLink::loadExplicit()
 
     LOAD_FN(rs_releaseImage2);
 
-    LOAD_FN(rs_logToD3);
-    LOAD_FN(rs_sendProfilingData);
-    LOAD_FN(rs_setNewStatusMessage);
 
     m_loaded = true;
 
-    rs_registerLoggingFunc(&log_default);
-    rs_registerErrorLoggingFunc(&log_error);
-    rs_registerVerboseLoggingFunc(&log_verbose);
 
 #endif
 
