@@ -468,7 +468,7 @@ private:
 public:
     RENDERSTREAM_API bool isAvailable();
 
-    bool loadExplicit();
+    bool loadExplicit(FString& outError);
     bool unloadExplicit();
 
     struct ScopedSchema
