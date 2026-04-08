@@ -75,8 +75,8 @@ namespace {
 
 RenderStreamLink::RenderStreamLink()
 {
-    FString unused;
-    loadExplicit(unused);
+    FString outError;
+    loadExplicit(outError);
 }
 
 RenderStreamLink::~RenderStreamLink()
