@@ -108,7 +108,19 @@ TWeakObjectPtr<ACameraActor> URenderStreamChannelDefinition::GetChannelCamera(co
         return FindCameraInScene();
     }
 
-    return (*ActorsPtrPtr)->Last();
+    // Select camera deterministically by lexicographically smallest path name.
+    // BeginPlay() order is non-deterministic across nDisplay cluster machines,
+    // so we cannot rely on array insertion order (i.e. Last() or First()).
+    // GetPathName() is stable across machines since actor names and level paths
+    // are serialized in the packaged project.
+    const auto& Cameras = *(*ActorsPtrPtr);
+    TWeakObjectPtr<ACameraActor> Best = Cameras[0];
+    for (int32 i = 1; i < Cameras.Num(); i++)
+    {
+        if (Cameras[i].IsValid() && (!Best.IsValid() || Cameras[i]->GetPathName() < Best->GetPathName()))
+            Best = Cameras[i];
+    }
+    return Best;
 }
 
 URenderStreamChannelDefinition::URenderStreamChannelDefinition()
@@ -238,6 +250,15 @@ void URenderStreamChannelDefinition::BeginPlay()
         FString ActorName = GetOwner()->GetActorNameOrLabel();
         FString ChannelName = GetChannelName();
         auto& Array = FindOrAdd(ChannelActorMap, ChannelName);
+        if (Array.Num() > 0)
+        {
+            UE_LOG(LogRenderStreamChannelDefinition, Warning,
+                TEXT("Multiple cameras on channel '%s': '%s' already registered, now adding '%s'. "
+                     "This may cause non-deterministic camera selection across cluster nodes."),
+                *ChannelName,
+                Array.Last().IsValid() ? *Array.Last()->GetName() : TEXT("INVALID"),
+                *ActorName);
+        }
         Array.Add(Owner);
         Registered = true;
         UE_LOG(LogRenderStreamChannelDefinition, Log, TEXT("Adding camera '%s' to channel '%s'."), *ActorName, *ChannelName);

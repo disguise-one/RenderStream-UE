@@ -40,6 +40,8 @@
 #include "FileHelpers.h"
 #include "GameMapsSettings.h"
 
+#include "Logging/MessageLog.h"
+#include "Misc/UObjectToken.h"
 #include "MessageLogInitializationOptions.h"
 #include "MessageLogModule.h"
 #include "IMessageLogListing.h"
@@ -546,6 +548,16 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
             if (Definition.IsValid())
             {
                 FString ChannelName = TCHAR_TO_UTF8(*(Definition->GetChannelName()));
+                // Detect duplicate channel names within this level. The cross-level case
+                // is handled separately in FRenderStreamValidation::RunValidation().
+                if (Cache->Channels.Contains(ChannelName))
+                {
+                    FMessageLog RSV("RenderStreamValidation");
+                    RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
+                        TEXT("Duplicate channel '%s' in level '%s': camera '%s' shares channel with another camera. "
+                             "This may cause non-deterministic camera selection across cluster nodes."),
+                        *ChannelName, *LevelPath, *Actor->GetName()))));
+                }
                 Cache->Channels.Emplace(ChannelName);
                 FRenderStreamChannelInfo channelInfo = FRenderStreamValidation::GetChannelInfo(Definition, Level);
                 SanitizeChannelInfo(channelInfo);

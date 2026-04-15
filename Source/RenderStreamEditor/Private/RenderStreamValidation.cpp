@@ -406,6 +406,36 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
     }
     IssuesFound |= ValidateProjectSettings();
 
+    // Detect duplicate channel names across different levels (e.g., a camera in the
+    // persistent level sharing a channel name with a camera in a streaming sub-level).
+    // Within-level duplicates are caught separately in UpdateLevelChannelCache().
+    TMap<FString, FString> ChannelToLevel;
+    for (const URenderStreamChannelCacheAsset* Cache : Caches)
+    {
+        if (!Cache)
+            continue;
+
+        const FString LevelName = Cache->GetName();
+
+        for (const FString& ChannelName : Cache->Channels)
+        {
+            if (const FString* ExistingLevel = ChannelToLevel.Find(ChannelName))
+            {
+                IssuesFound = true;
+                FMessageLog RSV("RenderStreamValidation");
+                RSV.SuppressLoggingToOutputLog(true);
+                RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
+                    TEXT("Channel '%s' exists in multiple levels: '%s' and '%s'. "
+                         "This may cause non-deterministic camera selection across cluster nodes."),
+                    *ChannelName, **ExistingLevel, *LevelName))));
+            }
+            else
+            {
+                ChannelToLevel.Add(ChannelName, LevelName);
+            }
+        }
+    }
+
     for (const URenderStreamChannelCacheAsset* Cache : Caches)
     {
         if (!Cache)
