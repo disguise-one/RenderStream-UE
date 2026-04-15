@@ -3,6 +3,7 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/GameEngine.h"
+#include "Engine/Level.h"
 #include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamChannelDefinition);
@@ -108,17 +109,26 @@ TWeakObjectPtr<ACameraActor> URenderStreamChannelDefinition::GetChannelCamera(co
         return FindCameraInScene();
     }
 
-    // Select camera deterministically by lexicographically smallest path name.
-    // BeginPlay() order is non-deterministic across nDisplay cluster machines,
-    // so we cannot rely on array insertion order (i.e. Last() or First()).
-    // GetPathName() is stable across machines since actor names and level paths
-    // are serialized in the packaged project.
+    // Select camera deterministically. BeginPlay() order is non-deterministic across
+    // nDisplay cluster machines, so we cannot rely on array insertion order.
+    // Prefer persistent level cameras (the "primary" camera), then tiebreak by
+    // GetPathName() which is stable across machines since actor names and level
+    // paths are serialized in the packaged project.
     const auto& Cameras = *(*ActorsPtrPtr);
     TWeakObjectPtr<ACameraActor> Best = Cameras[0];
+    bool BestIsPersistent = Best.IsValid() && Best->GetLevel() && Best->GetLevel()->IsPersistentLevel();
     for (int32 i = 1; i < Cameras.Num(); i++)
     {
-        if (Cameras[i].IsValid() && (!Best.IsValid() || Cameras[i]->GetPathName() < Best->GetPathName()))
+        if (!Cameras[i].IsValid())
+            continue;
+        const bool CandidateIsPersistent = Cameras[i]->GetLevel() && Cameras[i]->GetLevel()->IsPersistentLevel();
+        if (!Best.IsValid()
+            || (CandidateIsPersistent && !BestIsPersistent)
+            || (CandidateIsPersistent == BestIsPersistent && Cameras[i]->GetPathName() < Best->GetPathName()))
+        {
             Best = Cameras[i];
+            BestIsPersistent = CandidateIsPersistent;
+        }
     }
     return Best;
 }
