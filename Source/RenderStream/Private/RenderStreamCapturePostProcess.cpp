@@ -89,12 +89,7 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
             }
             else
             {
-                // default values to avoid any math assertions in debug dlls
-                frameResponse.camera.nearZ = 0.1f;
-                frameResponse.camera.farZ = 1.f;
-                frameResponse.camera.sensorX = 1.f;
-                frameResponse.camera.sensorY = 1.f;
-                frameResponse.camera.focalLength = 1.f;
+                return; // No frame requested — skip GPU blit, RHI flush, and rs_sendFrame2
             }
         }
 
