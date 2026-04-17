@@ -426,7 +426,7 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
                 RSV.SuppressLoggingToOutputLog(true);
                 RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
                     TEXT("Channel '%s' exists in multiple levels: '%s' and '%s'. "
-                         "This may cause non-deterministic camera selection across cluster nodes."),
+                         "Make sure camera names are unique."),
                     *ChannelName, **ExistingLevel, *LevelName))));
             }
             else

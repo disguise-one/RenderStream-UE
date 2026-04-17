@@ -555,7 +555,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
                     FMessageLog RSV("RenderStreamValidation");
                     RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
                         TEXT("Duplicate channel '%s' in level '%s': camera '%s' shares channel with another camera. "
-                             "This may cause non-deterministic camera selection across cluster nodes."),
+                             "Make sure camera names are unique."),
                         *ChannelName, *LevelPath, *Actor->GetName()))));
                 }
                 Cache->Channels.Emplace(ChannelName);
