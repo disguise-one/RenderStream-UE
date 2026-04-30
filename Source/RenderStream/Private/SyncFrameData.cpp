@@ -34,10 +34,6 @@ bool FRenderStreamSyncFrameData::DeserializeFromString(const FString& Str)
 
     EDisplayClusterNodeRole NodeRole = IDisplayCluster::Get().GetClusterMgr()->GetClusterRole();
     
-    TArray<uint8> TempBytes;
-    TempBytes.AddUninitialized(Str.Len());
-    StringToBytes(Str, TempBytes.GetData(), Str.Len());
-
     if (NodeRole == EDisplayClusterNodeRole::Secondary)
     {
         TArray<uint8> TempBytes;
