@@ -236,10 +236,6 @@ void FRenderStreamSyncFrameData::Apply() const
 void FRenderStreamSyncFrameData::QuitNow() const
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::QuitNow()"));
-    if (IsEngineExitRequested())
-    {
-        return;
-    }
     RenderStreamLink::instance().rs_setNewStatusMessage("");
     UE_LOG(LogRenderStream, Log, TEXT("Quitting due to RenderStream request"));
     FPlatformMisc::RequestExit(false);
