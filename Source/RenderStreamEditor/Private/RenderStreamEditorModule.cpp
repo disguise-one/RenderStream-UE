@@ -540,6 +540,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->Level = LevelPath;
     Cache->Channels.Empty();
     Cache->ChannelInfoMap.Empty();
+    Cache->ChannelToActors.Empty();
     for (auto Actor : Level->Actors)
     {
         if (Actor)
@@ -548,16 +549,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
             if (Definition.IsValid())
             {
                 FString ChannelName = TCHAR_TO_UTF8(*(Definition->GetChannelName()));
-                // Detect duplicate channel names within this level. The cross-level case
-                // is handled separately in FRenderStreamValidation::RunValidation().
-                if (Cache->Channels.Contains(ChannelName))
-                {
-                    FMessageLog RSV("RenderStreamValidation");
-                    RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
-                        TEXT("Duplicate channel '%s' in level '%s': camera '%s' shares channel with another camera. "
-                             "Make sure camera names are unique."),
-                        *ChannelName, *LevelPath, *Actor->GetName()))));
-                }
+                Cache->ChannelToActors.FindOrAdd(ChannelName).Add(Actor->GetName());
                 Cache->Channels.Emplace(ChannelName);
                 FRenderStreamChannelInfo channelInfo = FRenderStreamValidation::GetChannelInfo(Definition, Level);
                 SanitizeChannelInfo(channelInfo);
