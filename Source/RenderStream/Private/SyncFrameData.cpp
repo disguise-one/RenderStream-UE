@@ -27,8 +27,13 @@ FString FRenderStreamSyncFrameData::SerializeToString() const
 
 bool FRenderStreamSyncFrameData::DeserializeFromString(const FString& Str)
 {
-    EDisplayClusterNodeRole NodeRole = IDisplayCluster::Get().GetClusterMgr()->GetClusterRole();
+    if (IsEngineExitRequested())
+    {
+        return true;
+    }
 
+    EDisplayClusterNodeRole NodeRole = IDisplayCluster::Get().GetClusterMgr()->GetClusterRole();
+    
     if (NodeRole == EDisplayClusterNodeRole::Secondary)
     {
         TArray<uint8> TempBytes;
