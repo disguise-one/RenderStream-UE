@@ -27,6 +27,11 @@ FString FRenderStreamSyncFrameData::SerializeToString() const
 
 bool FRenderStreamSyncFrameData::DeserializeFromString(const FString& Str)
 {
+    if (IsEngineExitRequested())
+    {
+        return true;
+    }
+
     TArray<uint8> TempBytes;
     TempBytes.AddUninitialized(Str.Len());
     StringToBytes(Str, TempBytes.GetData(), Str.Len());
