@@ -391,6 +391,65 @@ bool FRenderStreamValidation::ValidateChannelInfo(const FRenderStreamChannelInfo
     return IssuesFound;
 }
 
+bool FRenderStreamValidation::ValidateDuplicateChannels(const TArray<URenderStreamChannelCacheAsset*>& Caches)
+{
+    bool IssuesFound = false;
+
+    // Same-level duplicates: multiple cameras in one level sharing a channel name
+    for (const URenderStreamChannelCacheAsset* Cache : Caches)
+    {
+        if (!Cache)
+            continue;
+
+        const FString LevelName = Cache->GetName();
+
+        for (const auto& Pair : Cache->ChannelToActors)
+        {
+            if (Pair.Value.Num() > 1)
+            {
+                IssuesFound = true;
+                FMessageLog RSV("RenderStreamValidation");
+                RSV.SuppressLoggingToOutputLog(true);
+                FString ActorList = FString::Join(Pair.Value, TEXT("', '"));
+                RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
+                    TEXT("Duplicate channel '%s' in level '%s': cameras '%s' share the same channel name. "
+                         "Make sure camera names are unique."),
+                    *Pair.Key, *LevelName, *ActorList))));
+            }
+        }
+    }
+
+    // Cross-level duplicates: same channel name appearing in different levels
+    TMap<FString, FString> ChannelToLevel;
+    for (const URenderStreamChannelCacheAsset* Cache : Caches)
+    {
+        if (!Cache)
+            continue;
+
+        const FString LevelName = Cache->GetName();
+
+        for (const FString& ChannelName : Cache->Channels)
+        {
+            if (const FString* ExistingLevel = ChannelToLevel.Find(ChannelName))
+            {
+                IssuesFound = true;
+                FMessageLog RSV("RenderStreamValidation");
+                RSV.SuppressLoggingToOutputLog(true);
+                RSV.Error()->AddToken(FTextToken::Create(FText::FromString(FString::Printf(
+                    TEXT("Channel '%s' exists in multiple levels: '%s' and '%s'. "
+                         "Make sure camera names are unique."),
+                    *ChannelName, **ExistingLevel, *LevelName))));
+            }
+            else
+            {
+                ChannelToLevel.Add(ChannelName, LevelName);
+            }
+        }
+    }
+
+    return IssuesFound;
+}
+
 void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCacheAsset*>& Caches)
 {
     bool IssuesFound = false;
@@ -405,6 +464,7 @@ void FRenderStreamValidation::RunValidation(const TArray<URenderStreamChannelCac
         }
     }
     IssuesFound |= ValidateProjectSettings();
+    IssuesFound |= ValidateDuplicateChannels(Caches);
 
     for (const URenderStreamChannelCacheAsset* Cache : Caches)
     {

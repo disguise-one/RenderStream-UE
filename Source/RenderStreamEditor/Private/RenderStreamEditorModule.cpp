@@ -40,6 +40,8 @@
 #include "FileHelpers.h"
 #include "GameMapsSettings.h"
 
+#include "Logging/MessageLog.h"
+#include "Misc/UObjectToken.h"
 #include "MessageLogInitializationOptions.h"
 #include "MessageLogModule.h"
 #include "IMessageLogListing.h"
@@ -538,6 +540,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->Level = LevelPath;
     Cache->Channels.Empty();
     Cache->ChannelInfoMap.Empty();
+    Cache->ChannelToActors.Empty();
     for (auto Actor : Level->Actors)
     {
         if (Actor)
@@ -546,6 +549,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
             if (Definition.IsValid())
             {
                 FString ChannelName = TCHAR_TO_UTF8(*(Definition->GetChannelName()));
+                Cache->ChannelToActors.FindOrAdd(ChannelName).Add(Actor->GetName());
                 Cache->Channels.Emplace(ChannelName);
                 FRenderStreamChannelInfo channelInfo = FRenderStreamValidation::GetChannelInfo(Definition, Level);
                 SanitizeChannelInfo(channelInfo);

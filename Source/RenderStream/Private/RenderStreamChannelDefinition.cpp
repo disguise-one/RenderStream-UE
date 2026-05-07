@@ -3,6 +3,7 @@
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
 #include "Engine/GameEngine.h"
+#include "Engine/Level.h"
 #include "Kismet/GameplayStatics.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamChannelDefinition);
@@ -93,6 +94,34 @@ uint32 URenderStreamChannelDefinition::GetChannelCameraNum(const FString& Channe
     return (*Actors)->Num();
 }
 
+inline static TWeakObjectPtr<ACameraActor> GetBetterCamera(const TWeakObjectPtr<ACameraActor>& CamA, const TWeakObjectPtr<ACameraActor>& CamB)
+{
+    // prefer valid camera 
+    if (!CamB.IsValid())
+        return CamA;
+
+    if (!CamA.IsValid())
+        return CamB;
+
+    const bool CamAIsPersistent = CamA->GetLevel() && CamA->GetLevel()->IsPersistentLevel();
+    const bool CamBIsPersistent = CamB->GetLevel() && CamB->GetLevel()->IsPersistentLevel();
+
+    if (CamAIsPersistent != CamBIsPersistent)
+    {
+        // one is persistent, the other not: prefer the camera from the persistent level
+        if (CamAIsPersistent)
+            return CamA;
+        else
+            return CamB;
+    }
+
+    // final tiebreaker: prefer smaller path
+    if (CamA->GetPathName() < CamB->GetPathName())
+        return CamA;
+    else
+        return CamB;
+}
+
 TWeakObjectPtr<ACameraActor> URenderStreamChannelDefinition::GetChannelCamera(const FString& Channel)
 {
     if (Channel.IsEmpty())
@@ -108,7 +137,16 @@ TWeakObjectPtr<ACameraActor> URenderStreamChannelDefinition::GetChannelCamera(co
         return FindCameraInScene();
     }
 
-    return (*ActorsPtrPtr)->Last();
+    // Select camera deterministically. BeginPlay() order is non-deterministic across
+    // nDisplay cluster machines, so we cannot rely on array insertion order.
+    const auto& Cameras = *(*ActorsPtrPtr);
+    TWeakObjectPtr<ACameraActor> Best;
+    for (const auto& Camera : Cameras)
+    {
+        Best = GetBetterCamera(Best, Camera);
+    }
+
+    return Best;
 }
 
 URenderStreamChannelDefinition::URenderStreamChannelDefinition()
@@ -238,6 +276,13 @@ void URenderStreamChannelDefinition::BeginPlay()
         FString ActorName = GetOwner()->GetActorNameOrLabel();
         FString ChannelName = GetChannelName();
         auto& Array = FindOrAdd(ChannelActorMap, ChannelName);
+        if (Array.Num() > 0)
+        {
+            UE_LOG(LogRenderStreamChannelDefinition, Warning,
+                TEXT("!!!!! Multiple cameras registered for the same channel '%s'. "
+                     "This may cause non-deterministic camera selection across cluster nodes."),
+                *ChannelName);
+        }
         Array.Add(Owner);
         Registered = true;
         UE_LOG(LogRenderStreamChannelDefinition, Log, TEXT("Adding camera '%s' to channel '%s'."), *ActorName, *ChannelName);
