@@ -1,0 +1,54 @@
+name: Tag release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure git
+        run: |
+          git config --local user.email "build@disguise.com"
+          git config --local user.name "CI"
+
+      - name: Create empty commit and tag, push atomically
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          BASE_SHA=$(git rev-parse --short HEAD)
+          TAG="Release_${BRANCH}_${BASE_SHA}"
+          MSG="(( ${TAG} ))"
+
+          echo "Branch:       $BRANCH"
+          echo "Base commit:  $BASE_SHA"
+          echo "Tag:          $TAG"
+          echo "Commit msg:   $MSG"
+
+          if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::tag ${TAG} already exists locally"; exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::tag ${TAG} already exists on origin"; exit 1
+          fi
+
+          git commit --allow-empty -m "$MSG"
+          git tag -a "$TAG" -m "$MSG"
+          git push --atomic origin "HEAD:refs/heads/${BRANCH}" "refs/tags/${TAG}"
+
+          {
+            echo "### Release tagged"
+            echo ""
+            echo "- **Branch:** \`$BRANCH\`"
+            echo "- **Base commit:** \`$BASE_SHA\`"
+            echo "- **Tag:** \`$TAG\`"
+            echo "- **Commit message:** \`$MSG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
