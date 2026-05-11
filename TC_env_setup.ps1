@@ -133,7 +133,7 @@ if ($matchedTags)
 {
     $finalTag = $matchedTags[0] -replace ".*\(\(\s+" -replace "\s+\)\).*"
 
-    write-host "Tag detected: ", $tag, ". Will create draft Github Release"
+    write-host "Tag detected: ", $finalTag, ". Will create draft Github Release"
 
     $github_token = get-github_app_token
     write-host "GitHub App token begins:",$github_token.Substring(0,7)
