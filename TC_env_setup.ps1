@@ -136,12 +136,11 @@ if ($matchedTags)
     write-host "Tag detected: ", $finalTag, ". Will create draft Github Release"
 
     $github_token = get-github_app_token
-    write-host "GitHub App token begins:",$github_token.Substring(0,7)
 
     $headers = @{}
     $headers.Add('Authorization',"token $github_token")
     $headers.Add('Accept', 'application/vnd.github.v3+json')
-
+    $headers.Add('Content-Type','application/json')
     # Create new release for based on tag discovered
     # eg https://api.github.com/repos/octocat/hello-world/releases
 
