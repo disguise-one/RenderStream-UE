@@ -198,7 +198,15 @@ void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, F
 {
     check(type != RenderStreamParameterType::Float);
     check(type != RenderStreamParameterType::Text);
+    check(type != RenderStreamParameterType::Array);
     CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, 0, 0, 0, "");
+}
+
+void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min, float max, float step, float defaultValue, uint32 nElements)
+{
+    check(type == RenderStreamParameterType::Array);
+    CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, min, max, step, FString::SanitizeFloat(defaultValue));
+    parameter.NumElements = nElements;
 }
 
 
@@ -423,9 +431,7 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
                     const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
                     const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
                     const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
-                    FRenderStreamExposedParameterEntry& Entry = Parameters.Emplace_GetRef();
-                    CreateFieldInternal(Entry, Category, Name, "", Name, "", RenderStreamParameterType::Array, Min, Max, 0.001f, "0");
-                    Entry.NumElements = nElements;
+                    CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Array, Min, Max, 0.001f, 0.f, nElements);
                 }
             }
             else
