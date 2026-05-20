@@ -480,6 +480,34 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
             validateField(Name, "", RenderStreamLink::RS_PARAMETER_TEXT, parameters[nParameters]);
             ++nParameters;
         }
+        else if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
+        {
+            // Blueprint floats are stored as FDoubleProperty
+            if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
+            {
+                UE_LOG(LogRenderStream, Log, TEXT("Exposed float array property: %s"), *Name);
+                if (numParameters < nParameters + 1)
+                {
+                    UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                    return SIZE_MAX;
+                }
+                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_ARRAY, parameters[nParameters]))
+                    return SIZE_MAX;
+                FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
+                if (parameters[nParameters].nElements != uint32_t(ArrayHelper.Num()))
+                {
+                    UE_LOG(LogRenderStream, Error,
+                        TEXT("Float array parameter %s size mismatch: schema has %u elements but actor has %d. Re-save the level."),
+                        *Name, parameters[nParameters].nElements, ArrayHelper.Num());
+                    return SIZE_MAX;
+                }
+                ++nParameters;
+            }
+            else
+            {
+                UE_LOG(LogRenderStream, Warning, TEXT("Unsupported array inner type for property: %s"), *Name);
+            }
+        }
         else
         {
             UE_LOG(LogRenderStream, Warning, TEXT("Unsupported exposed property: %s"), *Name);
@@ -523,6 +551,9 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
             break;
         case RenderStreamLink::RS_PARAMETER_SKELETON:
             nPoseParams++;
+            break;
+        case RenderStreamLink::RS_PARAMETER_ARRAY:
+            nFloatParams += param.nElements;
             break;
         default:
             UE_LOG(LogRenderStream, Error, TEXT("Unhandled parameter type"));
@@ -882,6 +913,28 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 TextProperty->SetPropertyValue_InContainer(Root, FText::FromString(UTF8_TO_TCHAR(cString)));
             }
             ++textValues;
+        }
+        else if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
+        {
+            if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
+            {
+                const RenderStreamLink::RemoteParameter& param = (*ppParams)[iParam];
+                const uint32_t nElements = param.nElements;
+                if (iFloat + nElements > floatValues.size())
+                {
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read float array value from disguise that is out of range. Does the metadata need to be regenerated?"));
+                }
+                else
+                {
+                    FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
+                    ArrayHelper.Resize(nElements);
+                    for (uint32_t i = 0; i < nElements; ++i)
+                    {
+                        *reinterpret_cast<double*>(ArrayHelper.GetRawPtr(i)) = double(floatValues[iFloat + i]);
+                    }
+                    iFloat += nElements;
+                }
+            }
         }
         ++iParam;
     }

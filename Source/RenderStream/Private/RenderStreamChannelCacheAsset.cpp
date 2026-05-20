@@ -18,6 +18,8 @@ RenderStreamLink::RemoteParameterType RenderStreamParameterTypeToLink(RenderStre
         return RenderStreamLink::RS_PARAMETER_EVENT;
     case RenderStreamParameterType::Skeleton:
         return RenderStreamLink::RS_PARAMETER_SKELETON;
+    case RenderStreamParameterType::Array:
+        return RenderStreamLink::RS_PARAMETER_ARRAY;
     default:
         check(false);
         return RenderStreamLink::RS_PARAMETER_NUMBER;

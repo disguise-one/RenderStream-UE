@@ -212,7 +212,7 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         parameter.displayName = _strdup(TCHAR_TO_UTF8(*entry.DisplayName));
         parameter.key = _strdup(TCHAR_TO_UTF8(*entry.Key));
         parameter.type = RenderStreamParameterTypeToLink(entry.Type);
-        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER)
+        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER || parameter.type == RenderStreamLink::RS_PARAMETER_ARRAY)
         {
             parameter.defaults.number.min = entry.Min;
             parameter.defaults.number.max = entry.Max;
@@ -232,6 +232,7 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         parameter.dmxOffset = -1; // Auto
         parameter.dmxType = RenderStreamLink::RS_DMX_16_BE;
         parameter.flags = RenderStreamLink::REMOTEPARAMETER_NO_FLAGS;
+        parameter.nElements = entry.NumElements;
     }
 }
 
@@ -405,6 +406,32 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const FString s = v.ToString();
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed text property: %s is %s"), *Name, *s);
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Text, s);
+        }
+        else if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
+        {
+            if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
+            {
+                FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
+                const uint32 nElements = ArrayHelper.Num();
+                if (nElements == 0)
+                {
+                    UE_LOG(LogRenderStreamEditor, Warning, TEXT("Skipping float array property %s: array is empty - size the array in the editor before exposing it"), *Name);
+                }
+                else
+                {
+                    UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed float array property: %s with %u elements"), *Name, nElements);
+                    const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
+                    const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
+                    const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
+                    FRenderStreamExposedParameterEntry& Entry = Parameters.Emplace_GetRef();
+                    CreateFieldInternal(Entry, Category, Name, "", Name, "", RenderStreamParameterType::Array, Min, Max, 0.001f, "0");
+                    Entry.NumElements = nElements;
+                }
+            }
+            else
+            {
+                UE_LOG(LogRenderStreamEditor, Warning, TEXT("Unsupported array inner type for property: %s"), *Name);
+            }
         }
         else
         {
