@@ -781,6 +781,11 @@ void FRenderStreamModule::OnBeginFrame()
     if (IsController)
         m_syncFrame.ControllerReceive();
 
+    // Skip scene rendering entirely when idle (no frame requests from disguise).
+    // This is the main GPU savings — prevents UE from rendering all nDisplay viewports.
+    if (GEngine && GEngine->GameViewport)
+        GEngine->GameViewport->bDisableWorldRendering = !m_syncFrame.m_frameDataValid;
+
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
 
     ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();

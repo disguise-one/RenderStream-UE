@@ -22,7 +22,41 @@ function select-UE_engine_from_json
 }
 
 
-function connect-network_drive{ param($server_ip) 
+function get-github_app_token {
+    # Runs the GitHub App token executable provided on the build agent and
+    # returns a short-lived installation access token. The exe path and the
+    # private key path are supplied via env vars set up by TeamCity.
+    Write-Host "Generating GitHub App token..."
+
+    $token_exe = $env:github_app_token_exe
+    $pem_path  = $env:github_app_pem
+
+    if (-not $token_exe -or -not (Test-Path $token_exe)) {
+        throw "github_app_token_exe is not set or does not exist: '$token_exe'"
+    }
+    if (-not $pem_path -or -not (Test-Path $pem_path)) {
+        throw "github_app_pem is not set or does not exist: '$pem_path'"
+    }
+
+    $raw = & $token_exe --pem $pem_path
+    if ($LASTEXITCODE -ne 0) {
+        throw "github app token exe failed with exit code $LASTEXITCODE"
+    }
+
+    $response = ($raw -join "`n").Trim() | ConvertFrom-Json
+
+    if ($response.status -ne 201) {
+        throw "Failed to get github app token. Status: $($response.status)"
+    }
+    if ([string]::IsNullOrEmpty($response.token)) {
+        throw "github app token exe returned an empty token"
+    }
+
+    return $response.token
+}
+
+
+function connect-network_drive{ param($server_ip)
 
     $engine_version = select-UE_engine_from_json
     
@@ -99,13 +133,14 @@ if ($matchedTags)
 {
     $finalTag = $matchedTags[0] -replace ".*\(\(\s+" -replace "\s+\)\).*"
 
-    write-host "Tag detected: ", $finalTag, " - creating Draft Github Release"
-    write-host "PAT from Team City begins:", $env:personal_access_token.Substring(0,7)
+    write-host "Tag detected: ", $finalTag, ". Will create draft Github Release"
+
+    $github_token = get-github_app_token
 
     $headers = @{}
-    $headers.Add('Authorization',"token $env:personal_access_token")
+    $headers.Add('Authorization',"token $github_token")
     $headers.Add('Accept', 'application/vnd.github.v3+json')
-
+    $headers.Add('Content-Type','application/json')
     # Create new release for based on tag discovered
     # eg https://api.github.com/repos/octocat/hello-world/releases
 
