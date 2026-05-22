@@ -577,6 +577,10 @@ void RenderStreamSceneSelector::GetTextureParameter(const FString& toggle, const
             RenderStreamLink::SenderFrame data = {};
             if (toggle == "D3D11")
             {
+                {
+                    SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                    RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+                }
                 data.type = RenderStreamLink::SenderFrameType::RS_FRAMETYPE_DX11_TEXTURE;
                 data.dx11.resource = static_cast<ID3D11Resource*>(resource);
                 auto err = RenderStreamLink::instance().rs_getFrameImage2(frameData.imageId, &data);
