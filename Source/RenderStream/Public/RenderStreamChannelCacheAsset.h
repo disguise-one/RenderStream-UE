@@ -90,4 +90,7 @@ public:
 
     UPROPERTY(EditAnywhere, Category = "ChannelCacheAsset")
     TMap<FString, FRenderStreamChannelInfo> ChannelInfoMap;
+
+    // Transient: populated during cache build, consumed by validation to detect same-level duplicates
+    TMap<FString, TArray<FString>> ChannelToActors;
 };
