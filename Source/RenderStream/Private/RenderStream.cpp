@@ -219,7 +219,7 @@ void FRenderStreamModule::StartupModule()
         FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FRenderStreamModule::OnPostLoadMapWithWorld);
         FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamModule::OnBeginFrame);
         FCoreDelegates::OnEndFrame.AddRaw(this, &FRenderStreamModule::OnEndFrame);
-        FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
+        FCoreDelegates::GetOnPostEngineInit.AddRaw(this, &FRenderStreamModule::OnPostEngineInit);
 
         FWorldDelegates::OnStartGameInstance.AddRaw(this, &FRenderStreamModule::GameInstanceStarted);
         FCoreDelegates::GetApplicationWillTerminateDelegate().AddRaw(this, &FRenderStreamModule::AppWillTerminate);
