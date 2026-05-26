@@ -252,7 +252,8 @@ public:
         RS_PARAMETER_TEXT,
         RS_PARAMETER_EVENT,
         RS_PARAMETER_SKELETON,
-        RS_PARAMETER_LAST= RS_PARAMETER_SKELETON
+        RS_PARAMETER_ARRAY,
+        RS_PARAMETER_LAST= RS_PARAMETER_ARRAY
     };
     static const char* ParamTypeToName(RemoteParameterType type);
 
@@ -316,6 +317,7 @@ public:
         int32_t dmxOffset; // DMX channel offset or auto (-1)
         RemoteParameterDmxType dmxType;
         uint32_t flags; // REMOTEPARAMETER_FLAGS
+        uint32_t nElements;
     } RemoteParameter;
 
     typedef struct
