@@ -574,6 +574,10 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     if (nImageParams > 0)
     {
         ENQUEUE_RENDER_COMMAND(RegisterTextureParams)([](FRHICommandListImmediate& RHICmdList) {
+            {
+                SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Tex Param Flush"));
+                RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThreadFlushResources);
+            }
             RenderStreamLink::instance().rs_registerTextureParams();
         });
         FlushRenderingCommands();
