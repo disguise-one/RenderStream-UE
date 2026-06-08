@@ -31,6 +31,7 @@
 
 #include "Runtime/Launch/Resources/Version.h"
 #include "GeneralProjectSettings.h"
+#include "Engine/RendererSettings.h"
 
 #include "RenderStream/Public/RenderStreamLink.h"
 #include <set>
@@ -199,7 +200,15 @@ void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, F
 {
     check(type != RenderStreamParameterType::Float);
     check(type != RenderStreamParameterType::Text);
+    check(type != RenderStreamParameterType::Array);
     CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, 0, 0, 0, "");
+}
+
+void CreateField(FRenderStreamExposedParameterEntry& parameter, FString group, FString displayName_, FString suffix, FString key_, FString undecoratedSuffix, RenderStreamParameterType type, float min, float max, float step, float defaultValue, uint32 nElements)
+{
+    check(type == RenderStreamParameterType::Array);
+    CreateFieldInternal(parameter, group, displayName_, suffix, key_, undecoratedSuffix, type, min, max, step, FString::SanitizeFloat(defaultValue));
+    parameter.NumElements = nElements;
 }
 
 
@@ -213,7 +222,7 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         parameter.displayName = _strdup(TCHAR_TO_UTF8(*entry.DisplayName));
         parameter.key = _strdup(TCHAR_TO_UTF8(*entry.Key));
         parameter.type = RenderStreamParameterTypeToLink(entry.Type);
-        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER)
+        if (parameter.type == RenderStreamLink::RS_PARAMETER_NUMBER || parameter.type == RenderStreamLink::RS_PARAMETER_ARRAY)
         {
             parameter.defaults.number.min = entry.Min;
             parameter.defaults.number.max = entry.Max;
@@ -233,6 +242,7 @@ static void ConvertFields(RenderStreamLink::RemoteParameter* outputIterator, con
         parameter.dmxOffset = -1; // Auto
         parameter.dmxType = RenderStreamLink::RS_DMX_16_BE;
         parameter.flags = RenderStreamLink::REMOTEPARAMETER_NO_FLAGS;
+        parameter.nElements = entry.NumElements;
     }
 }
 
@@ -406,6 +416,30 @@ void GenerateParameters(TArray<FRenderStreamExposedParameterEntry>& Parameters, 
             const FString s = v.ToString();
             UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed text property: %s is %s"), *Name, *s);
             CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Text, s);
+        }
+        else if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
+        {
+            if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
+            {
+                FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
+                const uint32 nElements = ArrayHelper.Num();
+                if (nElements == 0)
+                {
+                    UE_LOG(LogRenderStreamEditor, Warning, TEXT("Skipping float array property %s: array is empty - size the array in the editor before exposing it"), *Name);
+                }
+                else
+                {
+                    UE_LOG(LogRenderStreamEditor, Log, TEXT("Exposed float array property: %s with %u elements"), *Name, nElements);
+                    const bool HasLimits = Property->HasMetaData("ClampMin") && Property->HasMetaData("ClampMax");
+                    const float Min = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMin")) : -1;
+                    const float Max = HasLimits ? FCString::Atof(*Property->GetMetaData("ClampMax")) : +1;
+                    CreateField(Parameters.Emplace_GetRef(), Category, Name, "", Name, "", RenderStreamParameterType::Array, Min, Max, 0.001f, 0.f, nElements);
+                }
+            }
+            else
+            {
+                UE_LOG(LogRenderStreamEditor, Warning, TEXT("Unsupported array inner type for property: %s"), *Name);
+            }
         }
         else
         {
@@ -780,6 +814,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     Schema.schema.engineVersion = _strdup(TCHAR_TO_UTF8(ENGINE_VERSION_STRING));
     Schema.schema.pluginVersion = _strdup(RS_PLUGIN_VERSION);
     Schema.schema.info = _strdup(TCHAR_TO_UTF8(*GetDefault<UGeneralProjectSettings>()->Description));
+    Schema.schema.workingColourSpace = RenderStreamLink::GetWorkingColourSpace();
     Schema.schema.channels.nChannels = uint32_t(Channels.size());
     Schema.schema.channels.channels = static_cast<const char**>(malloc(Schema.schema.channels.nChannels * sizeof(const char*)));
     auto It = Channels.begin();
