@@ -15,10 +15,10 @@ struct RENDERSTREAM_API FStreamInfo
     FString Name;
 
     UPROPERTY(BlueprintReadOnly, Category = "Stream")
-    FBox2D Region;
+    FBox2D Region = FBox2D(ForceInit);
 
     UPROPERTY(BlueprintReadOnly, Category = "Stream")
-    FIntPoint Resolution;
+    FIntPoint Resolution = FIntPoint(ForceInit);
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FRenderStreamStreamsChangedEvent, const TArray<FStreamInfo>&, StreamInfo);
