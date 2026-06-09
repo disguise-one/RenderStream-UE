@@ -236,7 +236,7 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
         // To use DisplayView as a source, `DisplayViewDirection` needs to be set to `Inverse` with
         // `colourConversionSettings.DestinationDisplayView` set to `DestinationDisplayView`.
         // `Support inverse view transform` setting under `Plugins - OpenColorIO` in the UE project must be enabled: DSOF-31260
-        if (settings->OCIOConfig.ColorConfiguration.DestinationColorSpace.ColorSpaceIndex != INDEX_NONE)
+        if (settings->OCIOConfig.ColorConfiguration.DestinationColorSpace.IsValid())
         {
             m_colourConversionSettings.SourceColorSpace = settings->OCIOConfig.ColorConfiguration.DestinationColorSpace;
             m_colourConversionSettings.DestinationColorSpace = settings->OCIOConfig.ColorConfiguration.SourceColorSpace;
