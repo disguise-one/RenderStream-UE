@@ -19,6 +19,7 @@ enum class RenderStreamParameterType : uint8
     Text,
     Event,
     Skeleton,
+    Array,
 };
 
 RENDERSTREAM_API RenderStreamLink::RemoteParameterType RenderStreamParameterTypeToLink(RenderStreamParameterType type);
@@ -47,6 +48,8 @@ public:
     FString DefaultValue;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     TArray<FString> Options;
+    UPROPERTY(EditAnywhere, Category = "ExposedParameter")
+    uint32 NumElements = 0;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     int32 DmxOffset;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
