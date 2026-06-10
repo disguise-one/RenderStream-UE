@@ -14,6 +14,14 @@
 #include "Interfaces/IPluginManager.h"
 #include "Windows/MinWindows.h"
 
+#ifdef WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+THIRD_PARTY_INCLUDES_START
+#include <winver.h>
+THIRD_PARTY_INCLUDES_END
+#pragma comment(lib, "version.lib")
+#endif
+
 namespace {
     void log_default(const char* text) {
         UE_LOG(LogRenderStream, Log, TEXT("%s"), ANSI_TO_TCHAR(text));
@@ -125,8 +133,8 @@ bool RenderStreamLink::loadExplicit()
 
     const FString dllName("d3renderstream.dll");
     const FString exePath = GetD3PathFromReg();
-    const FString dllPath = exePath + dllName;
-    if (!FPaths::FileExists(dllPath))
+    m_dllPath = exePath + dllName;
+    if (!FPaths::FileExists(m_dllPath))
     {
         UE_LOG(LogRenderStream, Error, TEXT("%s not found in %s."), *dllName, *exePath);
         return false;
@@ -138,13 +146,13 @@ bool RenderStreamLink::loadExplicit()
             UE_LOG(LogRenderStream, Fatal, TEXT("RenderStream instance cannot launch, the app will exit to avoid other RenderStram errors during runtime. Reason: %s"), *msg);
     };
 
-    UE_LOG(LogRenderStream, Log, TEXT("Loading RenderStream dll at %s."), *dllPath);
-    m_dll = LoadLibraryEx(*dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS);
+    UE_LOG(LogRenderStream, Log, TEXT("Loading RenderStream dll at %s."), *m_dllPath);
+    m_dll = LoadLibraryEx(*m_dllPath, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_USER_DIRS);
     if (m_dll == nullptr)
     {
         std::error_code e = std::error_code(GetLastError(), std::system_category());
         FString osMsg = e.message().c_str();
-        UE_LOG(LogRenderStream, Error, TEXT("Failed to load %s. %s (%i)"), *dllPath, *osMsg, e.value());
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to load %s. %s (%i)"), *m_dllPath, *osMsg, e.value());
         LogFatalIfNotInEditor("RenderStream DLL could not be loaded.");
         return false;
     }
@@ -238,4 +246,59 @@ bool RenderStreamLink::unloadExplicit()
 #endif
     m_loaded = false;
     return m_dll == nullptr;
+}
+
+bool RenderStreamLink::GetD3Version(int32& OutMajor, int32& OutMinor, int32& OutPatch) const
+{
+#ifdef WINDOWS
+    if (m_dllPath.IsEmpty())
+        return false;
+
+    DWORD ignored = 0;
+    const DWORD infoSize = GetFileVersionInfoSizeW(*m_dllPath, &ignored);
+    if (infoSize == 0)
+        return false;
+
+    TArray<uint8> buffer;
+    buffer.SetNumUninitialized(static_cast<int32>(infoSize));
+    if (!GetFileVersionInfoW(*m_dllPath, 0, infoSize, buffer.GetData()))
+        return false;
+
+    VS_FIXEDFILEINFO* fixedInfo = nullptr;
+    UINT fixedInfoLen = 0;
+    if (!VerQueryValueW(buffer.GetData(), L"\\", reinterpret_cast<LPVOID*>(&fixedInfo), &fixedInfoLen) || fixedInfo == nullptr)
+        return false;
+
+    OutMajor = static_cast<int32>(HIWORD(fixedInfo->dwFileVersionMS));
+    OutMinor = static_cast<int32>(LOWORD(fixedInfo->dwFileVersionMS));
+    OutPatch = static_cast<int32>(HIWORD(fixedInfo->dwFileVersionLS));
+    return true;
+#else
+    return false;
+#endif
+}
+
+bool RenderStreamLink::IsSchemaGenerationSupported() const
+{
+    int32 major = 0, minor = 0, patch = 0;
+    if (!GetD3Version(major, minor, patch))
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Could not determine installed d3 version; treating schema generation as unsupported."));
+        return false;
+    }
+
+    const bool supported =
+        (major > MIN_D3_VERSION_MAJOR) ||
+        (major == MIN_D3_VERSION_MAJOR && minor > MIN_D3_VERSION_MINOR) ||
+        (major == MIN_D3_VERSION_MAJOR && minor == MIN_D3_VERSION_MINOR && patch >= MIN_D3_VERSION_PATCH);
+
+    if (!supported)
+    {
+        UE_LOG(LogRenderStream, Error,
+            TEXT("Installed d3 version %d.%d.%d is too old for RenderStream schema generation; d3 version r%d.%d.%d or newer is required."),
+            major, minor, patch,
+            MIN_D3_VERSION_MAJOR, MIN_D3_VERSION_MINOR, MIN_D3_VERSION_PATCH);
+    }
+
+    return supported;
 }
