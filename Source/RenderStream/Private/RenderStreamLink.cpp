@@ -19,6 +19,7 @@
 THIRD_PARTY_INCLUDES_START
 #include <winver.h>
 THIRD_PARTY_INCLUDES_END
+#include "Windows/HideWindowsPlatformTypes.h"
 #pragma comment(lib, "version.lib")
 #endif
 
@@ -287,18 +288,7 @@ bool RenderStreamLink::IsSchemaGenerationSupported() const
         return false;
     }
 
-    const bool supported =
-        (major > MIN_D3_VERSION_MAJOR) ||
+    return (major > MIN_D3_VERSION_MAJOR) ||
         (major == MIN_D3_VERSION_MAJOR && minor > MIN_D3_VERSION_MINOR) ||
         (major == MIN_D3_VERSION_MAJOR && minor == MIN_D3_VERSION_MINOR && patch >= MIN_D3_VERSION_PATCH);
-
-    if (!supported)
-    {
-        UE_LOG(LogRenderStream, Error,
-            TEXT("Installed d3 version %d.%d.%d is too old for RenderStream schema generation; d3 version r%d.%d.%d or newer is required."),
-            major, minor, patch,
-            MIN_D3_VERSION_MAJOR, MIN_D3_VERSION_MINOR, MIN_D3_VERSION_PATCH);
-    }
-
-    return supported;
 }
