@@ -363,7 +363,7 @@ public:
 #define RENDER_STREAM_VERSION_MINOR 0
 
 #define MIN_D3_VERSION_MAJOR 33
-#define MIN_D3_VERSION_MINOR 2
+#define MIN_D3_VERSION_MINOR 3
 #define MIN_D3_VERSION_PATCH 0
 
     enum UseDX12SharedHeapFlag
