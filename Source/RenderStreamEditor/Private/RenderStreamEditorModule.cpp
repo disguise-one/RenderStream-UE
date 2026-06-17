@@ -768,12 +768,7 @@ void FRenderStreamEditorModule::RunValidation(const TArray<URenderStreamChannelC
 
 void FRenderStreamEditorModule::GenerateAssetMetadata()
 {
-    if (!RenderStreamLink::instance().isAvailable())
-    {
-        UE_LOG(LogRenderStreamEditor, Warning, TEXT("RenderStreamLink unavailable, skipped GenerateAssetMetadata"));
-        return;
-    }
-
+    // Check the installed d3 version first.
     if (!RenderStreamLink::instance().IsSchemaGenerationSupported())
     {
         const FString msg = FString::Printf(
@@ -782,6 +777,12 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
         UE_LOG(LogRenderStreamEditor, Error, TEXT("%s"), *msg);
         if (GEngine)
             GEngine->AddOnScreenDebugMessage(-1, 20.f, FColor::Red, msg);
+        return;
+    }
+
+    if (!RenderStreamLink::instance().isAvailable())
+    {
+        UE_LOG(LogRenderStreamEditor, Warning, TEXT("RenderStreamLink unavailable, skipped GenerateAssetMetadata"));
         return;
     }
 
