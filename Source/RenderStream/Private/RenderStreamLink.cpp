@@ -11,6 +11,8 @@
 
 #include "IDisplayCluster.h"
 #include "Interfaces/IPluginManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 #include "Windows/WindowsHWrapper.h"
 
 namespace {
@@ -102,11 +104,30 @@ bool RenderStreamLink::loadExplicit()
 
     const FString dllName("d3renderstream.dll");
     const FString exePath = GetD3PathFromReg();
-    const FString dllPath = exePath + dllName;
-    if (!FPaths::FileExists(dllPath))
+    if (!FPaths::FileExists(exePath + dllName))
     {
         UE_LOG(LogRenderStream, Error, TEXT("%s not found in %s."), *dllName, *exePath);
         return false;
+    }
+
+    // Workaround for 5.8, encrypted DLLs crash when loaded because UE tries to parse the callstack unwind info which fails
+    // There is a filter that exempts DLLs within a ThirdParty folder from this parsing
+    FString dllPath = exePath + dllName;
+    const FString destDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty"));
+    const FString srcSend = exePath + TEXT("d3renderstreamsend.dll");
+    IFileManager& fileManager = IFileManager::Get();
+    fileManager.MakeDirectory(*destDir, true);
+    const bool copiedRSMain = fileManager.Copy(*(destDir / dllName), *(exePath + dllName), true, true) == COPY_OK;
+    const bool copiedRSSend = FPaths::FileExists(srcSend) && fileManager.Copy(*(destDir / TEXT("d3renderstreamsend.dll")), *srcSend, true, true) == COPY_OK;
+    if (copiedRSMain && copiedRSSend)
+    {
+        AddDllDirectory(*exePath);
+        dllPath = destDir / dllName;
+        UE_LOG(LogRenderStream, Log, TEXT("Copied RenderStream DLLs"));
+    }
+    else
+    {
+        UE_LOG(LogRenderStream, Warning, TEXT("Failed to copy RenderStream DLLs"));
     }
 
     auto LogFatalIfNotInEditor = [](const FString& msg)
