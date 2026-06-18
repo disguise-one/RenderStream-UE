@@ -49,6 +49,10 @@
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
 
+#include "LevelEditor.h"
+#include "LevelEditorActions.h"
+#include "Framework/Commands/UICommandList.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
@@ -85,10 +89,11 @@ void FRenderStreamEditorModule::StartupModule()
 
         UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(
             this, &FRenderStreamEditorModule::RegisterToolBarButton));
+
+        UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(
+            this, &FRenderStreamEditorModule::RegisterSaveCommandOverrides));
     }
 
-    FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
-    FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
@@ -113,8 +118,6 @@ void FRenderStreamEditorModule::ShutdownModule()
         PropertyModule.UnregisterCustomClassLayout("RenderStreamSettings");
     }
 
-    FEditorDelegates::PostSaveExternalActors.RemoveAll(this);
-    FEditorDelegates::PostSaveWorldWithContext.RemoveAll(this);
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
@@ -1002,15 +1005,40 @@ void FRenderStreamEditorModule::RegisterToolBarButton()
     ));
 }
 
-void FRenderStreamEditorModule::OnPostSaveWorldContext(UWorld* World, FObjectPostSaveContext context)
+void FRenderStreamEditorModule::RegisterSaveCommandOverrides()
 {
-    if (context.SaveSucceeded())
-        DirtyAssetMetadata = true;
-}
+    FLevelEditorModule* LevelEditorModule = FModuleManager::GetModulePtr<FLevelEditorModule>("LevelEditor");
+    if (!LevelEditorModule)
+        return;
 
-void FRenderStreamEditorModule::OnPostSaveWorld(UWorld* World)
-{
-    DirtyAssetMetadata = true;
+    const TSharedRef<FUICommandList> CommandList = LevelEditorModule->GetGlobalLevelEditorActions();
+
+    auto WrapSaveCommand = [this, &CommandList](const TSharedPtr<FUICommandInfo>& Command)
+    {
+        if (!Command.IsValid())
+            return;
+
+        const FUIAction* ExistingAction = CommandList->GetActionForCommand(Command);
+        if (!ExistingAction)
+            return;
+
+        // Copy the existing action so we preserve CanExecute/visibility, then chain schema regeneration
+        FUIAction WrappedAction = *ExistingAction;
+        const FExecuteAction OriginalExecute = WrappedAction.ExecuteAction;
+        WrappedAction.ExecuteAction = FExecuteAction::CreateLambda([this, OriginalExecute]()
+        {
+            if (OriginalExecute.IsBound())
+                OriginalExecute.Execute();
+
+            // Mark dirty so OnBeginFrame regenerates next tick, regardless of whether a package was written.
+            DirtyAssetMetadata = true;
+        });
+
+        CommandList->MapAction(Command, WrappedAction);
+    };
+
+    WrapSaveCommand(FLevelEditorCommands::Get().Save);
+    WrapSaveCommand(FLevelEditorCommands::Get().SaveAllLevels);
 }
 
 void FRenderStreamEditorModule::OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses)
