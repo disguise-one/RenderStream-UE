@@ -362,6 +362,10 @@ public:
 #define RENDER_STREAM_VERSION_MAJOR 3
 #define RENDER_STREAM_VERSION_MINOR 0
 
+#define MIN_D3_VERSION_MAJOR 33
+#define MIN_D3_VERSION_MINOR 3
+#define MIN_D3_VERSION_PATCH 0
+
     enum UseDX12SharedHeapFlag
     {
         RS_DX12_USE_SHARED_HEAP_FLAG,
@@ -472,6 +476,9 @@ public:
 
     bool loadExplicit(FString& outError);
     bool unloadExplicit();
+
+    bool GetD3Version(int32& OutMajor, int32& OutMinor, int32& OutPatch) const;
+    RENDERSTREAM_API bool IsSchemaGenerationSupported() const;
 
     struct ScopedSchema
     {
@@ -599,6 +606,7 @@ public: // d3renderstream.h API, but loaded dynamically.
 private:
     bool m_loaded = false;
     void* m_dll = nullptr;
+    FString m_dllPath;
 };
 
 //template<typename Fn>
