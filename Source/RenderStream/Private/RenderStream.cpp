@@ -190,16 +190,38 @@ void FRenderStreamModule::StartupModule()
 
     // This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
 
-    if (!RenderStreamLink::instance().loadExplicit())
+    FString loadError;
+    if (!RenderStreamLink::instance().loadExplicit(loadError))
     {
-        UE_LOG(LogRenderStream, Error, TEXT ("Failed to load RenderStream DLL - d3 not installed?"));
+        if (loadError.IsEmpty())
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("Failed to load RenderStream DLL - d3 not installed?"));
+        }
+        else
+        {
+            if (RenderStreamLink::instance().rs_initialise)
+            {
+                int errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
+                if (errCode == RenderStreamLink::RS_ERROR_SUCCESS)
+                {
+                    FString msg = FString::Printf(TEXT("Failed to load %s from RenderStream DLL - d3 version is incompatible with this plugin version. Please update d3 or use an older plugin version"), *loadError);
+                    if (RenderStreamLink::instance().rs_logToD3)
+                        RenderStreamLink::instance().rs_logToD3(TCHAR_TO_ANSI(*msg));
+                }
+            }
+            if (!GIsEditor)
+            {
+                FPlatformMisc::RequestExit(true);
+            }
+            return;
+        }
     }
     else
     {
         m_logDevice = MakeShared<FRenderStreamLogOutputDevice, ESPMode::ThreadSafe>();
-        
+
         int errCode = RenderStreamLink::instance().rs_initialise(RENDER_STREAM_VERSION_MAJOR, RENDER_STREAM_VERSION_MINOR);
-        
+
         if (errCode != RenderStreamLink::RS_ERROR_SUCCESS)
         {
             if (errCode == RenderStreamLink::RS_ERROR_INCOMPATIBLE_VERSION)
@@ -213,7 +235,7 @@ void FRenderStreamModule::StartupModule()
             RenderStreamLink::instance().unloadExplicit();
             return;
         }
-        
+
         FCoreDelegates::OnHandleSystemError.AddRaw(this, &FRenderStreamModule::OnSystemError);
 
         FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FRenderStreamModule::OnPostLoadMapWithWorld);

@@ -362,6 +362,10 @@ public:
 #define RENDER_STREAM_VERSION_MAJOR 3
 #define RENDER_STREAM_VERSION_MINOR 0
 
+#define MIN_D3_VERSION_MAJOR 33
+#define MIN_D3_VERSION_MINOR 3
+#define MIN_D3_VERSION_PATCH 0
+
     enum UseDX12SharedHeapFlag
     {
         RS_DX12_USE_SHARED_HEAP_FLAG,
@@ -451,6 +455,7 @@ private:
     typedef RS_ERROR rs_getFrameParametersFn(uint64_t schemaHash, /*Out*/void* outParameterData, uint64_t outParameterDataSize);  // returns the remote parameters for this frame.
     typedef RS_ERROR rs_getFrameImageDataFn(uint64_t schemaHash, /*Out*/ImageFrameData* outParameterData, uint64_t outParameterDataCount);  // returns the remote image data for this frame.
     typedef RS_ERROR rs_getFrameImageFn(int64_t imageId, /*InOut*/const SenderFrame* data); // fills in (data) with the remote image
+    typedef RS_ERROR rs_registerTextureParamsFn(); // processes texture parameter registrations, must be called from a render thread
     typedef RS_ERROR rs_getFrameTextFn(uint64_t schemaHash, uint32_t textParamIndex, /*Out*/const char** outTextPtr); // // returns the remote text data (pointer only valid until next rs_awaitFrameData)
     
     typedef RS_ERROR rs_getSkeletonLayoutFn(uint64_t schemaHash, uint64_t id, /*Out*/SkeletonLayout* layout, /*Out*/int* numJoints);
@@ -469,8 +474,11 @@ private:
 public:
     RENDERSTREAM_API bool isAvailable();
 
-    bool loadExplicit();
+    bool loadExplicit(FString& outError);
     bool unloadExplicit();
+
+    bool GetD3Version(int32& OutMajor, int32& OutMinor, int32& OutPatch) const;
+    RENDERSTREAM_API bool IsSchemaGenerationSupported() const;
 
     struct ScopedSchema
     {
@@ -583,6 +591,7 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_getFrameParametersFn* rs_getFrameParameters = nullptr;
     rs_getFrameImageDataFn* rs_getFrameImageData = nullptr;
     rs_getFrameImageFn* rs_getFrameImage2 = nullptr;
+    rs_registerTextureParamsFn* rs_registerTextureParams = nullptr;
     rs_getFrameTextFn* rs_getFrameText = nullptr;
     rs_getSkeletonLayoutFn* rs_getSkeletonLayout = nullptr;
     rs_getSkeletonJointNamesFn* rs_getSkeletonJointNames = nullptr;
@@ -597,6 +606,7 @@ public: // d3renderstream.h API, but loaded dynamically.
 private:
     bool m_loaded = false;
     void* m_dll = nullptr;
+    FString m_dllPath;
 };
 
 //template<typename Fn>

@@ -771,6 +771,18 @@ void FRenderStreamEditorModule::RunValidation(const TArray<URenderStreamChannelC
 
 void FRenderStreamEditorModule::GenerateAssetMetadata()
 {
+    // Check the installed d3 version first.
+    if (!RenderStreamLink::instance().IsSchemaGenerationSupported())
+    {
+        const FString msg = FString::Printf(
+            TEXT("Cannot generate RenderStream schema: the installed d3 version is unsupported or could not be determined. Schema generation requires d3 r%d.%d.%d or newer."),
+            MIN_D3_VERSION_MAJOR, MIN_D3_VERSION_MINOR, MIN_D3_VERSION_PATCH);
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("%s"), *msg);
+        if (GEngine)
+            GEngine->AddOnScreenDebugMessage(-1, 20.f, FColor::Red, msg);
+        return;
+    }
+
     if (!RenderStreamLink::instance().isAvailable())
     {
         UE_LOG(LogRenderStreamEditor, Warning, TEXT("RenderStreamLink unavailable, skipped GenerateAssetMetadata"));
