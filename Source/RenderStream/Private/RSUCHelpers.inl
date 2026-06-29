@@ -97,6 +97,14 @@ namespace RSUCHelpers
         FVector2f CropV)
     {
         SCOPED_DRAW_EVENTF(RHICmdList, MediaCapture, TEXT("RS Send Frame"));
+
+        // Skip frame instead of crashing when the texture is not ready
+        if (!BufTexture.IsValid())
+        {
+            UE_LOG(LogRenderStream, Verbose, TEXT("RS SendFrame: stream buffer not ready yet; skipping frame."));
+            return;
+        }
+
         // convert the source with a draw call
         FGraphicsPipelineStateInitializer GraphicsPSOInit;
         FRHITexture* RenderTarget = BufTexture.GetReference();
