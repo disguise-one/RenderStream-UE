@@ -115,10 +115,17 @@ bool RenderStreamLink::loadExplicit()
     FString dllPath = exePath + dllName;
     const FString destDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty"));
     const FString srcSend = exePath + TEXT("d3renderstreamsend.dll");
+    const FString srcVideoSend = exePath + TEXT("d3libvideosend.dll");
     IFileManager& fileManager = IFileManager::Get();
     fileManager.MakeDirectory(*destDir, true);
     const bool copiedRSMain = fileManager.Copy(*(destDir / dllName), *(exePath + dllName), true, true) == COPY_OK;
     const bool copiedRSSend = FPaths::FileExists(srcSend) && fileManager.Copy(*(destDir / TEXT("d3renderstreamsend.dll")), *srcSend, true, true) == COPY_OK;
+
+    if(FPaths::FileExists(srcVideoSend))
+    {
+        fileManager.Copy(*(destDir / TEXT("d3libvideosend.dll")), *srcVideoSend, true, true);
+    }  
+
     if (copiedRSMain && copiedRSSend)
     {
         AddDllDirectory(*exePath);
