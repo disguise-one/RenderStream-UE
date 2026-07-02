@@ -134,7 +134,7 @@ bool RenderStreamLink::loadExplicit()
     }
     else
     {
-        UE_LOG(LogRenderStream, Warning, TEXT("Failed to copy RenderStream DLLs"));
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to copy RenderStream DLLs"));
     }
 
     auto LogFatalIfNotInEditor = [](const FString& msg)
