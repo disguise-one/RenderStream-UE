@@ -114,19 +114,30 @@ bool RenderStreamLink::loadExplicit()
     // There is a filter that exempts DLLs within a ThirdParty folder from this parsing
     FString dllPath = exePath + dllName;
     const FString destDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty"));
-    const FString srcSend = exePath + TEXT("d3renderstreamsend.dll");
-    const FString srcVideoSend = exePath + TEXT("d3libvideosend.dll");
     IFileManager& fileManager = IFileManager::Get();
     fileManager.MakeDirectory(*destDir, true);
-    const bool copiedRSMain = fileManager.Copy(*(destDir / dllName), *(exePath + dllName), true, true) == COPY_OK;
-    const bool copiedRSSend = FPaths::FileExists(srcSend) && fileManager.Copy(*(destDir / TEXT("d3renderstreamsend.dll")), *srcSend, true, true) == COPY_OK;
 
-    if(FPaths::FileExists(srcVideoSend))
+    const TArray<FString> dllsToRelocate = {
+        dllName,
+        TEXT("d3renderstreamsend.dll"),
+        TEXT("d3libvideosend.dll"),
+    };
+
+    bool copiedMain = false;
+    bool copiedSend = false;
+    for (const FString& dll : dllsToRelocate)
     {
-        fileManager.Copy(*(destDir / TEXT("d3libvideosend.dll")), *srcVideoSend, true, true);
-    }  
+        const FString src = exePath + dll;
+        if (!FPaths::FileExists(src))
+            continue;
+        const bool copied = fileManager.Copy(*(destDir / dll), *src, true, true) == COPY_OK;
+        if (dll == dllName)
+            copiedMain = copied;
+        else if (dll == TEXT("d3renderstreamsend.dll"))
+            copiedSend = copied;
+    }
 
-    if (copiedRSMain && copiedRSSend)
+    if (copiedMain && copiedSend)
     {
         AddDllDirectory(*exePath);
         dllPath = destDir / dllName;
