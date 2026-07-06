@@ -6,6 +6,7 @@
 #include "RenderStream.h"
 #include "RenderStreamHelper.h"
 #include "RenderStreamSettings.h"
+#include "RenderStreamBlueprint.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelScriptActor.h"
 #include "RenderStreamSettings.h"
@@ -46,9 +47,14 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
 {
     if (Level)
     {
-        auto Actor = static_cast<AActor*>(Level->GetLevelScriptActor());
-        if (Actor && !Actors.Contains(Actor))
-            Actors.Push(Actor);
+        for (AActor* Actor : Level->Actors)
+        {
+            if (Actor && (Actor->IsA<ARenderStreamBlueprint>()))
+            {
+                if (!Actors.Contains(Actor))
+                    Actors.Push(Actor);
+            }
+        }
 
         if (Level->IsPersistentLevel())
         {
