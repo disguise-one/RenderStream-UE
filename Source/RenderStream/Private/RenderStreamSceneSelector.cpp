@@ -51,8 +51,7 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
         {
             if (Actor && (Actor->IsA<ARenderStreamBlueprint>()))
             {
-                if (!Actors.Contains(Actor))
-                    Actors.Push(Actor);
+                Actors.Push(Actor);
             }
         }
 
