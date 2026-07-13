@@ -43,17 +43,25 @@ RenderStreamSceneSelector::~RenderStreamSceneSelector()
     }
 }
 
+void RenderStreamSceneSelector::GetActorsInLevel(TArray<AActor*>& Actors, ULevel* Level) const
+{
+    if (!Level)
+        return;
+
+    for (AActor* Actor : Level->Actors)
+    {
+        if (Actor && Actor->IsA<ARenderStreamBlueprint>() && !Actors.Contains(Actor))
+        {
+            Actors.Push(Actor);
+        }
+    }
+}
+
 void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * Level) const
 {
     if (Level)
     {
-        for (AActor* Actor : Level->Actors)
-        {
-            if (Actor && (Actor->IsA<ARenderStreamBlueprint>()))
-            {
-                Actors.Push(Actor);
-            }
-        }
+        GetActorsInLevel(Actors, Level);
 
         if (Level->IsPersistentLevel())
         {
@@ -67,6 +75,19 @@ void RenderStreamSceneSelector::GetAllLevels(TArray<AActor*>& Actors, ULevel * L
                     GetAllLevels(Actors, SubLevel);
         }
     }
+}
+
+const TArray<AActor*>& RenderStreamSceneSelector::GetCachedActors(ULevel* PersistentLevel, uint32_t sceneId)
+{
+    const uint64 version = ARenderStreamBlueprint::GetCacheVersion();
+    if (sceneId != m_cachedSceneId || version != m_cachedVersion)
+    {
+        m_cachedActors.Reset();
+        GetAllLevels(m_cachedActors, PersistentLevel);
+        m_cachedSceneId = sceneId;
+        m_cachedVersion = version;
+    }
+    return m_cachedActors;
 }
 
 enum RenderStreamSceneSelector::SchemaStatus RenderStreamSceneSelector::SchemaStatus() const
