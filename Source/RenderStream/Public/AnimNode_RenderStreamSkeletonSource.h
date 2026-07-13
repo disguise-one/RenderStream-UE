@@ -4,15 +4,50 @@
 
 #include "CoreMinimal.h"
 #include "RenderStreamLink.h"
+#include "SkeletonRetargeting.h"
 
 #include "Engine/SkeletalMesh.h"
 
-#include <vector>
+
 
 #include "AnimNode_RenderStreamSkeletonSource.generated.h"
 
 class ILiveLinkClient;
 class ASkeletalMeshActor;
+
+UENUM(BlueprintType)
+enum class ERenderStreamSkeletonLayout : uint8
+{
+    Default     UMETA(DisplayName = "Default"),
+    Captury     UMETA(DisplayName = "Captury")
+};
+
+USTRUCT(BlueprintType)
+struct FBoneMapping
+{
+    GENERATED_BODY()
+
+    UPROPERTY(EditAnywhere, Category = BoneMapping, DisplayName = "Source Bone")
+    FName SourceBone;
+
+    UPROPERTY(EditAnywhere, Category = BoneMapping)
+    FBoneReference Bone;
+
+    UPROPERTY(EditAnywhere, Category = BoneMapping, DisplayName = "Skip Correction")
+    bool bSkipOrientationCorrection = false;
+};
+
+USTRUCT()
+struct FBoneCacheEntry
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    FName BoneName;
+
+    UPROPERTY()
+    bool bSkipOrientationCorrection = false;
+};
 
 USTRUCT(BlueprintInternalUseOnly)
 struct RENDERSTREAM_API FAnimNode_RenderStreamSkeletonSource : public FAnimNode_Base
@@ -24,11 +59,19 @@ public:
         FPoseLink BasePose;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MapsAndSets)
-        TMap<FName, FName> BoneNameMap;
+    ERenderStreamSkeletonLayout SkeletonLayout = ERenderStreamSkeletonLayout::Default;
+
+    UPROPERTY(EditAnywhere, Category = MapsAndSets)
+    TArray<FBoneMapping> BoneNameMap;
 
     // When ticked, the root offsets applied to the actor are scaled by the actor's scale
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
-        bool ScaleRootOffsets;
+        bool ScaleRootOffsets = false;
+
+    // When ticked, bone translation offsets are adjusted to match source bone lengths
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Options)
+        bool bAlignBoneLengths = false;
+
 public:
     FAnimNode_RenderStreamSkeletonSource();
     ~FAnimNode_RenderStreamSkeletonSource();
@@ -42,6 +85,8 @@ public:
     virtual void PreUpdate(const UAnimInstance* InAnimInstance) override;
     virtual void GatherDebugData(FNodeDebugData& DebugData) override;
 
+    void OnLayoutChanged(const class USkeleton* TargetSkeleton = nullptr);
+
 protected:
 
     void CacheSkeletonActors(const FName& ParamName);
@@ -53,22 +98,19 @@ protected:
     void InitialiseAnimationData(const RenderStreamLink::FSkeletalLayout& Layout, const FCompactPose& OutPose);
     void BuildPoseFromAnimationData(const RenderStreamLink::FSkeletalPose& Pose, FCompactPose& OutPose);
 
-    static bool IsRootBone(const FName& SourceBoneName);
+    bool IsRootBone(int32 SourceIndex);
 
 private:
-    std::vector<TWeakObjectPtr<AActor>> SkeletonActors;
-    bool SkeletonActorsCached;
+    TArray<TWeakObjectPtr<AActor>> SkeletonActors;
+    bool SkeletonActorsCached = false;
     FDelegateHandle OnActorSpawnedHandle;
 
     // Cached pose info
-    TArray<FName> SourceBoneNames;
-    TArray<int32> SourceParentIndices;
-    TArray<FTransform> MeshToSourceSpaceTransforms;
-    TArray<FQuat> LocalInitialOrientationDifferences;
-    TArray<FQuat> SourceInitialPoseRotations;
-    TArray<FCompactPoseBoneIndex> SourceToMeshIndex;
-    FTransform RootBoneTransform;
-    int32 MeshBoneCount;
-    bool PoseInitialised;
+    FRetargetInitData CachedInitData;
+    bool PoseInitialised = false;
+
+    // Hidden cache that remembers every bone mapping ever set
+    UPROPERTY()
+    TMap<FName, FBoneCacheEntry> MasterBoneCache;
 };
 
