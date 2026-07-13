@@ -18,6 +18,7 @@ struct RENDERSTREAM_API FStreamInfo
     FBox2D Region = FBox2D(ForceInit);
 
     UPROPERTY(BlueprintReadOnly, Category = "Stream")
+
     FIntPoint Resolution = FIntPoint(ForceInit);
 };
 
