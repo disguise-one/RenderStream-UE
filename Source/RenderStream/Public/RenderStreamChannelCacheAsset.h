@@ -36,21 +36,21 @@ public:
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     FString Key;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    RenderStreamParameterType Type;
+    RenderStreamParameterType Type = RenderStreamParameterType::Float;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    float Min;
+    float Min = 0.f;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    float Max;
+    float Max = 0.f;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    float Step;
+    float Step = 0.f;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     FString DefaultValue;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
     TArray<FString> Options;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    int32 DmxOffset;
+    int32 DmxOffset = 0;
     UPROPERTY(EditAnywhere, Category = "ExposedParameter")
-    uint32 DmxType;
+    uint32 DmxType = 0;
 };
 
 USTRUCT()
