@@ -4,6 +4,8 @@ REM   Runs, in order:
 REM     1) generate_uplugin.ps1        - creates RenderStream-UE.uplugin from the template
 REM     2) link_to_project.ps1         - junction-links this repo into the project's Plugins folder
 REM     3) generate_project_files.ps1  - generates VS Code (or -VisualStudio) project files
+REM        (Blueprint-only projects with no Source folder are auto-scaffolded with a
+REM         minimal C++ game module first, via scaffold_game_module.ps1)
 REM   Options (forwarded): -PluginName, -NoBackup, -VisualStudio, -IncludeEngine, -Open, -SkipUplugin
 
 ECHO running setup_dev_environment.ps1...

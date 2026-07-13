@@ -49,11 +49,25 @@ if (-not $uproject) {
 $UprojectPath = $uproject.FullName
 Write-Host "Project: $UprojectPath" -ForegroundColor Cyan
 
-# --- Warn if Blueprint-only (no scaffolding, per configuration) --------------
-if (-not (Test-Path -LiteralPath (Join-Path $ProjectDir 'Source'))) {
-    Write-Warning ("This project has no Source\ folder (Blueprint-only). Project files will be generated, but" + [Environment]::NewLine +
-        "without a game C++ module there is no <Project>Editor build target. The plugin can still be built" + [Environment]::NewLine +
-        "(the editor will offer to compile it on open), but you won't get a buildable game target in the IDE.")
+# --- Ensure the project has a C++ build target so UBT can generate -----------
+# UBT refuses a project with no Source\ folder (exit 6). Worse, its VSCode
+# generator crashes with an IndexOutOfRange (also surfaced as exit 6) whenever it
+# discovers ZERO targets - a missing Source\, an empty Source\, or a Source\ with
+# no *.Target.cs all trigger it. Key the scaffold off "has a build target", not
+# merely "has a Source\ folder", so all three states are covered.
+function Test-HasTarget([string] $Root) {
+    $src = Join-Path $Root 'Source'
+    if (-not (Test-Path -LiteralPath $src)) { return $false }
+    return [bool](Get-ChildItem -LiteralPath $src -Recurse -Filter '*.Target.cs' -File -ErrorAction SilentlyContinue |
+        Select-Object -First 1)
+}
+
+if (-not (Test-HasTarget $ProjectDir)) {
+    Write-Host "Project has no C++ build target (Blueprint-only or empty Source\) - scaffolding a minimal game module..." -ForegroundColor Yellow
+    & (Join-Path $RepoDir 'scaffold_game_module.ps1') -ProjectDir $ProjectDir
+    if (-not (Test-HasTarget $ProjectDir)) {
+        throw "Project still has no C++ build target after scaffolding - cannot generate project files."
+    }
 }
 
 # --- Resolve the engine root -------------------------------------------------
