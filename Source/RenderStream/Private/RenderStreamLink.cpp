@@ -113,13 +113,24 @@ bool RenderStreamLink::loadExplicit()
     // Workaround for 5.8, encrypted DLLs crash when loaded because UE tries to parse the callstack unwind info which fails
     // There is a filter that exempts DLLs within a ThirdParty folder from this parsing
     FString dllPath = exePath + dllName;
-    const FString destDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty"));
     IFileManager& fileManager = IFileManager::Get();
+    const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty"));
+
+    // Delete DLL copies not in use by a process
+    TArray<FString> priorRunDirs;
+    fileManager.FindFiles(priorRunDirs, *(baseDir / TEXT("*")), false, true);
+    for (const FString& dir : priorRunDirs)
+        fileManager.DeleteDirectory(*(baseDir / dir), false, true);
+
+    // We need to guarantee that the DLLs are up to date so we copy them everytime we launch
+    // Since we can have multiple processes using the same DLLs we need to have copies for each process
+    const FString destDir = baseDir / FString::FromInt(FPlatformProcess::GetCurrentProcessId());
     fileManager.MakeDirectory(*destDir, true);
 
+    const FString sendDllName(TEXT("d3renderstreamsend.dll"));
     const TArray<FString> dllsToRelocate = {
         dllName,
-        TEXT("d3renderstreamsend.dll"),
+        sendDllName,
         TEXT("d3libvideosend.dll"),
     };
 
@@ -133,7 +144,7 @@ bool RenderStreamLink::loadExplicit()
         const bool copied = fileManager.Copy(*(destDir / dll), *src, true, true) == COPY_OK;
         if (dll == dllName)
             copiedMain = copied;
-        else if (dll == TEXT("d3renderstreamsend.dll"))
+        else if (dll == sendDllName)
             copiedSend = copied;
     }
 
@@ -141,7 +152,7 @@ bool RenderStreamLink::loadExplicit()
     {
         AddDllDirectory(*exePath);
         dllPath = destDir / dllName;
-        UE_LOG(LogRenderStream, Log, TEXT("Copied RenderStream DLLs"));
+        UE_LOG(LogRenderStream, Log, TEXT("Copied RenderStream DLLs to %s"), *destDir);
     }
     else
     {
