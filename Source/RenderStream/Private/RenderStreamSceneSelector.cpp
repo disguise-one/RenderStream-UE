@@ -873,7 +873,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                     {
                         textureColourTransform->bGPUSharedFlag = true;
                         // Force linear as per the RST-353 comment
-                        textureColourTransform->SRGB = 0;
                         textureColourTransform->InitCustomFormat(frameData.width, frameData.height, formatMap[frameData.format].ue, true);
                     }
                     else if (textureColourTransform->SizeX != frameData.width || textureColourTransform->SizeY != frameData.height)
