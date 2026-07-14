@@ -13,10 +13,11 @@ public class RenderStreamEditor : ModuleRules
             "InputCore"
         });
         PrivateDependencyModuleNames.AddRange (new string[] { 
-            "CoreUObject", 
-            "Engine", 
-            "EngineSettings", 
-            "UnrealEd", 
+            "CoreUObject",
+            "Engine",
+            "EngineSettings",
+            "DeveloperToolSettings",
+            "UnrealEd",
             "RenderStream", 
             "DisplayCluster", 
             "Slate", 

@@ -40,6 +40,7 @@
 
 #include "FileHelpers.h"
 #include "GameMapsSettings.h"
+#include "Settings/ProjectPackagingSettings.h"
 
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
@@ -907,11 +908,33 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             }
         }
 
-        Schema.schema.scenes.nScenes = ChannelCaches.Num();
+        // If the project's packaging settings specify an explicit list of maps to include in the
+        // packaged build, only save those maps to the schema. Otherwise save every map we cached.
+        const UProjectPackagingSettings* PackagingSettings = GetDefault<UProjectPackagingSettings>();
+        const bool bUseExplicitMapList = PackagingSettings && PackagingSettings->MapsToCook.Num() > 0;
+
+        TSet<FString> PackagedMaps;
+        if (bUseExplicitMapList)
+        {
+            for (const FFilePath& Map : PackagingSettings->MapsToCook)
+                PackagedMaps.Add(Map.FilePath);
+        }
+
+        TArray<const URenderStreamChannelCacheAsset*> MapsToSave;
+        for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
+        {
+            if (!bUseExplicitMapList || PackagedMaps.Contains(Cache->Level.GetLongPackageName()))
+                MapsToSave.Add(Cache);
+        }
+
+        if (bUseExplicitMapList)
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Saving %d of %d maps to the schema, filtered by the packaging settings map list."), MapsToSave.Num(), ChannelCaches.Num());
+
+        Schema.schema.scenes.nScenes = MapsToSave.Num();
         Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
         RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
 
-        for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
+        for (const URenderStreamChannelCacheAsset* Cache : MapsToSave)
         {
             const URenderStreamChannelCacheAsset** Entry = LevelParents.Find(Cache);
             GenerateScene(LevelParams, *SceneParameters++, Cache, Entry != nullptr ? *Entry : nullptr);
