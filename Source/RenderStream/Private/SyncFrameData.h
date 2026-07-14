@@ -11,9 +11,9 @@ public:
     virtual FString GetSyncId() const override;
     virtual bool IsDirty() const override { return true; };
     virtual void ClearDirty() override {};
-    virtual FString SerializeToString() const override;
-    virtual bool DeserializeFromString(const FString& Ar) override;
-    virtual void SerializeDC(FArchive& Ar) override {}
+
+    // New way to serialize/deserialize between followers and controller in 5.8
+    virtual void SerializeDC(FArchive& Ar) override;
 
     bool Map(FArchive& Ar);
 

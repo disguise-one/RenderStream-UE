@@ -17,40 +17,23 @@ FString FRenderStreamSyncFrameData::GetSyncId() const
     return SyncId;
 }
 
-FString FRenderStreamSyncFrameData::SerializeToString() const
+void FRenderStreamSyncFrameData::SerializeDC(FArchive& Ar)
 {
-    TArray<uint8> TempBytes;
-    FMemoryWriter Ar(TempBytes, /*bIsPersistent=*/ true);
-    const_cast<FRenderStreamSyncFrameData*>(this)->Map(Ar);
-    return BytesToString(TempBytes.GetData(), TempBytes.Num());
-}
-
-bool FRenderStreamSyncFrameData::DeserializeFromString(const FString& Str)
-{
-    if (IsEngineExitRequested())
+    if (Ar.IsSaving()) // Controller
     {
-        return true;
+        Map(Ar);
     }
-
-    EDisplayClusterNodeRole NodeRole = IDisplayCluster::Get().GetClusterMgr()->GetClusterRole();
-    
-    if (NodeRole == EDisplayClusterNodeRole::Secondary)
+    else // Follower
     {
-        TArray<uint8> TempBytes;
-        TempBytes.AddUninitialized(Str.Len());
-        StringToBytes(Str, TempBytes.GetData(), Str.Len());
+        if (IsEngineExitRequested())
+            return;
 
-        FMemoryReader Ar(TempBytes);
-        if (Map(Ar))
+        if (IDisplayCluster::Get().GetClusterMgr()->GetClusterRole() == EDisplayClusterNodeRole::Secondary)
         {
-            FollowerReceive();
-            return true;
+            if (Map(Ar))
+                FollowerReceive();
         }
-
-        return false;
     }
-
-    return true;
 }
 
 bool FRenderStreamSyncFrameData::Map(FArchive& Ar)
