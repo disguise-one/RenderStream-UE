@@ -1,10 +1,11 @@
 # RenderStream Unreal Engine Plugin
 
-Prerequisites: 
+## Prerequisites
 1. have Microsoft Visual Studio installed 
 2. have git.exe 
 3. have corresponding Unreal Engine (UE) version installed 
 
+## Setup
 To Generate Plugin: 
 
 Step 1: 
@@ -55,7 +56,7 @@ The individual steps can also be run on their own:
 * `link_to_project.bat "D:\path\to\UEProject"` — link only; `link_to_project.bat -Unlink` removes the last-created junction.
 * `generate_project_files.bat` — regenerate project files for the last-linked project (or pass `-ProjectDir`).
 
-Notes:
+## Notes
 
 ![alt text](https://download.disguise.one/media/6066/d3-renderstream-unreal.png)
 
