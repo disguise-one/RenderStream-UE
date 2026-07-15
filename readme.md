@@ -27,6 +27,34 @@ Step 2:
 Result:
 A new folder "Packaged" is created and the packaged plugin is created. 
 
+## Development setup
+
+To work on the plugin against a real Unreal project, use the dev setup scripts. From a fresh checkout:
+
+```
+setup_dev_environment.bat -ProjectDir "D:\path\to\UEProject" [options]
+```
+
+This runs three steps in order:
+1. `generate_uplugin.ps1` — builds the `.uplugin` from `uplugin_template.json`.
+2. `link_to_project.ps1` — junction-links this repo into the project's `Plugins` folder, so edits and `git status` stay live in place.
+3. `generate_project_files.ps1` — generates VS Code (or `-VisualStudio`) project files via UnrealBuildTool. Blueprint-only projects (no `Source` folder) are auto-scaffolded with a minimal C++ game module first.
+
+Options (forwarded to the relevant step):
+
+| Option | Effect |
+| --- | --- |
+| `-PluginName <name>` | Name of the plugin folder created under `Plugins` (defaults to the repo folder name). |
+| `-NoBackup` | Delete an existing real plugin folder instead of backing it up. |
+| `-VisualStudio` | Generate a Visual Studio `.sln` instead of VS Code files. |
+| `-IncludeEngine` | Include full engine source in the workspace (heavier, better for engine debugging). |
+| `-Open` | Open the generated workspace when done. |
+| `-SkipUplugin` | Skip regenerating the `.uplugin`. |
+
+The individual steps can also be run on their own:
+* `link_to_project.bat "D:\path\to\UEProject"` — link only; `link_to_project.bat -Unlink` removes the last-created junction.
+* `generate_project_files.bat` — regenerate project files for the last-linked project (or pass `-ProjectDir`).
+
 Notes:
 
 ![alt text](https://download.disguise.one/media/6066/d3-renderstream-unreal.png)
