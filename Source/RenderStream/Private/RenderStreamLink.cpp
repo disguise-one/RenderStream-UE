@@ -114,13 +114,18 @@ bool RenderStreamLink::loadExplicit()
     // There is a filter that exempts DLLs within a ThirdParty folder from this parsing
     FString dllPath = exePath + dllName;
     IFileManager& fileManager = IFileManager::Get();
-    const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty"));
+    const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty/RenderStream"));
 
-    // Delete DLL copies not in use by a process
+    // Delete DLL copies not in use by a process.
     TArray<FString> priorRunDirs;
     fileManager.FindFiles(priorRunDirs, *(baseDir / TEXT("*")), false, true);
     for (const FString& dir : priorRunDirs)
+    {
+        const uint32 ownerPid = (uint32)FCString::Atoi(*dir);
+        if (ownerPid != 0 && FPlatformProcess::IsApplicationRunning(ownerPid))
+            continue;
         fileManager.DeleteDirectory(*(baseDir / dir), false, true);
+    }
 
     // We need to guarantee that the DLLs are up to date so we copy them everytime we launch
     // Since we can have multiple processes using the same DLLs we need to have copies for each process
