@@ -16,7 +16,7 @@ public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
 
-    void GenerateAssetMetadata();
+    RENDERSTREAMEDITOR_API void GenerateAssetMetadata();
 
 private:
     FString StreamName();

@@ -5,7 +5,11 @@ param(
     [string] $ProjectDir,
 
     # Module/target name. Defaults to a sanitized form of the .uproject base name.
-    [string] $ModuleName
+    [string] $ModuleName,
+
+    # Extra module dependencies to add to the Build.cs (e.g. RenderStream). Empty by default
+    # so existing callers get the same minimal module they always did.
+    [string[]] $ExtraModules = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -80,6 +84,10 @@ public class ${ModuleName}EditorTarget : TargetRules
 }
 "@
 
+# Base modules every game module needs, plus any extras the caller requested.
+$moduleDeps = @('Core', 'CoreUObject', 'Engine', 'InputCore') + $ExtraModules | Select-Object -Unique
+$moduleDepList = ($moduleDeps | ForEach-Object { "`"$_`"" }) -join ', '
+
 $buildCs = @"
 using UnrealBuildTool;
 
@@ -88,7 +96,7 @@ public class $ModuleName : ModuleRules
     public $ModuleName(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-        PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore" });
+        PublicDependencyModuleNames.AddRange(new string[] { $moduleDepList });
     }
 }
 "@

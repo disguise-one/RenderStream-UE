@@ -30,7 +30,9 @@ A new folder "Packaged" is created and the packaged plugin is created.
 
 ## Development setup
 
-To work on the plugin against a real Unreal project, use the dev setup scripts. From a fresh checkout:
+To work on the plugin against a real Unreal project, use the dev setup scripts.
+
+### Against an existing project
 
 ```
 setup_dev_environment.bat -ProjectDir "D:\path\to\UEProject" [options]
@@ -41,18 +43,45 @@ This runs three steps in order:
 2. `link_to_project.ps1` — junction-links this repo into the project's `Plugins` folder, so edits and `git status` stay live in place.
 3. `generate_project_files.ps1` — generates VS Code (or `-VisualStudio`) project files via UnrealBuildTool. Blueprint-only projects (no `Source` folder) are auto-scaffolded with a minimal C++ game module first.
 
-Options (forwarded to the relevant step):
+### Generate a project from scratch
+
+Add `-Create` to generate a fresh RenderStream test project at `-ProjectDir`, then set it up. Add `-Bake` to also build the editor target and author the test scene + RenderStream schema headlessly:
+
+```
+setup_dev_environment.bat -Create -Bake -ProjectDir "D:\path\to\NewProject" [options]
+```
+
+With `-Create` the project is generated first (`create_project.ps1`); `-Bake` then runs the headless bake (`bake_project.ps1`) after linking + project-file generation. The baked scene contains:
+- A cube spinning on load, its six faces each split into two halves so all twelve render-target textures show on the cube (one per half-face).
+- Three RenderStream channels: `RenderStreamCamera`, plus `backplate` (cube force-hidden) and `frontplate` (cube force-visible).
+- A `CaptionText` actor driven by the exposed parameters.
+- Exposed parameters grouped as **Lighting** (`DirectionIntensity`, `PointIntensity`), **Label** (`Caption`, `Colour`, `Visible`) and **Texture** (`Texture00`–`Texture11`), plus `StartRotation` / `StopRotation` custom events that toggle the spin.
+- Two maps, each with a streaming sub-level.
+
+### Options
+
+Forwarded to the relevant step:
 
 | Option | Effect |
 | --- | --- |
+| `-Create` | Generate a fresh RenderStream test project at `-ProjectDir` before setup. |
+| `-ProjectName <name>` | Project/module name for `-Create` (defaults to the folder name). |
+| `-Rhi <D3D12\|D3D11\|Vulkan>` | Default graphics RHI for a `-Create` project (defaults to D3D12). |
+| `-Mode <None\|Maps\|StreamingLevels>` | RenderStream scene selector for a `-Create` project (defaults to None). |
 | `-PluginName <name>` | Name of the plugin folder created under `Plugins` (defaults to the repo folder name). |
 | `-NoBackup` | Delete an existing real plugin folder instead of backing it up. |
 | `-VisualStudio` | Generate a Visual Studio `.sln` instead of VS Code files. |
 | `-IncludeEngine` | Include full engine source in the workspace (heavier, better for engine debugging). |
 | `-Open` | Open the generated workspace when done. |
 | `-SkipUplugin` | Skip regenerating the `.uplugin`. |
+| `-Bake` | Run the headless bake (build editor target + generate test scene/schema). |
+| `-Help` | Show a one-line description of each flag and exit. |
+
+Run any script with `-Help` for a summary of its flags.
 
 The individual steps can also be run on their own:
+* `create_project.ps1 -ProjectDir "D:\path\to\NewProject"` — generate the project skeleton only (supports `-Rhi` / `-Mode`).
+* `bake_project.ps1 -ProjectDir "D:\path\to\Project"` — build the editor target and run the bake commandlet.
 * `link_to_project.bat "D:\path\to\UEProject"` — link only; `link_to_project.bat -Unlink` removes the last-created junction.
 * `generate_project_files.bat` — regenerate project files for the last-linked project (or pass `-ProjectDir`).
 

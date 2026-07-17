@@ -496,6 +496,11 @@ bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
         Packages.Add(Package);
     }
 
+    // Headless (commandlet) has no Slate, so the checkout dialog can't be built. The cache
+    // assets are local project files; skip the prompt and let the save make them writable.
+    if (IsRunningCommandlet())
+        return true;
+
     TArray<UPackage*> checkedOutPackages;
     TArray<UPackage*> alreadyWriteablePackages;
     const bool checkoutNotCancelled = FEditorFileUtils::PromptToCheckoutPackages(false, Packages, &checkedOutPackages, &alreadyWriteablePackages);
@@ -655,9 +660,12 @@ TArray<ULevel*> BuildRequiredLevelsList()
         URenderStreamChannelCacheAsset* Cache;
         if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
             auto world = Cast<UWorld>(Asset.FastGetAsset(true));
-            if (world != nullptr && world->GetNumLevels() > 0)
+            // Use PersistentLevel (serialized) rather than GetLevel(0): the Levels array is
+            // transient and only populated once a world is initialized, so a world loaded
+            // headless (commandlet) has GetNumLevels() == 0 even though PersistentLevel is valid.
+            if (world != nullptr && world->PersistentLevel != nullptr)
             {
-                Levels.Add(world->GetLevel(0));
+                Levels.Add(world->PersistentLevel);
             }
             else
             {
@@ -858,10 +866,14 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     const FString fullSchemaJsonFileDir = FPaths::ProjectDir() + "rs_" + projectName + ".json";
     bool fileIsCheckedOut = false;
 
-    const FSourceControlState shemeSCState = SourceControlHelpers::QueryFileState(fullSchemaJsonFileDir);
-
-    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir) && shemeSCState.bIsAdded)
-        fileIsCheckedOut = SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
+    // Only query revision control when it is actually enabled; QueryFileState logs an error
+    // otherwise (e.g. during a headless bake with no source control provider).
+    if (SourceControlHelpers::IsEnabled())
+    {
+        const FSourceControlState shemeSCState = SourceControlHelpers::QueryFileState(fullSchemaJsonFileDir);
+        if (FPaths::FileExists(fullSchemaJsonFileDir) && shemeSCState.bIsAdded)
+            fileIsCheckedOut = SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
+    }
 
     if (SourceControlHelpers::IsEnabled() && !fileIsCheckedOut)
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Schema file failed to check out."));
