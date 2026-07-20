@@ -94,6 +94,8 @@ void FRenderStreamEditorModule::StartupModule()
             this, &FRenderStreamEditorModule::RegisterSaveCommandOverrides));
     }
 
+    FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
+    FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
@@ -118,6 +120,8 @@ void FRenderStreamEditorModule::ShutdownModule()
         PropertyModule.UnregisterCustomClassLayout("RenderStreamSettings");
     }
 
+    FEditorDelegates::PostSaveExternalActors.RemoveAll(this);
+    FEditorDelegates::PostSaveWorldWithContext.RemoveAll(this);
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
@@ -125,6 +129,8 @@ void FRenderStreamEditorModule::ShutdownModule()
     FEditorDelegates::OnShutdownPostPackagesSaved.RemoveAll(this);
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
+
+    RestoreSaveCommandOverrides();
 
     UnregisterSettings();
 
@@ -1022,6 +1028,9 @@ void FRenderStreamEditorModule::RegisterSaveCommandOverrides()
         if (!ExistingAction)
             return;
 
+        // Keep the original so ShutdownModule can restore it; the global command list outlives this module.
+        OriginalSaveActions.Emplace(Command, *ExistingAction);
+
         // Copy the existing action so we preserve CanExecute/visibility, then chain schema regeneration
         FUIAction WrappedAction = *ExistingAction;
         const FExecuteAction OriginalExecute = WrappedAction.ExecuteAction;
@@ -1039,6 +1048,33 @@ void FRenderStreamEditorModule::RegisterSaveCommandOverrides()
 
     WrapSaveCommand(FLevelEditorCommands::Get().Save);
     WrapSaveCommand(FLevelEditorCommands::Get().SaveAllLevels);
+}
+
+void FRenderStreamEditorModule::RestoreSaveCommandOverrides()
+{
+    FLevelEditorModule* LevelEditorModule = FModuleManager::GetModulePtr<FLevelEditorModule>("LevelEditor");
+    if (LevelEditorModule)
+    {
+        const TSharedRef<FUICommandList> CommandList = LevelEditorModule->GetGlobalLevelEditorActions();
+        for (const TPair<TSharedPtr<FUICommandInfo>, FUIAction>& Original : OriginalSaveActions)
+        {
+            if (Original.Key.IsValid())
+                CommandList->MapAction(Original.Key, Original.Value);
+        }
+    }
+
+    OriginalSaveActions.Empty();
+}
+
+void FRenderStreamEditorModule::OnPostSaveWorldContext(UWorld* World, FObjectPostSaveContext Context)
+{
+    if (Context.SaveSucceeded())
+        DirtyAssetMetadata = true;
+}
+
+void FRenderStreamEditorModule::OnPostSaveWorld(UWorld* World)
+{
+    DirtyAssetMetadata = true;
 }
 
 void FRenderStreamEditorModule::OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses)
