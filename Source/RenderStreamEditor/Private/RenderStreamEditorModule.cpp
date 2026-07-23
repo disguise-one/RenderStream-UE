@@ -21,6 +21,7 @@
 #include "ISettingsModule.h"
 #include "RenderStreamChannelCacheAsset.h"
 #include "RenderStreamChannelDefinition.h"
+#include "RenderStreamBlueprint.h"
 #include "RenderStreamCustomization.h"
 #include "RenderStreamSceneSelector.h"
 #include "RenderStreamSettings.h"
@@ -578,6 +579,7 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
     Cache->Channels.Empty();
     Cache->ChannelInfoMap.Empty();
     Cache->ChannelToActors.Empty();
+    Cache->ExposedParams.Empty();
     for (auto Actor : Level->Actors)
     {
         if (Actor)
@@ -592,12 +594,14 @@ URenderStreamChannelCacheAsset* UpdateLevelChannelCache(ULevel* Level)
                 SanitizeChannelInfo(channelInfo);
                 Cache->ChannelInfoMap.Emplace(ChannelName, channelInfo);
             }
+
+            if (Actor->IsA<ARenderStreamBlueprint>())
+            {
+                GenerateParameters(Cache->ExposedParams, Actor);
+            }
         }
     }
-
-    Cache->ExposedParams.Empty();
-    GenerateParameters(Cache->ExposedParams, Level->GetLevelScriptActor());
-
+    
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
 
     // We can only know the sublevels of the persistent level.
