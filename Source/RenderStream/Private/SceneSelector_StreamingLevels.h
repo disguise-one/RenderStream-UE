@@ -15,13 +15,17 @@ public:
     void ApplyScene(const UWorld& world, uint32_t sceneId) override;
 
 protected:
-    bool ValidateLevel(uint32_t sceneId);
-
     struct SchemaSpec
     {
         ULevelStreaming* streamingLevel = nullptr;
-        AActor* persistentRoot = nullptr;
         bool loaded = false;
+
+        TArray<AActor*> cachedActors;
+        uint64 cachedVersion = ~0ull;
     };
+
+    bool ValidateLevel(const UWorld& World, uint32_t sceneId);
+    const TArray<AActor*>& GetSpecActors(const UWorld& World, SchemaSpec& spec);
+
     std::vector<SchemaSpec> m_specs;
 };
