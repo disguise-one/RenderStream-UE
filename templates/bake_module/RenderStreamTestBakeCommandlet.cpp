@@ -576,7 +576,8 @@ namespace
             TexPin.PinSubCategoryObject = UTextureRenderTarget2D::StaticClass();
 
             AddExposedVar(LSB, TEXT("DirectionIntensity"), FloatPin, TEXT("1.000000"),                               TEXT("Lighting"));
-            AddExposedVar(LSB, TEXT("PointIntensity"),     FloatPin, TEXT("1.000000"),                               TEXT("Lighting"));
+            AddExposedVar(LSB, TEXT("PointIntensity"),     FloatPin, TEXT("2000.000000"),                            TEXT("Lighting"));
+            SetVarRange(LSB, TEXT("PointIntensity"), 0.f, 2000.f);
             AddExposedVar(LSB, TEXT("Visible"),    BoolPin,  TEXT("true"),                                           TEXT("Label"));
             AddExposedVar(LSB, TEXT("Colour"),     ColorPin, TEXT("(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"), TEXT("Label"));
             AddExposedVar(LSB, TEXT("Caption"),    TextPin,  FString(),                                             TEXT("Label"));
