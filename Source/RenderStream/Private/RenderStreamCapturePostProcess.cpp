@@ -163,7 +163,9 @@ void FRenderStreamCapturePostProcess::ApplyOCIOTransform(FRHICommandListImmediat
     // This a mismatch from the InputShaderResource  which it resolves to. It does a conversion (pow(input, 1/2.2)) before the copy
     // The OCIO shader applies pow(input, gamma) before the transform so we make it 2.2 to undo the previous transform
     // r.DefaultBackBufferPixelFormat is hardcoded in d3 to always be set to 3 so we don't need to worry about supporting other values
-    const float OCIOGamma = 2.2f;
+
+    // This seems to have changed in 5.8 so we need to set it to 1.0 instead
+    const float OCIOGamma = 1.0f;
 
     FOpenColorIORendering::AddPass_RenderThread(
         GraphBuilder,
