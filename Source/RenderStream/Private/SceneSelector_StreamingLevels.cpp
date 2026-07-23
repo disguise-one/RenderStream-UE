@@ -1,12 +1,12 @@
 #include "SceneSelector_StreamingLevels.h"
 #include "RenderStream.h"
+#include "RenderStreamBlueprint.h"
 #include "Containers/UnrealString.h"
 #include "Engine/World.h"
 #include "Engine/LevelStreaming.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/PackageName.h"
 #include "Engine/Level.h"
-#include "Engine/LevelScriptActor.h"
 
 static ULevelStreaming* findStreamingLevelByName(const UWorld& World, const FString& FindName)
 {
@@ -21,17 +21,27 @@ static ULevelStreaming* findStreamingLevelByName(const UWorld& World, const FStr
     return nullptr;
 }
 
+const TArray<AActor*>& SceneSelector_StreamingLevels::GetSpecActors(const UWorld& World, SchemaSpec& spec)
+{
+    const uint64 version = ARenderStreamBlueprint::GetCacheVersion();
+    if (version != spec.cachedVersion)
+    {
+        spec.cachedActors.Reset();
+        GetActorsInLevel(spec.cachedActors, World.PersistentLevel);
+        if (spec.streamingLevel)
+            GetActorsInLevel(spec.cachedActors, spec.streamingLevel->GetLoadedLevel());
+        spec.cachedVersion = version;
+    }
+    return spec.cachedActors;
+}
+
 bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema)
 {
-
     if (!World.PersistentLevel)
     {
         UE_LOG(LogRenderStream, Log, TEXT("PersistentLevel was null in OnLoadedSchema"));
         return false;
     }
-
-    // If there's a persistent level with blueprints, include that in all scenes as common properties.
-    AActor* persistentRoot = static_cast<AActor*>(World.PersistentLevel->GetLevelScriptActor());
 
     m_specs.resize(Schema.scenes.nScenes);
     for (uint32_t i = 0; i < Schema.scenes.nScenes; ++i)
@@ -42,12 +52,11 @@ bool SceneSelector_StreamingLevels::OnLoadedSchema(const UWorld& World, const Re
 
         SchemaSpec& spec = m_specs[i];
         spec.streamingLevel = streamingLevel;
-        spec.persistentRoot = persistentRoot;
         spec.loaded = false;
 
         if (!streamingLevel || streamingLevel->IsLevelLoaded())
         {
-            spec.loaded = ValidateLevel(i);
+            spec.loaded = ValidateLevel(World, i);
         }
         else
         {
@@ -78,7 +87,7 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
     }
     else if (!spec.loaded)
     {
-        spec.loaded = ValidateLevel(sceneId);
+        spec.loaded = ValidateLevel(World, sceneId);
     }
 
     if (!World.PersistentLevel)
@@ -87,11 +96,9 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
         return;
     }
 
-    AActor* persistentRoot = static_cast<AActor*>(World.PersistentLevel->GetLevelScriptActor());
-
-    if (spec.streamingLevel == nullptr && spec.persistentRoot == persistentRoot) // base level
+    if (spec.streamingLevel == nullptr)
     {
-        ApplyParameters(sceneId, { persistentRoot });
+        ApplyParameters(sceneId, GetSpecActors(World, spec));
 
         for (ULevelStreaming* streamingLevel : World.GetStreamingLevels())
         {
@@ -107,11 +114,10 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
                 if (streamingLevel->IsLevelLoaded())
                 {
                     streamingLevel->SetShouldBeVisible(true);
-
-                    ApplyParameters(sceneId, { static_cast<AActor*>(spec.persistentRoot), static_cast<AActor*>(streamingLevel->GetLevelScriptActor()) });
+                    ApplyParameters(sceneId, GetSpecActors(World, spec));
                 }
             }
-            else if (spec.streamingLevel != nullptr)
+            else
             {
                 streamingLevel->SetShouldBeVisible(false); // hide all levels not associated with this schema
             }
@@ -119,13 +125,14 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
     }
 }
 
-bool SceneSelector_StreamingLevels::ValidateLevel(uint32_t sceneId)
+bool SceneSelector_StreamingLevels::ValidateLevel(const UWorld& World, uint32_t sceneId)
 {
     RenderStreamLink::RemoteParameters& parameters = Schema().scenes.scenes[sceneId];
-    const SchemaSpec& spec = m_specs[sceneId];
+    SchemaSpec& spec = m_specs[sceneId];
     UE_LOG(LogRenderStream, Log, TEXT("SceneSelectorStreamingLevels: Validating schema for %s with %d parameters"), UTF8_TO_TCHAR(parameters.name), parameters.nParameters);
-    AActor* levelRoot = spec.streamingLevel ? static_cast<AActor*>(spec.streamingLevel->GetLevelScriptActor()) : nullptr;
-    if (!ValidateParameters(parameters, { spec.persistentRoot, levelRoot }, levelRoot == nullptr))
+
+    const bool isBaseScene = spec.streamingLevel == nullptr;
+    if (!ValidateParameters(parameters, GetSpecActors(World, spec), isBaseScene))
     {
         UE_LOG(LogRenderStream, Error, TEXT("Failed to validate schema for %s"), UTF8_TO_TCHAR(parameters.name));
         return false;

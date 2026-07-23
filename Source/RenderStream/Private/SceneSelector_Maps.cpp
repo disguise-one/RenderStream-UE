@@ -29,8 +29,7 @@ void SceneSelector_Maps::ApplyScene(const UWorld& world, uint32_t sceneId)
             return;
         }
 
-        TArray<AActor*> LevelActors;
-        GetAllLevels(LevelActors, world.PersistentLevel);
+        const TArray<AActor*>& LevelActors = GetCachedActors(world.PersistentLevel, sceneId);
 
         switch (map.ValidationState)
         {

@@ -31,7 +31,10 @@ public: // static helpers
 
 protected:
     const RenderStreamLink::Schema& Schema() const;
+    void GetActorsInLevel(TArray<AActor*>& Actors, ULevel* Level) const;
     void GetAllLevels(TArray<AActor*>& Actors, ULevel* Level) const;
+
+    const TArray<AActor*>& GetCachedActors(ULevel* PersistentLevel, uint32_t sceneId);
 
     virtual bool OnLoadedSchema(const UWorld& World, const RenderStreamLink::Schema& Schema) = 0;
     bool ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors, bool ignoreParameterCount = false) const;
@@ -44,6 +47,12 @@ private:
     void GetTextureParameter(const FString& toggle, const RenderStreamLink::ImageFrameData& frameData, size_t iImage, UTextureRenderTarget2D* Texture);
     
     TMap<uint64_t /*id*/, RenderStreamLink::FSkeletalLayout> m_skeletalLayoutCache;
+
+    // Cache backing GetCachedActors.
+    TArray<AActor*> m_cachedActors;
+    uint32_t m_cachedSceneId = ~0u;
+    uint64 m_cachedVersion = ~0ull;
+
     std::vector<uint8_t> m_schemaMem;
     RenderStreamLink::ScopedSchema m_defaultSchema;
     std::vector<float> m_floatValuesLast;

@@ -40,7 +40,5 @@ void SceneSelector_None::ApplyScene(const UWorld& World, uint32_t SceneId)
     }
 
     TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("SceneSelector_None::ApplyScene()"));
-    TArray<AActor*> LevelActors;
-    GetAllLevels(LevelActors, World.PersistentLevel);
-    ApplyParameters(SceneId, LevelActors);
+    ApplyParameters(SceneId, GetCachedActors(World.PersistentLevel, SceneId));
 }
