@@ -195,7 +195,8 @@ namespace
         const FString FileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
         FSavePackageArgs SaveArgs;
         SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-        UPackage::SavePackage(Package, RT, *FileName, SaveArgs);
+        if (!UPackage::SavePackage(Package, RT, *FileName, SaveArgs))
+            UE_LOG(LogRenderStreamTestBake, Error, TEXT("Failed to save render target %s"), *PackageName);
         return RT;
     }
 
@@ -226,7 +227,8 @@ namespace
         const FString FileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
         FSavePackageArgs SaveArgs;
         SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-        UPackage::SavePackage(Package, Material, *FileName, SaveArgs);
+        if (!UPackage::SavePackage(Package, Material, *FileName, SaveArgs))
+            UE_LOG(LogRenderStreamTestBake, Error, TEXT("Failed to save material %s"), *PackageName);
         return Material;
     }
 
@@ -249,7 +251,8 @@ namespace
         const FString FileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
         FSavePackageArgs SaveArgs;
         SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-        UPackage::SavePackage(Package, MIC, *FileName, SaveArgs);
+        if (!UPackage::SavePackage(Package, MIC, *FileName, SaveArgs))
+            UE_LOG(LogRenderStreamTestBake, Error, TEXT("Failed to save material instance %s"), *PackageName);
         return MIC;
     }
 
