@@ -4,8 +4,6 @@ param(
 
     [string] $RepoDir,
 
-    [string] $PluginName,
-
     [switch] $Unlink,
 
     # Delete the existing real plugin folder instead of backing it up.
@@ -13,6 +11,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# The junction into the project's Plugins folder must always be named this.
+$PluginName = 'RenderStream-UE'
 
 if (-not $RepoDir) 
 {
@@ -41,11 +42,6 @@ if ($ProjectDir)
     if (-not (Get-ChildItem -LiteralPath $ProjectDir -Filter '*.uproject' -File)) 
     {
         throw "No .uproject found in '$ProjectDir' - is that the project root?"
-    }
-
-    if (-not $PluginName) 
-    {
-        $PluginName = Split-Path -Leaf $RepoDir
     }
 
     $pluginsDir = Join-Path $ProjectDir 'Plugins'

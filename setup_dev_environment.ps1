@@ -19,9 +19,6 @@ param(
     [ValidateSet('None', 'Maps', 'StreamingLevels')]
     [string] $Mode,
 
-    # Name of the plugin folder created under the project's Plugins dir (defaults to the repo folder name).
-    [string] $PluginName,
-
     # Delete an existing real plugin folder instead of backing it up (forwarded to link_to_project).
     [switch] $NoBackup,
 
@@ -60,7 +57,6 @@ creating a fresh RenderStream test project first. Runs: create (optional) -> gen
   -ProjectName <name>     Project/module name for -Create (defaults to the -ProjectDir folder name).
   -Rhi <D3D12|D3D11|Vulkan>          Default graphics RHI for a -Create project (defaults to D3D12).
   -Mode <None|Maps|StreamingLevels>  RenderStream scene selector for a -Create project (defaults to None).
-  -PluginName <name>      Name of the plugin folder created under the project's Plugins (defaults to repo folder).
   -NoBackup               Delete an existing real plugin folder instead of backing it up.
   -VisualStudio           Generate a Visual Studio .sln instead of VS Code files.
   -IncludeEngine          Include full engine source in the generated workspace (heavier).
@@ -111,7 +107,6 @@ try {
 
     # 2) Junction-link the repo into the project's Plugins folder.
     $linkArgs = @('-ProjectDir', $ProjectDir)
-    if ($PluginName) { $linkArgs += @('-PluginName', $PluginName) }
     if ($NoBackup)   { $linkArgs += '-NoBackup' }
     Invoke-Step 'Link to project' (Join-Path $RepoDir 'link_to_project.ps1') $linkArgs
 

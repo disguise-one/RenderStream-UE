@@ -68,7 +68,6 @@ Forwarded to the relevant step:
 | `-ProjectName <name>` | Project/module name for `-Create` (defaults to the folder name). |
 | `-Rhi <D3D12\|D3D11\|Vulkan>` | Default graphics RHI for a `-Create` project (defaults to D3D12). |
 | `-Mode <None\|Maps\|StreamingLevels>` | RenderStream scene selector for a `-Create` project (defaults to None). |
-| `-PluginName <name>` | Name of the plugin folder created under `Plugins` (defaults to the repo folder name). |
 | `-NoBackup` | Delete an existing real plugin folder instead of backing it up. |
 | `-VisualStudio` | Generate a Visual Studio `.sln` instead of VS Code files. |
 | `-IncludeEngine` | Include full engine source in the workspace (heavier, better for engine debugging). |
