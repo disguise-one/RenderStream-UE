@@ -94,6 +94,8 @@ void FRenderStreamEditorModule::StartupModule()
             this, &FRenderStreamEditorModule::RegisterSaveCommandOverrides));
     }
 
+    FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
+    FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
     FCoreDelegates::OnBeginFrame.AddRaw(this, &FRenderStreamEditorModule::OnBeginFrame);
     FCoreDelegates::OnPostEngineInit.AddRaw(this, &FRenderStreamEditorModule::OnPostEngineInit);
@@ -118,6 +120,8 @@ void FRenderStreamEditorModule::ShutdownModule()
         PropertyModule.UnregisterCustomClassLayout("RenderStreamSettings");
     }
 
+    FEditorDelegates::PostSaveExternalActors.RemoveAll(this);
+    FEditorDelegates::PostSaveWorldWithContext.RemoveAll(this);
     FEditorDelegates::OnAssetsDeleted.RemoveAll(this);
     FCoreDelegates::OnBeginFrame.RemoveAll(this);
     FCoreDelegates::OnPostEngineInit.RemoveAll(this);
@@ -125,6 +129,8 @@ void FRenderStreamEditorModule::ShutdownModule()
     FEditorDelegates::OnShutdownPostPackagesSaved.RemoveAll(this);
     if (GEditor)
         GEditor->OnBlueprintCompiled().RemoveAll(this);
+
+    RestoreSaveCommandOverrides();
 
     UnregisterSettings();
 
@@ -517,6 +523,11 @@ bool CheckOutLevelChannelCaches(TArray<ULevel*> Levels)
         Packages.Add(Package);
     }
 
+    // Headless (commandlet) has no Slate, so the checkout dialog can't be built. The cache
+    // assets are local project files; skip the prompt and let the save make them writable.
+    if (IsRunningCommandlet())
+        return true;
+
     TArray<UPackage*> checkedOutPackages;
     TArray<UPackage*> alreadyWriteablePackages;
     const bool checkoutNotCancelled = FEditorFileUtils::PromptToCheckoutPackages(false, Packages, &checkedOutPackages, &alreadyWriteablePackages);
@@ -678,9 +689,12 @@ TArray<ULevel*> BuildRequiredLevelsList()
         URenderStreamChannelCacheAsset* Cache;
         if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
             auto world = Cast<UWorld>(Asset.FastGetAsset(true));
-            if (world != nullptr && world->GetNumLevels() > 0)
+            // Use PersistentLevel (serialized) rather than GetLevel(0): the Levels array is
+            // transient and only populated once a world is initialized, so a world loaded
+            // headless (commandlet) has GetNumLevels() == 0 even though PersistentLevel is valid.
+            if (world != nullptr && world->PersistentLevel != nullptr)
             {
-                Levels.Add(world->GetLevel(0));
+                Levels.Add(world->PersistentLevel);
             }
             else
             {
@@ -881,10 +895,14 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
     const FString fullSchemaJsonFileDir = FPaths::ProjectDir() + "rs_" + projectName + ".json";
     bool fileIsCheckedOut = false;
 
-    const FSourceControlState shemeSCState = SourceControlHelpers::QueryFileState(fullSchemaJsonFileDir);
-
-    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(fullSchemaJsonFileDir) && shemeSCState.bIsAdded)
-        fileIsCheckedOut = SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
+    // Only query revision control when it is actually enabled; QueryFileState logs an error
+    // otherwise (e.g. during a headless bake with no source control provider).
+    if (SourceControlHelpers::IsEnabled())
+    {
+        const FSourceControlState shemeSCState = SourceControlHelpers::QueryFileState(fullSchemaJsonFileDir);
+        if (FPaths::FileExists(fullSchemaJsonFileDir) && shemeSCState.bIsAdded)
+            fileIsCheckedOut = SourceControlHelpers::CheckOutFile(fullSchemaJsonFileDir);
+    }
 
     if (SourceControlHelpers::IsEnabled() && !fileIsCheckedOut)
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Schema file failed to check out."));
@@ -1022,6 +1040,9 @@ void FRenderStreamEditorModule::RegisterSaveCommandOverrides()
         if (!ExistingAction)
             return;
 
+        // Keep the original so ShutdownModule can restore it; the global command list outlives this module.
+        OriginalSaveActions.Emplace(Command, *ExistingAction);
+
         // Copy the existing action so we preserve CanExecute/visibility, then chain schema regeneration
         FUIAction WrappedAction = *ExistingAction;
         const FExecuteAction OriginalExecute = WrappedAction.ExecuteAction;
@@ -1039,6 +1060,33 @@ void FRenderStreamEditorModule::RegisterSaveCommandOverrides()
 
     WrapSaveCommand(FLevelEditorCommands::Get().Save);
     WrapSaveCommand(FLevelEditorCommands::Get().SaveAllLevels);
+}
+
+void FRenderStreamEditorModule::RestoreSaveCommandOverrides()
+{
+    FLevelEditorModule* LevelEditorModule = FModuleManager::GetModulePtr<FLevelEditorModule>("LevelEditor");
+    if (LevelEditorModule)
+    {
+        const TSharedRef<FUICommandList> CommandList = LevelEditorModule->GetGlobalLevelEditorActions();
+        for (const TPair<TSharedPtr<FUICommandInfo>, FUIAction>& Original : OriginalSaveActions)
+        {
+            if (Original.Key.IsValid())
+                CommandList->MapAction(Original.Key, Original.Value);
+        }
+    }
+
+    OriginalSaveActions.Empty();
+}
+
+void FRenderStreamEditorModule::OnPostSaveWorldContext(UWorld* World, FObjectPostSaveContext Context)
+{
+    if (Context.SaveSucceeded())
+        DirtyAssetMetadata = true;
+}
+
+void FRenderStreamEditorModule::OnPostSaveWorld(UWorld* World)
+{
+    DirtyAssetMetadata = true;
 }
 
 void FRenderStreamEditorModule::OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses)

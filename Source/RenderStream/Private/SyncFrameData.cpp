@@ -226,7 +226,17 @@ void FRenderStreamSyncFrameData::Apply() const
 void FRenderStreamSyncFrameData::QuitNow() const
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(TEXT("FRenderStreamSyncFrameData::QuitNow()"));
+
     RenderStreamLink::instance().rs_setNewStatusMessage("");
+
+    IDisplayClusterClusterManager* ClusterMgr = IDisplayCluster::IsAvailable() ? IDisplayCluster::Get().GetClusterMgr() : nullptr;
+
+    if (ClusterMgr && !ClusterMgr->IsPrimary())
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("RenderStream requested quit, waiting for nDisplay primary to terminate this node"));
+        return;
+    }
+
     UE_LOG(LogRenderStream, Log, TEXT("Quitting due to RenderStream request"));
     FPlatformMisc::RequestExit(false);
 }
