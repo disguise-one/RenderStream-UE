@@ -349,6 +349,9 @@ public:
         RSColourSpace workingColourSpace;
         Channels channels;
         Scenes scenes;
+        
+        // Set to the persistent level's scene index in Streaming Levels mode; -1 for Maps/None.
+        int32_t baseSceneIndex;
     } Schema;
 
     typedef struct
@@ -528,6 +531,7 @@ public:
             schema.channels.channels = nullptr;
             schema.scenes.nScenes = 0;
             schema.scenes.scenes = nullptr;
+            schema.baseSceneIndex = -1;
         }
         ScopedSchema(const ScopedSchema&) = delete;
         ScopedSchema(ScopedSchema&& other)

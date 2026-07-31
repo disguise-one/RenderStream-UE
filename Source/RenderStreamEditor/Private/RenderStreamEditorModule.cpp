@@ -479,11 +479,8 @@ void GenerateScene(
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
-    bool isStreamingLevelSceneSelector = settings->SceneSelector == ERenderStreamSceneSelector::StreamingLevels;
 
     TArray<const URenderStreamChannelCacheAsset*> Levels;
-    if (Persistent && isStreamingLevelSceneSelector) // add persistent level's parameters to sublevels for Streaming level only
-        Levels.Push(Persistent);
 
     bool needToFetchSublevels = settings->SceneSelector == ERenderStreamSceneSelector::None;
     FetchLevelCaches(LevelParams, Levels, Cache, needToFetchSublevels);
@@ -889,6 +886,9 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
                 if (Cache != nullptr)
                     GenerateScene(LevelParams, *SceneParameters++, *Cache, MainMap);
             }
+
+            // Scene 0 is the persistent level
+            Schema.schema.baseSceneIndex = 0;
         }
         else
         {
