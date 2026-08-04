@@ -887,7 +887,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             }
 
             // Scene 0 is the persistent level
-            Schema.schema.baseSceneIndex = 0;
+            Schema.schema.defaultSceneIndex = 0;
         }
         else
         {

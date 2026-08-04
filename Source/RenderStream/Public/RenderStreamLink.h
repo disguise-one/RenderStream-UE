@@ -351,7 +351,7 @@ public:
         Scenes scenes;
         
         // Set to the persistent level's scene index in Streaming Levels mode; -1 for Maps/None.
-        int32_t baseSceneIndex;
+        int32_t defaultSceneIndex;
     } Schema;
 
     typedef struct
@@ -531,7 +531,7 @@ public:
             schema.channels.channels = nullptr;
             schema.scenes.nScenes = 0;
             schema.scenes.scenes = nullptr;
-            schema.baseSceneIndex = -1;
+            schema.defaultSceneIndex = -1;
         }
         ScopedSchema(const ScopedSchema&) = delete;
         ScopedSchema(ScopedSchema&& other)
