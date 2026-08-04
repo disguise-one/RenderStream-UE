@@ -367,7 +367,7 @@ public:
 
 #define MIN_D3_VERSION_MAJOR 34
 #define MIN_D3_VERSION_MINOR 0
-#define MIN_D3_VERSION_PATCH 0
+#define MIN_D3_VERSION_PATCH 2
 
     enum UseDX12SharedHeapFlag
     {
