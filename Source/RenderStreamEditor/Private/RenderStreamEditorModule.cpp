@@ -472,18 +472,14 @@ void FetchLevelCaches(
 void GenerateScene(
     TMap<FSoftObjectPath, URenderStreamChannelCacheAsset*> const& LevelParams,
     RenderStreamLink::RemoteParameters& SceneParameters,
-    const URenderStreamChannelCacheAsset* Cache,
-    const URenderStreamChannelCacheAsset* Persistent)
+    const URenderStreamChannelCacheAsset* Cache)
 {
     FString sceneName = Cache->GetName();
     SceneParameters.name = _strdup(TCHAR_TO_UTF8(*sceneName));
 
     const URenderStreamSettings* settings = GetDefault<URenderStreamSettings>();
-    bool isStreamingLevelSceneSelector = settings->SceneSelector == ERenderStreamSceneSelector::StreamingLevels;
 
     TArray<const URenderStreamChannelCacheAsset*> Levels;
-    if (Persistent && isStreamingLevelSceneSelector) // add persistent level's parameters to sublevels for Streaming level only
-        Levels.Push(Persistent);
 
     bool needToFetchSublevels = settings->SceneSelector == ERenderStreamSceneSelector::None;
     FetchLevelCaches(LevelParams, Levels, Cache, needToFetchSublevels);
@@ -861,7 +857,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
             Schema.schema.scenes.scenes = static_cast<RenderStreamLink::RemoteParameters*>(
                 malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
             RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
-            GenerateScene(LevelParams, *SceneParameters++, MainMap, nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, MainMap);
         }
         else
         {
@@ -882,13 +878,16 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
                 malloc(Schema.schema.scenes.nScenes * sizeof(RenderStreamLink::RemoteParameters)));
             RenderStreamLink::RemoteParameters* SceneParameters = Schema.schema.scenes.scenes;
 
-            GenerateScene(LevelParams, *SceneParameters++, MainMap, nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, MainMap);
             for (FSoftObjectPath Path : MainMap->SubLevels)
             {
                 URenderStreamChannelCacheAsset** Cache = LevelParams.Find(Path);
                 if (Cache != nullptr)
-                    GenerateScene(LevelParams, *SceneParameters++, *Cache, MainMap);
+                    GenerateScene(LevelParams, *SceneParameters++, *Cache);
             }
+
+            // Scene 0 is the persistent level
+            Schema.schema.defaultSceneIndex = 0;
         }
         else
         {
@@ -901,17 +900,6 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
 
     case ERenderStreamSceneSelector::Maps:
     {
-        TMap<const URenderStreamChannelCacheAsset*, const URenderStreamChannelCacheAsset*> LevelParents;
-        for (const URenderStreamChannelCacheAsset* Cache : ChannelCaches)
-        {
-            for (FSoftObjectPath Path : Cache->SubLevels)
-            {
-                URenderStreamChannelCacheAsset** Parent = LevelParams.Find(Path);
-                if (Parent != nullptr)
-                    LevelParents.Add(*Parent, Cache);
-            }
-        }
-
         // If the project's packaging settings specify an explicit list of maps to include in the
         // packaged build, only save those maps to the schema. Otherwise save every map we cached.
         const UProjectPackagingSettings* PackagingSettings = GetDefault<UProjectPackagingSettings>();
@@ -940,8 +928,7 @@ void FRenderStreamEditorModule::GenerateAssetMetadata()
 
         for (const URenderStreamChannelCacheAsset* Cache : MapsToSave)
         {
-            const URenderStreamChannelCacheAsset** Entry = LevelParents.Find(Cache);
-            GenerateScene(LevelParams, *SceneParameters++, Cache, Entry != nullptr ? *Entry : nullptr);
+            GenerateScene(LevelParams, *SceneParameters++, Cache);
         }
 
         break;
