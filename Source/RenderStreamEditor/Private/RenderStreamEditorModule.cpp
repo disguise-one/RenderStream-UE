@@ -48,6 +48,7 @@
 
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
+#include "Misc/FileHelper.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
@@ -940,6 +941,52 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
     return FString();
 }
 
+struct FRequiredEngineSetting
+{
+    const TCHAR* Section;
+    const TCHAR* Key;
+    const TCHAR* Value;
+};
+
+// When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
+void EnsureShippingLaunchConfig()
+{
+    static const FRequiredEngineSetting RequiredSettings[] = {
+        { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
+        { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
+        { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
+    };
+
+    const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
+
+    FString iniContents;
+    FFileHelper::LoadFileToString(iniContents, *engineIniPath);
+
+    FString additions;
+    FString currentSection;
+    for (const FRequiredEngineSetting& setting : RequiredSettings)
+    {
+        const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
+        if (iniContents.Contains(entry))
+            continue;
+
+        if (currentSection != setting.Section)
+        {
+            currentSection = setting.Section;
+            additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
+        }
+
+        additions += entry + LINE_TERMINATOR;
+        UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
+    }
+
+    if (additions.IsEmpty())
+        return;
+
+    if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
+}
+
 void FRenderStreamEditorModule::RunPackageAndCopy()
 {
     FString uatPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Build/BatchFiles/RunUAT.bat"));
@@ -952,10 +999,12 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     if(outputFolder == FString())
         return;
 
+    EnsureShippingLaunchConfig();
+
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \
-        -archivedirectory=\"%s\" -clientconfig=Development -nocompile -nocompileuat"),
+        -archivedirectory=\"%s\" -clientconfig=Shipping -nocompile -nocompileuat -NoBootstrapExe"),
         *projectPath,
         *projectName,
         *enginePath,
@@ -986,6 +1035,27 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
         if (!copySuccess)
         {
             UE_LOG(LogTemp, Log, TEXT("Failed to copy the meatadata over!"));
+        }
+
+        // UAT adds a suffux to shipping builds that needs to be removed to match the json name
+        const FString binariesDir = outputFolder / FString::Printf(TEXT("Windows/%s/Binaries/Win64"), *projectName);
+        const FString undecoratedExe = binariesDir / FString::Printf(TEXT("%s.exe"), *projectName);
+
+        TArray<FString> decoratedExes;
+        IFileManager::Get().FindFiles(decoratedExes, *(binariesDir / TEXT("*-Win64-Shipping.exe")), true, false);
+
+        if (decoratedExes.Num() > 1)
+            UE_LOG(LogRenderStreamEditor, Warning, TEXT("Found %d Shipping executables in %s, renaming the first only."), decoratedExes.Num(), *binariesDir);
+
+        if (decoratedExes.Num() > 0)
+        {
+            const FString decoratedExe = binariesDir / decoratedExes[0];
+
+            if (FPaths::FileExists(undecoratedExe))
+                IFileManager::Get().Delete(*undecoratedExe);
+
+            if (!IFileManager::Get().Move(*undecoratedExe, *decoratedExe))
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to rename %s to %s"), *decoratedExe, *undecoratedExe);
         }
     }
     else
