@@ -349,6 +349,9 @@ public:
         RSColourSpace workingColourSpace;
         Channels channels;
         Scenes scenes;
+        
+        // Set to the persistent level's scene index in Streaming Levels mode; -1 for Maps/None.
+        int32_t defaultSceneIndex;
     } Schema;
 
     typedef struct
@@ -364,7 +367,7 @@ public:
 
 #define MIN_D3_VERSION_MAJOR 34
 #define MIN_D3_VERSION_MINOR 0
-#define MIN_D3_VERSION_PATCH 0
+#define MIN_D3_VERSION_PATCH 2
 
     enum UseDX12SharedHeapFlag
     {
@@ -528,6 +531,7 @@ public:
             schema.channels.channels = nullptr;
             schema.scenes.nScenes = 0;
             schema.scenes.scenes = nullptr;
+            schema.defaultSceneIndex = -1;
         }
         ScopedSchema(const ScopedSchema&) = delete;
         ScopedSchema(ScopedSchema&& other)
