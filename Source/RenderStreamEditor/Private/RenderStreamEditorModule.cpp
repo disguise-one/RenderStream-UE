@@ -948,8 +948,33 @@ struct FRequiredEngineSetting
     const TCHAR* Value;
 };
 
+bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
+{
+    const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
+    const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
+
+    TArray<FString> lines;
+    IniContents.ParseIntoArrayLines(lines);
+
+    bool inSection = false;
+    for (const FString& line : lines)
+    {
+        const FString trimmed = line.TrimStartAndEnd();
+
+        if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
+            continue;
+
+        if (trimmed.StartsWith(TEXT("[")))
+            inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
+        else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
+            return true;
+    }
+
+    return false;
+}
+
 // When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
-void EnsureShippingLaunchConfig()
+bool EnsureShippingLaunchConfig()
 {
     static const FRequiredEngineSetting RequiredSettings[] = {
         { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
@@ -967,7 +992,7 @@ void EnsureShippingLaunchConfig()
     for (const FRequiredEngineSetting& setting : RequiredSettings)
     {
         const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
-        if (iniContents.Contains(entry))
+        if (IniSectionContainsSetting(iniContents, setting))
             continue;
 
         if (currentSection != setting.Section)
@@ -981,7 +1006,7 @@ void EnsureShippingLaunchConfig()
     }
 
     if (additions.IsEmpty())
-        return;
+        return true;
 
     // In case ini is already checked in
     if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
@@ -992,7 +1017,12 @@ void EnsureShippingLaunchConfig()
     }
 
     if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
+    {
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
+        return false;
+    }
+
+    return true;
 }
 
 void FRenderStreamEditorModule::RunPackageAndCopy()
@@ -1007,7 +1037,11 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     if(outputFolder == FString())
         return;
 
-    EnsureShippingLaunchConfig();
+    if (!EnsureShippingLaunchConfig())
+    {
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the required launch settings could not be written."));
+        return;
+    }
 
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
@@ -1024,7 +1058,7 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     bool bSuccess = FPlatformProcess::ExecProcess(*uatPath, *arguments, &ReturnCode, &errorOut, nullptr);
     UE_LOG(LogTemp, Log, TEXT("Packaging complete..."));
 
-    if (bSuccess)
+    if (bSuccess && ReturnCode == 0)
     {
         // Need to copy metadata over to new .exe location
         FString filename = FString::Printf(TEXT("rs_%s.json"), FApp::GetProjectName());
@@ -1049,26 +1083,25 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
         const FString binariesDir = outputFolder / FString::Printf(TEXT("Windows/%s/Binaries/Win64"), *projectName);
         const FString undecoratedExe = binariesDir / FString::Printf(TEXT("%s.exe"), *projectName);
 
-        TArray<FString> decoratedExes;
-        IFileManager::Get().FindFiles(decoratedExes, *(binariesDir / TEXT("*-Win64-Shipping.exe")), true, false);
-
-        if (decoratedExes.Num() > 1)
-            UE_LOG(LogRenderStreamEditor, Warning, TEXT("Found %d Shipping executables in %s, renaming the first only."), decoratedExes.Num(), *binariesDir);
-
-        if (decoratedExes.Num() > 0)
+        const FString decoratedExe = binariesDir / FString::Printf(TEXT("%s-Win64-Shipping.exe"), *projectName);
+        if (FPaths::FileExists(decoratedExe))
         {
-            const FString decoratedExe = binariesDir / decoratedExes[0];
-
             if (FPaths::FileExists(undecoratedExe))
-                IFileManager::Get().Delete(*undecoratedExe);
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Replacing existing %s"), *undecoratedExe);
 
-            if (!IFileManager::Get().Move(*undecoratedExe, *decoratedExe))
+            if (IFileManager::Get().Move(*undecoratedExe, *decoratedExe))
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Renamed %s to %s"), *decoratedExe, *undecoratedExe);
+            else
                 UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to rename %s to %s"), *decoratedExe, *undecoratedExe);
+        }
+        else if (!FPaths::FileExists(undecoratedExe))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Neither %s nor %s was found, d3 will not be able to launch this build."), *decoratedExe, *undecoratedExe);
         }
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("UAT proccess failed with error code: %s"), *errorOut);
+        UE_LOG(LogTemp, Error, TEXT("UAT proccess failed with return code %d: %s"), ReturnCode, *errorOut);
     }
 }
 
