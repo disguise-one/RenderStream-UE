@@ -983,6 +983,14 @@ void EnsureShippingLaunchConfig()
     if (additions.IsEmpty())
         return;
 
+    // In case ini is already checked in
+    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
+    {
+        const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
+        if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
+    }
+
     if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
 }
