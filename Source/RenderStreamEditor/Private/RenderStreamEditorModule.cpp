@@ -941,88 +941,91 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
     return FString();
 }
 
-struct FRequiredEngineSetting
+namespace RenderStreamPackaging
 {
-    const TCHAR* Section;
-    const TCHAR* Key;
-    const TCHAR* Value;
-};
-
-bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
-{
-    const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
-    const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
-
-    TArray<FString> lines;
-    IniContents.ParseIntoArrayLines(lines);
-
-    bool inSection = false;
-    for (const FString& line : lines)
+    struct FRequiredEngineSetting
     {
-        const FString trimmed = line.TrimStartAndEnd();
-
-        if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
-            continue;
-
-        if (trimmed.StartsWith(TEXT("[")))
-            inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
-        else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
-            return true;
-    }
-
-    return false;
-}
-
-// When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
-bool EnsureShippingLaunchConfig()
-{
-    static const FRequiredEngineSetting RequiredSettings[] = {
-        { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
-        { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
-        { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
+        const TCHAR* Section;
+        const TCHAR* Key;
+        const TCHAR* Value;
     };
 
-    const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
-
-    FString iniContents;
-    FFileHelper::LoadFileToString(iniContents, *engineIniPath);
-
-    FString additions;
-    FString currentSection;
-    for (const FRequiredEngineSetting& setting : RequiredSettings)
+    bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
     {
-        const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
-        if (IniSectionContainsSetting(iniContents, setting))
-            continue;
+        const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
+        const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
 
-        if (currentSection != setting.Section)
+        TArray<FString> lines;
+        IniContents.ParseIntoArrayLines(lines);
+
+        bool inSection = false;
+        for (const FString& line : lines)
         {
-            currentSection = setting.Section;
-            additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
+            const FString trimmed = line.TrimStartAndEnd();
+
+            if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
+                continue;
+
+            if (trimmed.StartsWith(TEXT("[")))
+                inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
+            else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
+                return true;
         }
 
-        additions += entry + LINE_TERMINATOR;
-        UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
-    }
-
-    if (additions.IsEmpty())
-        return true;
-
-    // In case ini is already checked in
-    if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
-    {
-        const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
-        if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
-    }
-
-    if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
-    {
-        UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
         return false;
     }
 
-    return true;
+    // When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
+    bool EnsureShippingLaunchConfig()
+    {
+        static const FRequiredEngineSetting RequiredSettings[] = {
+            { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
+            { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
+            { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
+        };
+
+        const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
+
+        FString iniContents;
+        FFileHelper::LoadFileToString(iniContents, *engineIniPath);
+
+        FString additions;
+        FString currentSection;
+        for (const FRequiredEngineSetting& setting : RequiredSettings)
+        {
+            const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
+            if (IniSectionContainsSetting(iniContents, setting))
+                continue;
+
+            if (currentSection != setting.Section)
+            {
+                currentSection = setting.Section;
+                additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
+            }
+
+            additions += entry + LINE_TERMINATOR;
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
+        }
+
+        if (additions.IsEmpty())
+            return true;
+
+        // In case ini is already checked in
+        if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
+        {
+            const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
+            if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
+        }
+
+        if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
+            return false;
+        }
+
+        return true;
+    }
 }
 
 void FRenderStreamEditorModule::RunPackageAndCopy()
@@ -1037,7 +1040,7 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     if(outputFolder == FString())
         return;
 
-    if (!EnsureShippingLaunchConfig())
+    if (!RenderStreamPackaging::EnsureShippingLaunchConfig())
     {
         UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the required launch settings could not be written."));
         return;
@@ -1090,9 +1093,17 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Replacing existing %s"), *undecoratedExe);
 
             if (IFileManager::Get().Move(*undecoratedExe, *decoratedExe))
+            {
                 UE_LOG(LogRenderStreamEditor, Log, TEXT("Renamed %s to %s"), *decoratedExe, *undecoratedExe);
+            }
             else
+            {
                 UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to rename %s to %s"), *decoratedExe, *undecoratedExe);
+
+                // Delete old exe
+                if (FPaths::FileExists(undecoratedExe) && !IFileManager::Get().Delete(*undecoratedExe))
+                    UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to delete stale %s"), *undecoratedExe);
+            }
         }
         else if (!FPaths::FileExists(undecoratedExe))
         {
