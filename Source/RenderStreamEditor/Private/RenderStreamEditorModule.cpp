@@ -48,6 +48,7 @@
 
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
+#include "Misc/FileHelper.h"
 
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
@@ -940,6 +941,93 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
     return FString();
 }
 
+namespace RenderStreamPackaging
+{
+    struct FRequiredEngineSetting
+    {
+        const TCHAR* Section;
+        const TCHAR* Key;
+        const TCHAR* Value;
+    };
+
+    bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
+    {
+        const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
+        const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
+
+        TArray<FString> lines;
+        IniContents.ParseIntoArrayLines(lines);
+
+        bool inSection = false;
+        for (const FString& line : lines)
+        {
+            const FString trimmed = line.TrimStartAndEnd();
+
+            if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
+                continue;
+
+            if (trimmed.StartsWith(TEXT("[")))
+                inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
+            else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
+
+    // When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
+    bool EnsureShippingLaunchConfig()
+    {
+        static const FRequiredEngineSetting RequiredSettings[] = {
+            { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
+            { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
+            { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
+        };
+
+        const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
+
+        FString iniContents;
+        FFileHelper::LoadFileToString(iniContents, *engineIniPath);
+
+        FString additions;
+        FString currentSection;
+        for (const FRequiredEngineSetting& setting : RequiredSettings)
+        {
+            const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
+            if (IniSectionContainsSetting(iniContents, setting))
+                continue;
+
+            if (currentSection != setting.Section)
+            {
+                currentSection = setting.Section;
+                additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
+            }
+
+            additions += entry + LINE_TERMINATOR;
+            UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
+        }
+
+        if (additions.IsEmpty())
+            return true;
+
+        // In case ini is already checked in
+        if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
+        {
+            const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
+            if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
+        }
+
+        if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
+            return false;
+        }
+
+        return true;
+    }
+}
+
 void FRenderStreamEditorModule::RunPackageAndCopy()
 {
     FString uatPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Build/BatchFiles/RunUAT.bat"));
@@ -952,10 +1040,16 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     if(outputFolder == FString())
         return;
 
+    if (!RenderStreamPackaging::EnsureShippingLaunchConfig())
+    {
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the required launch settings could not be written."));
+        return;
+    }
+
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \
-        -archivedirectory=\"%s\" -clientconfig=Development -nocompile -nocompileuat"),
+        -archivedirectory=\"%s\" -clientconfig=Shipping -nocompile -nocompileuat -NoBootstrapExe"),
         *projectPath,
         *projectName,
         *enginePath,
@@ -967,7 +1061,7 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     bool bSuccess = FPlatformProcess::ExecProcess(*uatPath, *arguments, &ReturnCode, &errorOut, nullptr);
     UE_LOG(LogTemp, Log, TEXT("Packaging complete..."));
 
-    if (bSuccess)
+    if (bSuccess && ReturnCode == 0)
     {
         // Need to copy metadata over to new .exe location
         FString filename = FString::Printf(TEXT("rs_%s.json"), FApp::GetProjectName());
@@ -987,10 +1081,38 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
         {
             UE_LOG(LogTemp, Log, TEXT("Failed to copy the meatadata over!"));
         }
+
+        // UAT adds a suffux to shipping builds that needs to be removed to match the json name
+        const FString binariesDir = outputFolder / FString::Printf(TEXT("Windows/%s/Binaries/Win64"), *projectName);
+        const FString undecoratedExe = binariesDir / FString::Printf(TEXT("%s.exe"), *projectName);
+
+        const FString decoratedExe = binariesDir / FString::Printf(TEXT("%s-Win64-Shipping.exe"), *projectName);
+        if (FPaths::FileExists(decoratedExe))
+        {
+            if (FPaths::FileExists(undecoratedExe))
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Replacing existing %s"), *undecoratedExe);
+
+            if (IFileManager::Get().Move(*undecoratedExe, *decoratedExe))
+            {
+                UE_LOG(LogRenderStreamEditor, Log, TEXT("Renamed %s to %s"), *decoratedExe, *undecoratedExe);
+            }
+            else
+            {
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to rename %s to %s"), *decoratedExe, *undecoratedExe);
+
+                // Delete old exe
+                if (FPaths::FileExists(undecoratedExe) && !IFileManager::Get().Delete(*undecoratedExe))
+                    UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to delete stale %s"), *undecoratedExe);
+            }
+        }
+        else if (!FPaths::FileExists(undecoratedExe))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Neither %s nor %s was found, d3 will not be able to launch this build."), *decoratedExe, *undecoratedExe);
+        }
     }
     else
     {
-        UE_LOG(LogTemp, Error, TEXT("UAT proccess failed with error code: %s"), *errorOut);
+        UE_LOG(LogTemp, Error, TEXT("UAT proccess failed with return code %d: %s"), ReturnCode, *errorOut);
     }
 }
 
