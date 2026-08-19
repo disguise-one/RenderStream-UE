@@ -76,7 +76,7 @@ static void RegisterStyleSet()
 
     RenderStreamStyleSet = MakeShared<FSlateStyleSet>(RenderStreamStyleSetName);
     RenderStreamStyleSet->SetContentRoot(FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources")));
-    RenderStreamStyleSet->Set(PackageForRenderStreamIconName, new FSlateVectorImageBrush(RenderStreamStyleSet->RootToContentDir(TEXT("UE-DRS_ICO"), TEXT(".svg")), FVector2D(20.f, 20.f)));
+    RenderStreamStyleSet->Set(PackageForRenderStreamIconName, new FSlateVectorImageBrush(RenderStreamStyleSet->RootToContentDir(TEXT("PackagingIcon"), TEXT(".svg")), FVector2D(20.f, 20.f)));
 
     FSlateStyleRegistry::RegisterSlateStyle(*RenderStreamStyleSet);
 }
