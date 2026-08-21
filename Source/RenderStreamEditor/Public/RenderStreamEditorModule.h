@@ -16,11 +16,12 @@ public:
     virtual void StartupModule() override;
     virtual void ShutdownModule() override;
 
-    void GenerateAssetMetadata();
+    RENDERSTREAMEDITOR_API void GenerateAssetMetadata();
 
     void RunPackageAndCopy();
     void RegisterToolBarButton();
     void RegisterSaveCommandOverrides();
+    void RestoreSaveCommandOverrides();
 
 private:
     FString StreamName();
@@ -30,6 +31,8 @@ private:
     // Delegates
     void OnBeginFrame();
     void OnAssetsDeleted(const TArray<UClass*>& DeletedAssetClasses);
+    void OnPostSaveWorld(UWorld* World);
+    void OnPostSaveWorldContext(UWorld* World, FObjectPostSaveContext Context);
 
     void OnPostEngineInit();
 
@@ -46,4 +49,6 @@ private:
 
     TWeakObjectPtr<UWorld> GameWorld;
     bool DirtyAssetMetadata = false;
+
+    TArray<TPair<TSharedPtr<FUICommandInfo>, FUIAction>> OriginalSaveActions;
 };
