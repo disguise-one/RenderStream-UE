@@ -26,7 +26,8 @@ public class RenderStreamEditor : ModuleRules
             "SourceControl", 
             "LevelEditor",
             "MessageLog",
-            "ToolMenus"
+            "ToolMenus",
+            "Projects"
         });
     }
 }
