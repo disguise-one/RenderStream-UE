@@ -57,12 +57,46 @@
 #include "LevelEditorActions.h"
 #include "Framework/Commands/UICommandList.h"
 
+#include "Interfaces/IPluginManager.h"
+#include "Brushes/SlateImageBrush.h"
+#include "Styling/SlateStyle.h"
+#include "Styling/SlateStyleRegistry.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 
 #define LOCTEXT_NAMESPACE "RenderStreamEditor"
 
 const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
 const FString ContentFolder = TEXT("/Game");
+
+static const FName RenderStreamStyleSetName = TEXT("RenderStreamEditorStyle");
+static const FName PackageForRenderStreamIconName = TEXT("RenderStreamEditor.PackageForRenderStream");
+static TSharedPtr<FSlateStyleSet> RenderStreamStyleSet;
+
+static void RegisterStyleSet()
+{
+    if (RenderStreamStyleSet.IsValid())
+        return;
+
+    const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT(RS_PLUGIN_NAME));
+    if (!Plugin.IsValid())
+        return;
+
+    RenderStreamStyleSet = MakeShared<FSlateStyleSet>(RenderStreamStyleSetName);
+    RenderStreamStyleSet->SetContentRoot(FPaths::Combine(Plugin->GetBaseDir(), TEXT("Resources")));
+    RenderStreamStyleSet->Set(PackageForRenderStreamIconName, new FSlateVectorImageBrush(RenderStreamStyleSet->RootToContentDir(TEXT("PackagingIcon"), TEXT(".svg")), FVector2D(20.f, 20.f)));
+
+    FSlateStyleRegistry::RegisterSlateStyle(*RenderStreamStyleSet);
+}
+
+static void UnregisterStyleSet()
+{
+    if (!RenderStreamStyleSet.IsValid())
+        return;
+
+    FSlateStyleRegistry::UnRegisterSlateStyle(*RenderStreamStyleSet);
+    RenderStreamStyleSet.Reset();
+}
 
 TSharedRef<IDetailCustomization> MakeDefinitionCustomizationInstance()
 {
@@ -144,6 +178,8 @@ void FRenderStreamEditorModule::ShutdownModule()
         FMessageLogModule& MessageLogModule = FModuleManager::GetModuleChecked<FMessageLogModule>("MessageLog");
         MessageLogModule.UnregisterLogListing("RenderStreamValidation");
     }
+
+    UnregisterStyleSet();
 }
 
 FString FRenderStreamEditorModule::StreamName()
@@ -1191,6 +1227,8 @@ void FRenderStreamEditorModule::RegisterToolBarButton()
     // Set current object as owner
     FToolMenuOwnerScoped OwnerScoped(this);
 
+    RegisterStyleSet();
+
     // Will be added as an icon in the toolbar
     UToolMenu* ToolbarMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.ModesToolBar");
     FToolMenuSection& ToolbarSection = ToolbarMenu->FindOrAddSection("File");
@@ -1202,7 +1240,8 @@ void FRenderStreamEditorModule::RegisterToolBarButton()
             FRenderStreamEditorModule::RunPackageAndCopy();
         }),
         INVTEXT("Package For RenderStream"),
-        INVTEXT("Will build and package the project into an exe that can be used with RenderStream.")
+        INVTEXT("Will build and package the project into an exe that can be used with RenderStream."),
+        FSlateIcon(RenderStreamStyleSetName, PackageForRenderStreamIconName)
     ));
 }
 
