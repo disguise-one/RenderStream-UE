@@ -6,3 +6,4 @@ Content/Cache/
 RenderStream-UE.uplugin
 disguiseuerenderstream.uplugin
 local_env.json
+.link_to_project.last
