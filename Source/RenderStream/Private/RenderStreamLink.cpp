@@ -177,7 +177,10 @@ bool RenderStreamLink::loadExplicit(FString& outError)
 
 #define LOAD_FN(FUNC) \
     if (!loadFn(FUNC, TEXT(#FUNC))) \
-        return false;
+    { \
+        abortPartialLoad(); \
+        return false; \
+    }
 
 
     
@@ -241,12 +244,64 @@ bool RenderStreamLink::loadExplicit(FString& outError)
     return isAvailable();
 }
 
+void RenderStreamLink::abortPartialLoad()
+{
+    if (rs_unregisterVerboseLoggingFunc)
+        rs_unregisterVerboseLoggingFunc();
+    if (rs_unregisterErrorLoggingFunc)
+        rs_unregisterErrorLoggingFunc();
+    if (rs_unregisterLoggingFunc)
+        rs_unregisterLoggingFunc();
+
+#ifdef WINDOWS
+    if (m_dll)
+        FreeLibrary((HMODULE)m_dll);
+#endif
+    m_dll = nullptr;
+    m_loaded = false;
+
+    rs_initialise = nullptr;
+    rs_initialiseGpGpuWithDX11Device = nullptr;
+    rs_initialiseGpGpuWithDX12DeviceAndQueue = nullptr;
+    rs_initialiseGpGpuWithOpenGlContexts = nullptr;
+    rs_initialiseGpGpuWithVulkanDevice = nullptr;
+    rs_shutdown = nullptr;
+    rs_logToD3 = nullptr;
+    rs_sendProfilingData = nullptr;
+    rs_setNewStatusMessage = nullptr;
+    rs_registerLoggingFunc = nullptr;
+    rs_registerErrorLoggingFunc = nullptr;
+    rs_registerVerboseLoggingFunc = nullptr;
+    rs_unregisterLoggingFunc = nullptr;
+    rs_unregisterErrorLoggingFunc = nullptr;
+    rs_unregisterVerboseLoggingFunc = nullptr;
+    rs_useDX12SharedHeapFlag = nullptr;
+    rs_setSchema = nullptr;
+    rs_saveSchema = nullptr;
+    rs_loadSchema = nullptr;
+    rs_getStreams = nullptr;
+    rs_awaitFrameData = nullptr;
+    rs_setFollower = nullptr;
+    rs_beginFollowerFrame = nullptr;
+    rs_getFrameParameters = nullptr;
+    rs_getFrameImageData = nullptr;
+    rs_getFrameImage2 = nullptr;
+    rs_registerTextureParams = nullptr;
+    rs_getFrameText = nullptr;
+    rs_getSkeletonLayout = nullptr;
+    rs_getSkeletonJointNames = nullptr;
+    rs_getSkeletonJointPoses = nullptr;
+    rs_getFrameCamera = nullptr;
+    rs_sendFrame2 = nullptr;
+    rs_releaseImage2 = nullptr;
+}
+
 bool RenderStreamLink::unloadExplicit()
 {
-    if (m_dll == nullptr || !m_loaded)
+    if (m_dll == nullptr)
         return true;
 
-    if (rs_shutdown)
+    if (m_loaded && rs_shutdown)
         rs_shutdown();
 #ifdef WINDOWS
     if (m_dll)

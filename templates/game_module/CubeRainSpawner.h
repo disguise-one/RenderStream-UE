@@ -11,7 +11,7 @@ class UTextureRenderTarget2D;
 class AStaticMeshActor;
 
 // Rains rigid-body cube actors, driven by the sub-level's exposed parameters (read from the
-// level script actor each tick): SubLevelParticleSize / SubLevelParticleIntensity /
+// level's RenderStream blueprint actor each tick): SubLevelParticleSize / SubLevelParticleIntensity /
 // SubLevelParticleSpeed / SubLevelEnabled / SubLevelTexture. Physics bodies, so weight and
 // momentum apply. Cubes are recycled once they fall away (there is no floor).
 UCLASS()

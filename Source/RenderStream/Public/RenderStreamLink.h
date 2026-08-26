@@ -608,6 +608,11 @@ public: // d3renderstream.h API, but loaded dynamically.
     rs_setNewStatusMessageFn* rs_setNewStatusMessage = nullptr;
 
 private:
+    // Tear down a DLL that loaded but whose exports don't all resolve (an older d3 than this
+    // plugin requires). Leaving it loaded with our logging callbacks still registered deadlocks
+    // the process during exit - fatal for commandlets, which then never terminate.
+    void abortPartialLoad();
+
     bool m_loaded = false;
     void* m_dll = nullptr;
     FString m_dllPath;

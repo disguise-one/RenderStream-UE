@@ -39,6 +39,58 @@ if (-not $uproject) {
 $UprojectPath = $uproject.FullName
 Write-Host "Project: $UprojectPath" -ForegroundColor Cyan
 
+# --- Check the installed d3 against the plugin's minimum ----------------------
+# The plugin loads d3renderstream.dll from the folder named by the d3 'exe path' registry
+# value (RenderStreamLink::loadExplicit). Below the minimum, exports it needs are missing:
+# schema generation is refused and the bake ends up producing no rs_<project>.json. Check it
+# here so that fails now rather than after a full editor build.
+$minVersion = $null
+$linkHeader = Join-Path $RepoDir 'Source\RenderStream\Public\RenderStreamLink.h'
+if (Test-Path -LiteralPath $linkHeader) {
+    $headerText = Get-Content -Raw -LiteralPath $linkHeader
+    # Read MIN_D3_VERSION_* from the header so this never drifts from the plugin.
+    if ($headerText -match '#define\s+MIN_D3_VERSION_MAJOR\s+(\d+)') { $minMajor = [int]$Matches[1] }
+    if ($headerText -match '#define\s+MIN_D3_VERSION_MINOR\s+(\d+)') { $minMinor = [int]$Matches[1] }
+    if ($headerText -match '#define\s+MIN_D3_VERSION_PATCH\s+(\d+)') { $minPatch = [int]$Matches[1] }
+    if ($null -ne $minMajor -and $null -ne $minMinor -and $null -ne $minPatch) {
+        $minVersion = [version]::new($minMajor, $minMinor, $minPatch, 0)
+    }
+}
+
+if (-not $minVersion) {
+    Write-Warning "Could not read MIN_D3_VERSION_* from '$linkHeader' - skipping the d3 version check."
+}
+else {
+    $d3Key = 'HKCU:\Software\d3 Technologies\d3 Production Suite'
+    $d3ExePath = if (Test-Path $d3Key) { (Get-ItemProperty -Path $d3Key).'exe path' } else { $null }
+    if (-not $d3ExePath) {
+        throw "No d3 'exe path' found under '$d3Key'. RenderStream needs an installed d3 (r$($minVersion.Major).$($minVersion.Minor).$($minVersion.Build) or newer) to generate the schema."
+    }
+
+    $d3Dll = Join-Path (Split-Path -Parent $d3ExePath) 'd3renderstream.dll'
+    if (-not (Test-Path -LiteralPath $d3Dll)) {
+        throw "d3renderstream.dll not found next to the registered d3 'exe path':`n    $d3ExePath`nRenderStream loads the DLL from that folder."
+    }
+
+    $vi = (Get-Item -LiteralPath $d3Dll).VersionInfo
+    # Matches RenderStreamLink::GetD3Version: major/minor from FileVersionMS, patch from FileVersionLS.
+    $d3Version = [version]::new($vi.FileMajorPart, $vi.FileMinorPart, $vi.FileBuildPart, 0)
+    $minText = "r$($minVersion.Major).$($minVersion.Minor).$($minVersion.Build)"
+    $d3Text  = "r$($d3Version.Major).$($d3Version.Minor).$($d3Version.Build)"
+
+    if ($d3Version -lt $minVersion) {
+        throw @"
+Installed d3 is $d3Text but RenderStream requires $minText or newer.
+    d3renderstream.dll:   $d3Dll
+    registered 'exe path': $d3ExePath
+Schema generation would be refused and the bake would produce no rs_<project>.json.
+Point the d3 'exe path' registry value at a $minText+ install and re-run.
+"@
+    }
+
+    Write-Host "d3:      $d3Text (minimum $minText) - $d3Dll" -ForegroundColor Cyan
+}
+
 # --- Find the editor target (produced by scaffold_game_module.ps1) ------------
 $editorTargetFile = Get-ChildItem -LiteralPath (Join-Path $ProjectDir 'Source') -Filter '*Editor.Target.cs' -File -ErrorAction SilentlyContinue |
     Select-Object -First 1
@@ -160,6 +212,8 @@ $cmdArgs = @(
 Write-Host ""
 Write-Host "Running bake commandlet..." -ForegroundColor Cyan
 Write-Host "  $editorCmd $($cmdArgs -join ' ')" -ForegroundColor DarkGray
+# The commandlet's own log is the only place plugin-side errors appear; stdout shows little.
+Write-Host "  log: $ProjectDir\Saved\Logs\$($uproject.BaseName).log" -ForegroundColor DarkGray
 Write-Host ""
 
 & $editorCmd @cmdArgs
@@ -187,4 +241,15 @@ foreach ($m in $expectedMaps) {
 }
 if ($missing.Count -gt 0) {
     Write-Warning "Bake commandlet returned success but these maps were not found: $($missing -join ', '). Check the log above."
+}
+
+# --- Verify the RenderStream schema was produced ------------------------------
+# The commandlet still exits 0 when GenerateAssetMetadata bails (e.g. the installed d3 is
+# older than the plugin's minimum), so the maps check alone reports a false success.
+$schemaFile = Join-Path $ProjectDir ("rs_{0}.json" -f $uproject.BaseName.ToLower())
+if (Test-Path -LiteralPath $schemaFile) {
+    Write-Host "Baked schema: $schemaFile" -ForegroundColor Green
+} else {
+    Write-Warning "No RenderStream schema at '$schemaFile' - schema generation was skipped."
+    Write-Warning "Check '$ProjectDir\Saved\Logs\$($uproject.BaseName).log' for a d3 version error (schema generation needs a recent d3 install)."
 }
