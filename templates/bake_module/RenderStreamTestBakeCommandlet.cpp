@@ -11,11 +11,12 @@
 #include "RenderStreamChannelDefinition.h"
 #include "RenderStreamSceneSelector.h"
 #include "RenderStreamEditorModule.h"
+#include "RenderStreamBlueprint.h"
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #include "Modules/ModuleManager.h"
 #include "Engine/Level.h"
 #include "Engine/World.h"
-#include "Engine/LevelScriptBlueprint.h"
-#include "Engine/LevelScriptActor.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"
@@ -46,7 +47,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogRenderStreamTestBake, Log, All);
 
 namespace
 {
-    // Add an exposed (Instance-Editable + Blueprint-Visible) variable to the level blueprint.
+    // Add an exposed (Instance-Editable + Blueprint-Visible) variable to a blueprint.
     // RenderStream only picks up variables with CPF_Edit|CPF_BlueprintVisible and NOT
     // CPF_DisableEditOnInstance (see RenderStreamSceneSelector::GetProperties).
     void AddExposedVar(UBlueprint* BP, const FName Name, const FEdGraphPinType& PinType, const FString& DefaultValue, const FString& Category = TEXT("RenderStream"))
@@ -181,7 +182,7 @@ namespace
     }
 
     // Set a hard-object variable's value on an actor instance by name (used to assign the
-    // render-target defaults on the level script actor after the blueprint is compiled).
+    // render-target defaults on the placed blueprint actor after the blueprint is compiled).
     void SetObjectVar(AActor* Actor, const FName VarName, UObject* Value)
     {
         if (!Actor)
@@ -200,6 +201,71 @@ namespace
         const int32 Idx = FBlueprintEditorUtils::FindNewVariableIndex(BP, Name);
         if (Idx != INDEX_NONE)
             BP->NewVariables[Idx].PropertyFlags |= CPF_DisableEditOnInstance;
+    }
+
+    // Find or create a Blueprint parented to ARenderStreamBlueprint. Since RS 3.0 the exposed
+    // parameters of a scene are read off an actor of this class in the level, not off the level
+    // script actor (UpdateLevelChannelCache -> GenerateParameters, gated on IsA<ARenderStreamBlueprint>).
+    UBlueprint* GetOrCreateRenderStreamBlueprint(const FString& AssetName)
+    {
+        const FString PackageName = TEXT("/Game/Blueprints/") + AssetName;
+        UPackage* Package = CreatePackage(*PackageName);
+        Package->FullyLoad();   // load any existing on-disk asset so re-baking overwrites cleanly
+
+        if (UBlueprint* Existing = FindObject<UBlueprint>(Package, *AssetName))
+            return Existing;
+
+        UBlueprint* BP = FKismetEditorUtilities::CreateBlueprint(
+            ARenderStreamBlueprint::StaticClass(), Package, *AssetName,
+            BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+        if (BP)
+        {
+            FAssetRegistryModule::AssetCreated(BP);
+            Package->MarkPackageDirty();
+        }
+        return BP;
+    }
+
+    // Compile and save a RenderStream blueprint. bEnableTick is needed by any blueprint whose
+    // parameter graph runs on Event Tick - a blueprint actor only ticks if its CDO allows it,
+    // and nothing sets that for us outside the blueprint editor.
+    void FinalizeRenderStreamBlueprint(UBlueprint* BP, bool bEnableTick)
+    {
+        if (!BP)
+            return;
+
+        FKismetEditorUtilities::CompileBlueprint(BP);
+
+        if (bEnableTick && BP->GeneratedClass)
+        {
+            if (AActor* CDO = Cast<AActor>(BP->GeneratedClass->GetDefaultObject()))
+                CDO->PrimaryActorTick.bCanEverTick = true;
+        }
+
+        UPackage* Package = BP->GetPackage();
+        Package->MarkPackageDirty();
+        const FString FileName = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
+        FSavePackageArgs SaveArgs;
+        SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+        if (!UPackage::SavePackage(Package, BP, *FileName, SaveArgs))
+            UE_LOG(LogRenderStreamTestBake, Error, TEXT("Failed to save blueprint %s"), *Package->GetName());
+    }
+
+    // Place a RenderStream blueprint actor into Level. GenerateParameters reads property values
+    // off this instance, so object-valued parameters must be assigned here and not on the class.
+    AActor* SpawnRenderStreamBlueprintActor(UWorld* World, ULevel* Level, UBlueprint* BP, const FString& Label)
+    {
+        if (!World || !BP || !BP->GeneratedClass)
+            return nullptr;
+
+        FActorSpawnParameters SpawnParams;
+        if (Level)
+            SpawnParams.OverrideLevel = Level;
+
+        AActor* Actor = World->SpawnActor<AActor>(BP->GeneratedClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
+        if (Actor)
+            Actor->SetActorLabel(Label);
+        return Actor;
     }
 
     UK2Node_VariableGet* AddVarGetNode(UEdGraph* Graph, const FName VarName, int32 X, int32 Y)
@@ -246,6 +312,12 @@ namespace
         UEdGraph* Graph = BP->UbergraphPages.Num() > 0 ? BP->UbergraphPages[0] : nullptr;
         if (!Graph)
             return;
+
+        // One blueprint is shared by both persistent maps, so this runs twice per bake.
+        for (UEdGraphNode* Node : Graph->Nodes)
+            if (const UK2Node_Event* Existing = Cast<UK2Node_Event>(Node))
+                if (Existing->EventReference.GetMemberName() == TEXT("ReceiveTick"))
+                    return;
 
         UK2Node_Event* TickNode = NewObject<UK2Node_Event>(Graph);
         TickNode->EventReference.SetExternalMember(TEXT("ReceiveTick"), AActor::StaticClass());
@@ -398,7 +470,7 @@ namespace
             }
         }
 
-        if (ULevelScriptBlueprint* SubLSB = SubLevel->GetLevelScriptBlueprint(/*bDontCreate*/ false))
+        if (UBlueprint* SubParamsBP = GetOrCreateRenderStreamBlueprint(TEXT("BP_RenderStreamSubLevelParams")))
         {
             FEdGraphPinType FloatPin;
             FloatPin.PinCategory = UEdGraphSchema_K2::PC_Real;
@@ -411,33 +483,40 @@ namespace
             TexPin.PinCategory = UEdGraphSchema_K2::PC_Object;
             TexPin.PinSubCategoryObject = UTextureRenderTarget2D::StaticClass();
 
-            AddExposedVar(SubLSB, TEXT("SubLevelParticleSize"),      FloatPin, TEXT("1.000000"), TEXT("SubLevel"));
-            AddExposedVar(SubLSB, TEXT("SubLevelParticleIntensity"), FloatPin, TEXT("1.000000"), TEXT("SubLevel"));
-            AddExposedVar(SubLSB, TEXT("SubLevelParticleSpeed"),     FloatPin, TEXT("1.000000"), TEXT("SubLevel"));
-            AddExposedVar(SubLSB, TEXT("SubLevelEnabled"),           BoolPin,  TEXT("true"),     TEXT("SubLevel"));
-            AddExposedVar(SubLSB, TEXT("SubLevelTexture"),           TexPin,   FString(),        TEXT("SubLevel"));
+            AddExposedVar(SubParamsBP, TEXT("SubLevelParticleSize"),      FloatPin, TEXT("1.000000"), TEXT("SubLevel"));
+            AddExposedVar(SubParamsBP, TEXT("SubLevelParticleIntensity"), FloatPin, TEXT("1.000000"), TEXT("SubLevel"));
+            AddExposedVar(SubParamsBP, TEXT("SubLevelParticleSpeed"),     FloatPin, TEXT("1.000000"), TEXT("SubLevel"));
+            AddExposedVar(SubParamsBP, TEXT("SubLevelEnabled"),           BoolPin,  TEXT("true"),     TEXT("SubLevel"));
+            AddExposedVar(SubParamsBP, TEXT("SubLevelTexture"),           TexPin,   FString(),        TEXT("SubLevel"));
 
             // 0..5 slider range in disguise for the numeric particle controls.
-            SetVarRange(SubLSB, TEXT("SubLevelParticleSize"),      0.f, 5.f);
-            SetVarRange(SubLSB, TEXT("SubLevelParticleIntensity"), 0.f, 5.f);
-            SetVarRange(SubLSB, TEXT("SubLevelParticleSpeed"),     0.f, 5.f);
+            SetVarRange(SubParamsBP, TEXT("SubLevelParticleSize"),      0.f, 5.f);
+            SetVarRange(SubParamsBP, TEXT("SubLevelParticleIntensity"), 0.f, 5.f);
+            SetVarRange(SubParamsBP, TEXT("SubLevelParticleSpeed"),     0.f, 5.f);
 
-            FKismetEditorUtilities::CompileBlueprint(SubLSB);
+            // Nothing here runs on tick - CubeRainSpawner polls these values itself.
+            FinalizeRenderStreamBlueprint(SubParamsBP, /*bEnableTick*/ false);
 
-            if (ALevelScriptActor* SubLSA = SubLevel->GetLevelScriptActor())
-                SetObjectVar(SubLSA, TEXT("SubLevelTexture"), SubRT);
+            if (UWorld* SubWorld = SubLevel->GetWorld())
+            {
+                if (AActor* SubParamsActor = SpawnRenderStreamBlueprintActor(
+                        SubWorld, SubLevel, SubParamsBP, TEXT("RenderStreamSubLevelParams")))
+                {
+                    SetObjectVar(SubParamsActor, TEXT("SubLevelTexture"), SubRT);
+                }
+            }
         }
 
-        // Re-save the sub-level now that it has a level script blueprint with exposed params.
+        // Re-save the sub-level now that it holds the RenderStream blueprint actor.
         FEditorFileUtils::SaveLevel(SubLevel);
     }
 
     // Author the fixed test scene into World: lights, rotating cube with textured faces, the
-    // three plate cameras, and the exposed level-blueprint params + custom events.
+    // three plate cameras, and the RenderStream blueprint carrying the params + custom events.
     void BuildScene(UWorld* World)
     {
         // Directional light so the cube is actually visible in a blank map. Retained so the
-        // DirectionIntensity parameter can drive its intensity (wired in the level blueprint below).
+        // DirectionIntensity parameter can drive its intensity (wired in the RenderStream blueprint below).
         ADirectionalLight* Light = World->SpawnActor<ADirectionalLight>(FVector(-250, 400, 400), FRotator(0, -45, -45));
         if (Light)
         {
@@ -445,7 +524,7 @@ namespace
         }
 
         // Dim point light for soft fill so the cube's shadowed faces aren't black. Retained so
-        // the PointIntensity parameter can drive its intensity (wired in the level blueprint below).
+        // the PointIntensity parameter can drive its intensity (wired in the RenderStream blueprint below).
         APointLight* Fill = World->SpawnActor<APointLight>(FVector(-130, -130, 250), FRotator::ZeroRotator);
         if (Fill)
         {
@@ -505,7 +584,7 @@ namespace
                 Front->Visible.Add(TSoftObjectPtr<AActor>(Cube));
         }
 
-        // Twelve render-target texture parameters. All are exposed on the level blueprint below;
+        // Twelve render-target texture parameters. All are exposed on the RenderStream blueprint below;
         // the first six get wired to the cube faces, the remaining six are schema-only.
         TArray<UTextureRenderTarget2D*> RenderTargets;
         for (int32 i = 0; i < 12; ++i)
@@ -544,7 +623,7 @@ namespace
             }
         }
 
-        // Text actor that displays the Caption parameter (wired via the level blueprint below).
+        // Text actor that displays the Caption parameter (wired via the RenderStream blueprint below).
         // Placed above the cube, facing the camera (camera looks along +X, so face -X via Yaw 180).
         ATextRenderActor* CaptionActor = World->SpawnActor<ATextRenderActor>(FVector(0, 0, 150), FRotator(0, 180, 0));
         if (CaptionActor)
@@ -554,8 +633,11 @@ namespace
             CaptionActor->GetTextRender()->SetHorizontalAlignment(EHTA_Center);
         }
 
-        // Exposed level-blueprint variables -> become the RenderStream parameter schema.
-        if (ULevelScriptBlueprint* LSB = World->PersistentLevel->GetLevelScriptBlueprint(/*bDontCreate*/ false))
+        // Exposed RenderStream-blueprint variables -> become the RenderStream parameter schema.
+        // Both persistent maps share one blueprint asset; each map holds its own instance of it,
+        // and the per-instance object values below are what tie the parameters to that map's actors.
+        AActor* ParamsActor = nullptr;
+        if (UBlueprint* ParamsBP = GetOrCreateRenderStreamBlueprint(TEXT("BP_RenderStreamParams")))
         {
             FEdGraphPinType FloatPin;
             FloatPin.PinCategory = UEdGraphSchema_K2::PC_Real;
@@ -575,71 +657,73 @@ namespace
             TexPin.PinCategory = UEdGraphSchema_K2::PC_Object;
             TexPin.PinSubCategoryObject = UTextureRenderTarget2D::StaticClass();
 
-            AddExposedVar(LSB, TEXT("DirectionIntensity"), FloatPin, TEXT("1.000000"),                               TEXT("Lighting"));
-            AddExposedVar(LSB, TEXT("PointIntensity"),     FloatPin, TEXT("2000.000000"),                            TEXT("Lighting"));
-            SetVarRange(LSB, TEXT("PointIntensity"), 0.f, 2000.f);
-            AddExposedVar(LSB, TEXT("Visible"),    BoolPin,  TEXT("true"),                                           TEXT("Label"));
-            AddExposedVar(LSB, TEXT("Colour"),     ColorPin, TEXT("(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"), TEXT("Label"));
-            AddExposedVar(LSB, TEXT("Caption"),    TextPin,  FString(),                                             TEXT("Label"));
+            AddExposedVar(ParamsBP, TEXT("DirectionIntensity"), FloatPin, TEXT("1.000000"),                          TEXT("Lighting"));
+            AddExposedVar(ParamsBP, TEXT("PointIntensity"),     FloatPin, TEXT("2000.000000"),                       TEXT("Lighting"));
+            SetVarRange(ParamsBP, TEXT("PointIntensity"), 0.f, 2000.f);
+            AddExposedVar(ParamsBP, TEXT("Visible"),    BoolPin,  TEXT("true"),                                      TEXT("Label"));
+            AddExposedVar(ParamsBP, TEXT("Colour"),     ColorPin, TEXT("(R=1.000000,G=1.000000,B=1.000000,A=1.000000)"), TEXT("Label"));
+            AddExposedVar(ParamsBP, TEXT("Caption"),    TextPin,  FString(),                                         TEXT("Label"));
 
             for (int32 i = 0; i < RenderTargets.Num(); ++i)
-                AddExposedVar(LSB, *FString::Printf(TEXT("Texture%02d"), i), TexPin, FString(), TEXT("Texture"));
+                AddExposedVar(ParamsBP, *FString::Printf(TEXT("Texture%02d"), i), TexPin, FString(), TEXT("Texture"));
 
             // Internal (non-exposed) targets for the parameter graph: the caption text component
             // and the directional light component, plus the graph that drives them each frame.
             FEdGraphPinType TextCompPin;
             TextCompPin.PinCategory = UEdGraphSchema_K2::PC_Object;
             TextCompPin.PinSubCategoryObject = UTextRenderComponent::StaticClass();
-            AddInternalVar(LSB, TEXT("CaptionTarget"), TextCompPin);
+            AddInternalVar(ParamsBP, TEXT("CaptionTarget"), TextCompPin);
 
             FEdGraphPinType LightCompPin;
             LightCompPin.PinCategory = UEdGraphSchema_K2::PC_Object;
             LightCompPin.PinSubCategoryObject = ULightComponent::StaticClass();
-            AddInternalVar(LSB, TEXT("DirectionTarget"), LightCompPin);
-            AddInternalVar(LSB, TEXT("PointTarget"), LightCompPin);
+            AddInternalVar(ParamsBP, TEXT("DirectionTarget"), LightCompPin);
+            AddInternalVar(ParamsBP, TEXT("PointTarget"), LightCompPin);
 
             FEdGraphPinType RotationCompPin;
             RotationCompPin.PinCategory = UEdGraphSchema_K2::PC_Object;
             RotationCompPin.PinSubCategoryObject = URotatingMovementComponent::StaticClass();
-            AddInternalVar(LSB, TEXT("RotationTarget"), RotationCompPin);
+            AddInternalVar(ParamsBP, TEXT("RotationTarget"), RotationCompPin);
 
-            WireParametersToScene(LSB);
+            WireParametersToScene(ParamsBP);
 
             // Custom events -> RenderStream custom events (RS_PARAMETER_EVENT). Start/stop the
             // cube's spin by enabling/disabling its rotating-movement component tick.
-            AddRotationEvent(LSB, TEXT("StartRotation"), true,  0);
-            AddRotationEvent(LSB, TEXT("StopRotation"),  false, 200);
+            AddRotationEvent(ParamsBP, TEXT("StartRotation"), true,  0);
+            AddRotationEvent(ParamsBP, TEXT("StopRotation"),  false, 200);
 
-            FKismetEditorUtilities::CompileBlueprint(LSB);
+            FinalizeRenderStreamBlueprint(ParamsBP, /*bEnableTick*/ true);
 
-            // Assign object defaults on the re-instanced level script actor: render targets so
-            // the exposed object properties register as images, and the Caption text target so
-            // the level-blueprint tick has a component to write to.
-            if (ALevelScriptActor* LSA = World->PersistentLevel->GetLevelScriptActor())
+            // Assign object values on the placed instance: render targets so the exposed object
+            // properties register as images, and the component targets so the parameter graph
+            // has something to write to.
+            ParamsActor = SpawnRenderStreamBlueprintActor(
+                World, World->PersistentLevel, ParamsBP, TEXT("RenderStreamParams"));
+            if (ParamsActor)
             {
                 for (int32 i = 0; i < RenderTargets.Num(); ++i)
-                    SetObjectVar(LSA, *FString::Printf(TEXT("Texture%02d"), i), RenderTargets[i]);
+                    SetObjectVar(ParamsActor, *FString::Printf(TEXT("Texture%02d"), i), RenderTargets[i]);
                 if (CaptionActor)
-                    SetObjectVar(LSA, TEXT("CaptionTarget"), CaptionActor->GetTextRender());
+                    SetObjectVar(ParamsActor, TEXT("CaptionTarget"), CaptionActor->GetTextRender());
                 if (Light)
-                    SetObjectVar(LSA, TEXT("DirectionTarget"), Light->GetLightComponent());
+                    SetObjectVar(ParamsActor, TEXT("DirectionTarget"), Light->GetLightComponent());
                 if (Fill)
-                    SetObjectVar(LSA, TEXT("PointTarget"), Fill->GetLightComponent());
+                    SetObjectVar(ParamsActor, TEXT("PointTarget"), Fill->GetLightComponent());
                 if (Cube)
-                    SetObjectVar(LSA, TEXT("RotationTarget"), Cube->FindComponentByClass<URotatingMovementComponent>());
+                    SetObjectVar(ParamsActor, TEXT("RotationTarget"), Cube->FindComponentByClass<URotatingMovementComponent>());
             }
         }
 
-        // Report what RenderStream will expose from this scene (validates the bake authoring; the
-        // schema itself is generated by RenderStreamEditor when the project is loaded in-editor).
-        if (ALevelScriptActor* LSA = World->PersistentLevel->GetLevelScriptActor())
+        // Report what RenderStream will expose from this scene (validates the bake authoring
+        // against the same helpers the schema generation uses).
+        if (ParamsActor)
         {
-            const TArray<FProperty*> Props = RenderStreamSceneSelector::GetProperties(LSA);
-            const TArray<UFunction*> Events = RenderStreamSceneSelector::GetEvents(LSA);
+            const TArray<FProperty*> Props = RenderStreamSceneSelector::GetProperties(ParamsActor);
+            const TArray<UFunction*> Events = RenderStreamSceneSelector::GetEvents(ParamsActor);
             int32 NumTextures = 0;
             for (FProperty* P : Props)
                 if (const FObjectPropertyBase* Obj = CastField<FObjectPropertyBase>(P))
-                    if (Cast<UTextureRenderTarget2D>(Obj->GetObjectPropertyValue_InContainer(LSA)))
+                    if (Cast<UTextureRenderTarget2D>(Obj->GetObjectPropertyValue_InContainer(ParamsActor)))
                         ++NumTextures;
 
             int32 NumChannels = 0;

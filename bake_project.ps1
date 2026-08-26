@@ -160,6 +160,8 @@ $cmdArgs = @(
 Write-Host ""
 Write-Host "Running bake commandlet..." -ForegroundColor Cyan
 Write-Host "  $editorCmd $($cmdArgs -join ' ')" -ForegroundColor DarkGray
+# The commandlet's own log is the only place plugin-side errors appear; stdout shows little.
+Write-Host "  log: $ProjectDir\Saved\Logs\$($uproject.BaseName).log" -ForegroundColor DarkGray
 Write-Host ""
 
 & $editorCmd @cmdArgs
@@ -187,4 +189,15 @@ foreach ($m in $expectedMaps) {
 }
 if ($missing.Count -gt 0) {
     Write-Warning "Bake commandlet returned success but these maps were not found: $($missing -join ', '). Check the log above."
+}
+
+# --- Verify the RenderStream schema was produced ------------------------------
+# The commandlet still exits 0 when GenerateAssetMetadata bails (e.g. the installed d3 is
+# older than the plugin's minimum), so the maps check alone reports a false success.
+$schemaFile = Join-Path $ProjectDir ("rs_{0}.json" -f $uproject.BaseName.ToLower())
+if (Test-Path -LiteralPath $schemaFile) {
+    Write-Host "Baked schema: $schemaFile" -ForegroundColor Green
+} else {
+    Write-Warning "No RenderStream schema at '$schemaFile' - schema generation was skipped."
+    Write-Warning "Check '$ProjectDir\Saved\Logs\$($uproject.BaseName).log' for a d3 version error (schema generation needs a recent d3 install)."
 }
