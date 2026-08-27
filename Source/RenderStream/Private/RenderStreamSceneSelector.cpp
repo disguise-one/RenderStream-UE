@@ -19,6 +19,7 @@
 
 #include "Engine/Level.h"
 #include "Engine/World.h"
+#include "Misc/ScopeExit.h"
 #include "UObject/TextProperty.h"
 
 #include "VulkanRHIPrivate.h"
@@ -224,6 +225,60 @@ static bool validateField(FString key_, FString undecoratedSuffix, RenderStreamL
         return false;
     }
     return true;
+}
+
+// Schema slots a property occupies. Must stay in step with ValidateParameters below and with
+// GenerateParameters in the editor module - all three walk GetProperties in the same order.
+static size_t SchemaParameterCount(const FProperty* Property, const AActor* Root)
+{
+    if (Property->IsA(FBoolProperty::StaticClass()) ||
+        Property->IsA(FByteProperty::StaticClass()) ||
+        Property->IsA(FIntProperty::StaticClass()) ||
+        Property->IsA(FDoubleProperty::StaticClass()) ||
+        Property->IsA(FFloatProperty::StaticClass()))
+    {
+        return 1;
+    }
+
+    if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property))
+    {
+        if (StructProperty->Struct == TBaseStructure<FVector>::Get())
+            return 3;
+        if (StructProperty->Struct == TBaseStructure<FColor>::Get() || StructProperty->Struct == TBaseStructure<FLinearColor>::Get())
+            return 4;
+        if (StructProperty->Struct == TBaseStructure<FTransform>::Get())
+            return 1;
+        if (StructProperty->Struct == TBaseStructure<FRotator>::Get())
+            return 3;
+        return 0;
+    }
+
+    if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
+    {
+        const void* ObjectAddress = ObjectProperty->ContainerPtrToValuePtr<void>(Root);
+        return Cast<UTextureRenderTarget2D>(ObjectProperty->GetObjectPropertyValue(ObjectAddress)) ? 1 : 0;
+    }
+
+    if (const FSoftObjectProperty* SoftObjectProperty = CastField<const FSoftObjectProperty>(Property))
+    {
+        const void* SoftObjectAddress = SoftObjectProperty->ContainerPtrToValuePtr<void>(Root);
+        const FSoftObjectPath PropKey = SoftObjectProperty->GetPropertyValue(SoftObjectAddress).ToSoftObjectPath();
+        TSoftObjectPtr<USkeleton> Skeleton(PropKey);
+        return (Skeleton.IsValid() || Skeleton.IsPending()) ? 1 : 0;
+    }
+
+    if (Property->IsA(FTextProperty::StaticClass()))
+        return 1;
+
+    if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
+    {
+        if (!CastField<const FDoubleProperty>(ArrayProperty->Inner))
+            return 0;
+        FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
+        return ArrayHelper.Num() > 0 ? 1 : 0;
+    }
+
+    return 0;
 }
 
 bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::RemoteParameters& sceneParameters, const TArray<AActor*>& Actors, bool ignoreParameterCount) const
@@ -512,23 +567,31 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
             // Blueprint floats are stored as FDoubleProperty
             if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
             {
-                UE_LOG(LogRenderStream, Log, TEXT("Exposed float array property: %s"), *Name);
-                if (numParameters < nParameters + 1)
-                {
-                    UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
-                    return SIZE_MAX;
-                }
-                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_ARRAY, parameters[nParameters]))
-                    return SIZE_MAX;
                 FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
-                if (parameters[nParameters].nElements != uint32_t(ArrayHelper.Num()))
+                if (ArrayHelper.Num() == 0)
                 {
-                    UE_LOG(LogRenderStream, Error,
-                        TEXT("Float array parameter %s size mismatch: schema has %u elements but actor has %d. Re-save the level."),
-                        *Name, parameters[nParameters].nElements, ArrayHelper.Num());
-                    return SIZE_MAX;
+                    UE_LOG(LogRenderStream, Warning,
+                        TEXT("Skipping float array property %s: array is empty - size the array in the editor before exposing it"), *Name);
                 }
-                ++nParameters;
+                else
+                {
+                    UE_LOG(LogRenderStream, Log, TEXT("Exposed float array property: %s"), *Name);
+                    if (numParameters < nParameters + 1)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                        return SIZE_MAX;
+                    }
+                    if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_ARRAY, parameters[nParameters]))
+                        return SIZE_MAX;
+                    if (parameters[nParameters].nElements != uint32_t(ArrayHelper.Num()))
+                    {
+                        UE_LOG(LogRenderStream, Error,
+                            TEXT("Float array parameter %s size mismatch: schema has %u elements but actor has %d. Re-save the level."),
+                            *Name, parameters[nParameters].nElements, ArrayHelper.Num());
+                        return SIZE_MAX;
+                    }
+                    ++nParameters;
+                }
             }
             else
             {
@@ -624,7 +687,9 @@ void RenderStreamSceneSelector::ApplyParameters(uint32_t sceneId, const TArray<A
     {
         if (!actor)
             continue; // it's convenient at the higher level to pass nulls if there's a pattern which can miss pieces
-        ApplyParameters(actor, params.hash, &paramsPtr, params.nParameters, floatValues, iFloat, &imageValuesPtr, imageValues.size(), textValues);
+        const size_t consumed = size_t(paramsPtr - params.parameters);
+        const size_t remaining = consumed < params.nParameters ? params.nParameters - consumed : 0;
+        ApplyParameters(actor, params.hash, &paramsPtr, remaining, floatValues, iFloat, &imageValuesPtr, imageValues.size(), textValues);
     }
 
     m_floatValuesLast = floatValues; // event parameters need to lookup previous values
@@ -743,11 +808,15 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 UE_LOG(LogRenderStream, Verbose, TEXT("Event Invoked"));
             }
             ++iFloat;
+            ++iParam;
         }
     }
 
     for (FProperty* Property : RenderStreamSceneSelector::GetProperties(Root))
     {
+        const size_t nSchemaParams = SchemaParameterCount(Property, Root);
+        ON_SCOPE_EXIT{ iParam += nSchemaParams; };
+
         if (Property->IsA(FBoolProperty::StaticClass()) ||
             Property->IsA(FByteProperty::StaticClass()) ||
             Property->IsA(FIntProperty::StaticClass()) ||
@@ -961,6 +1030,15 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         {
             if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
             {
+                if (nSchemaParams == 0)
+                    continue;
+
+                if (iParam >= nParams)
+                {
+                    UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a float array parameter from disguise that is out of range. Does the metadata need to be regenerated?"));
+                    continue;
+                }
+
                 const RenderStreamLink::RemoteParameter& param = (*ppParams)[iParam];
                 const uint32_t nElements = param.nElements;
                 if (iFloat + nElements > floatValues.size())
@@ -979,7 +1057,6 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 }
             }
         }
-        ++iParam;
     }
 
     *ppImageValues += iImage;
