@@ -271,7 +271,12 @@ static size_t SchemaParameterCount(const FProperty* Property, const AActor* Root
         return 1;
 
     if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
-        return CastField<const FDoubleProperty>(ArrayProperty->Inner) ? 1 : 0;
+    {
+        if (!CastField<const FDoubleProperty>(ArrayProperty->Inner))
+            return 0;
+        FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
+        return ArrayHelper.Num() > 0 ? 1 : 0;
+    }
 
     return 0;
 }
@@ -562,23 +567,31 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
             // Blueprint floats are stored as FDoubleProperty
             if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
             {
-                UE_LOG(LogRenderStream, Log, TEXT("Exposed float array property: %s"), *Name);
-                if (numParameters < nParameters + 1)
-                {
-                    UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
-                    return SIZE_MAX;
-                }
-                if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_ARRAY, parameters[nParameters]))
-                    return SIZE_MAX;
                 FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Root));
-                if (parameters[nParameters].nElements != uint32_t(ArrayHelper.Num()))
+                if (ArrayHelper.Num() == 0)
                 {
-                    UE_LOG(LogRenderStream, Error,
-                        TEXT("Float array parameter %s size mismatch: schema has %u elements but actor has %d. Re-save the level."),
-                        *Name, parameters[nParameters].nElements, ArrayHelper.Num());
-                    return SIZE_MAX;
+                    UE_LOG(LogRenderStream, Warning,
+                        TEXT("Skipping float array property %s: array is empty - size the array in the editor before exposing it"), *Name);
                 }
-                ++nParameters;
+                else
+                {
+                    UE_LOG(LogRenderStream, Log, TEXT("Exposed float array property: %s"), *Name);
+                    if (numParameters < nParameters + 1)
+                    {
+                        UE_LOG(LogRenderStream, Error, TEXT("Property %s not exposed in schema"), *Name);
+                        return SIZE_MAX;
+                    }
+                    if (!validateField(Name, "", RenderStreamLink::RS_PARAMETER_ARRAY, parameters[nParameters]))
+                        return SIZE_MAX;
+                    if (parameters[nParameters].nElements != uint32_t(ArrayHelper.Num()))
+                    {
+                        UE_LOG(LogRenderStream, Error,
+                            TEXT("Float array parameter %s size mismatch: schema has %u elements but actor has %d. Re-save the level."),
+                            *Name, parameters[nParameters].nElements, ArrayHelper.Num());
+                        return SIZE_MAX;
+                    }
+                    ++nParameters;
+                }
             }
             else
             {
@@ -1017,6 +1030,9 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
         {
             if (CastField<const FDoubleProperty>(ArrayProperty->Inner))
             {
+                if (nSchemaParams == 0)
+                    continue;
+
                 if (iParam >= nParams)
                 {
                     UE_LOG(LogRenderStream, Verbose, TEXT("Attempt to read a float array parameter from disguise that is out of range. Does the metadata need to be regenerated?"));
