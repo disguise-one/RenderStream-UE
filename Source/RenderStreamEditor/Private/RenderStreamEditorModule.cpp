@@ -1041,7 +1041,8 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 
     if (bSuccess && ReturnCode == 0)
     {
-        RenderStreamPackaging::WriteShippingConfig(outputFolder, projectName);
+        if (!RenderStreamPackaging::WriteShippingConfig(outputFolder, projectName))
+            return;
 
         // Need to copy metadata over to new .exe location
         FString filename = FString::Printf(TEXT("rs_%s.json"), FApp::GetProjectName());
