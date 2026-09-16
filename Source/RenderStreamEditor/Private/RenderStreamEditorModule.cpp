@@ -979,50 +979,29 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
 
 namespace RenderStreamPackaging
 {
-    struct FRequiredEngineSetting
-    {
-        const TCHAR* Section;
-        const TCHAR* Key;
-        const TCHAR* Value;
-    };
-
     // When launching a workload d3 passes these settings as command-line config overrides
     // Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
     bool WriteShippingConfig(const FString& ArchiveDir, const FString& ProjectName)
     {
-        static const FRequiredEngineSetting RequiredSettings[] = {
-            { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
-            { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
-            { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
-        };
+        static const TCHAR* const ShippingConfig =
+            TEXT("[/Script/Engine.Engine]") LINE_TERMINATOR
+            TEXT("GameEngine=/Script/DisplayCluster.DisplayClusterGameEngine") LINE_TERMINATOR
+            TEXT("GameViewportClientClassName=/Script/RenderStream.RenderStreamViewportClient") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("[SystemSettings]") LINE_TERMINATOR
+            TEXT("rhi.UseSubmissionThread=0") LINE_TERMINATOR;
 
         // Need to make sure this path doesn't already exist in the project
         // If it does it will get put into the pak and UE will ignore the one we write
         const FString projectConfig = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("Windows/WindowsEngine.ini"));
         if (FPaths::FileExists(projectConfig))
         {
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("WindowsEngine.ini is part of the project, delete it and package again."), *projectConfig);
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("WindowsEngine.ini is part of the project, delete it and package again."));
             return false;
         }
 
-        FString contents;
-        FString currentSection;
-        for (const FRequiredEngineSetting& setting : RequiredSettings)
-        {
-            if (currentSection != setting.Section)
-            {
-                if (!contents.IsEmpty())
-                    contents += LINE_TERMINATOR;
-
-                currentSection = setting.Section;
-                contents += FString::Printf(TEXT("[%s]%s"), setting.Section, LINE_TERMINATOR);
-            }
-
-            contents += FString::Printf(TEXT("%s=%s%s"), setting.Key, setting.Value, LINE_TERMINATOR);
-        }
-
         const FString stagedConfig = ArchiveDir / FString::Printf(TEXT("Windows/%s/Config/Windows/WindowsEngine.ini"), *ProjectName);
-        if (!FFileHelper::SaveStringToFile(contents, *stagedConfig, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+        if (!FFileHelper::SaveStringToFile(ShippingConfig, *stagedConfig, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
         {
             UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s, d3 will not be able to launch this build correctly."), *stagedConfig);
             return false;
