@@ -986,33 +986,9 @@ namespace RenderStreamPackaging
         const TCHAR* Value;
     };
 
-    bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
-    {
-        const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
-        const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
-
-        TArray<FString> lines;
-        IniContents.ParseIntoArrayLines(lines);
-
-        bool inSection = false;
-        for (const FString& line : lines)
-        {
-            const FString trimmed = line.TrimStartAndEnd();
-
-            if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
-                continue;
-
-            if (trimmed.StartsWith(TEXT("[")))
-                inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
-            else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
-
-    // When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
-    bool EnsureShippingLaunchConfig()
+    // When launching a workload d3 passes these settings as command-line config overrides
+    // Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
+    bool WriteShippingConfig(const FString& ArchiveDir, const FString& ProjectName)
     {
         static const FRequiredEngineSetting RequiredSettings[] = {
             { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
@@ -1020,46 +996,39 @@ namespace RenderStreamPackaging
             { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
         };
 
-        const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
-
-        FString iniContents;
-        FFileHelper::LoadFileToString(iniContents, *engineIniPath);
-
-        FString additions;
-        FString currentSection;
-        for (const FRequiredEngineSetting& setting : RequiredSettings)
+        // Need to make sure this path doesn't already exist in the project
+        // If it does it will get put into the pak and UE will ignore the one we write
+        const FString projectConfig = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("Windows/WindowsEngine.ini"));
+        if (FPaths::FileExists(projectConfig))
         {
-            const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
-            if (IniSectionContainsSetting(iniContents, setting))
-                continue;
-
-            if (currentSection != setting.Section)
-            {
-                currentSection = setting.Section;
-                additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
-            }
-
-            additions += entry + LINE_TERMINATOR;
-            UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
-        }
-
-        if (additions.IsEmpty())
-            return true;
-
-        // In case ini is already checked in
-        if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
-        {
-            const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
-            if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
-                UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
-        }
-
-        if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
-        {
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("WindowsEngine.ini is part of the project, delete it and package again."), *projectConfig);
             return false;
         }
 
+        FString contents;
+        FString currentSection;
+        for (const FRequiredEngineSetting& setting : RequiredSettings)
+        {
+            if (currentSection != setting.Section)
+            {
+                if (!contents.IsEmpty())
+                    contents += LINE_TERMINATOR;
+
+                currentSection = setting.Section;
+                contents += FString::Printf(TEXT("[%s]%s"), setting.Section, LINE_TERMINATOR);
+            }
+
+            contents += FString::Printf(TEXT("%s=%s%s"), setting.Key, setting.Value, LINE_TERMINATOR);
+        }
+
+        const FString stagedConfig = ArchiveDir / FString::Printf(TEXT("Windows/%s/Config/Windows/WindowsEngine.ini"), *ProjectName);
+        if (!FFileHelper::SaveStringToFile(contents, *stagedConfig, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s, d3 will not be able to launch this build correctly."), *stagedConfig);
+            return false;
+        }
+
+        UE_LOG(LogRenderStreamEditor, Log, TEXT("Wrote launch settings to %s"), *stagedConfig);
         return true;
     }
 }
@@ -1075,12 +1044,6 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 
     if(outputFolder == FString())
         return;
-
-    if (!RenderStreamPackaging::EnsureShippingLaunchConfig())
-    {
-        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the required launch settings could not be written."));
-        return;
-    }
 
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
@@ -1099,6 +1062,8 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 
     if (bSuccess && ReturnCode == 0)
     {
+        RenderStreamPackaging::WriteShippingConfig(outputFolder, projectName);
+
         // Need to copy metadata over to new .exe location
         FString filename = FString::Printf(TEXT("rs_%s.json"), FApp::GetProjectName());
         FString source = FPaths::ProjectDir() / filename;
