@@ -18,7 +18,7 @@ public:
 
     RENDERSTREAMEDITOR_API void GenerateAssetMetadata();
 
-    void RunPackageAndCopy();
+    void RunPackageAndCopy(const TCHAR* BuildConfiguration);
     void RegisterToolBarButton();
 
 private:

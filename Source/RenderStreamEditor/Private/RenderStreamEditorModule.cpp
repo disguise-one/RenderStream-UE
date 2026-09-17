@@ -62,6 +62,9 @@ DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
 const FString ContentFolder = TEXT("/Game");
 
+// Build configurations that were requested
+static const TCHAR* const PackagingConfigurations[] = { TEXT("DebugGame"), TEXT("Development"), TEXT("Shipping") };
+
 static const FName RenderStreamStyleSetName = TEXT("RenderStreamEditorStyle");
 static const FName PackageForRenderStreamIconName = TEXT("RenderStreamEditor.PackageForRenderStream");
 static TSharedPtr<FSlateStyleSet> RenderStreamStyleSet;
@@ -1012,7 +1015,7 @@ namespace RenderStreamPackaging
     }
 }
 
-void FRenderStreamEditorModule::RunPackageAndCopy()
+void FRenderStreamEditorModule::RunPackageAndCopy(const TCHAR* BuildConfiguration)
 {
     FString uatPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Build/BatchFiles/RunUAT.bat"));
     FString projectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
@@ -1027,11 +1030,12 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \
-        -archivedirectory=\"%s\" -clientconfig=Shipping -nocompile -nocompileuat -NoBootstrapExe"),
+        -archivedirectory=\"%s\" -clientconfig=%s -nocompile -nocompileuat -NoBootstrapExe"),
         *projectPath,
         *projectName,
         *enginePath,
-        *outputFolder);
+        *outputFolder,
+        BuildConfiguration);
 
     FString errorOut;
     int32 ReturnCode = 0;
@@ -1041,7 +1045,8 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 
     if (bSuccess && ReturnCode == 0)
     {
-        RenderStreamPackaging::WriteShippingConfig(outputFolder, projectName);
+        if (FCString::Strcmp(BuildConfiguration, TEXT("Shipping")) == 0)
+            RenderStreamPackaging::WriteShippingConfig(outputFolder, projectName);
 
         // Need to copy metadata over to new .exe location
         FString filename = FString::Printf(TEXT("rs_%s.json"), FApp::GetProjectName());
@@ -1062,11 +1067,12 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
             UE_LOG(LogTemp, Log, TEXT("Failed to copy the meatadata over!"));
         }
 
-        // UAT adds a suffux to shipping builds that needs to be removed to match the json name
+        // UAT suffixes the exe with the build configuration, which needs removing to match the json
+        // Development is the default config so it doesn't get a suffix
         const FString binariesDir = outputFolder / FString::Printf(TEXT("Windows/%s/Binaries/Win64"), *projectName);
         const FString undecoratedExe = binariesDir / FString::Printf(TEXT("%s.exe"), *projectName);
 
-        const FString decoratedExe = binariesDir / FString::Printf(TEXT("%s-Win64-Shipping.exe"), *projectName);
+        const FString decoratedExe = binariesDir / FString::Printf(TEXT("%s-Win64-%s.exe"), *projectName, BuildConfiguration);
         if (FPaths::FileExists(decoratedExe))
         {
             if (FPaths::FileExists(undecoratedExe))
@@ -1107,12 +1113,27 @@ void FRenderStreamEditorModule::RegisterToolBarButton()
     UToolMenu* ToolbarMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.ModesToolBar");
     FToolMenuSection& ToolbarSection = ToolbarMenu->FindOrAddSection("File");
 
-    ToolbarSection.AddEntry(FToolMenuEntry::InitToolBarButton(
+    ToolbarSection.AddEntry(FToolMenuEntry::InitComboButton(
         TEXT("Package For RenderStream"),
-        FExecuteAction::CreateLambda([this]()
+        FToolUIActionChoice(),
+        FNewToolMenuChoice(FNewToolMenuDelegate::CreateLambda([this](UToolMenu* InMenu)
         {
-            FRenderStreamEditorModule::RunPackageAndCopy();
-        }),
+            FToolMenuSection& section = InMenu->AddSection(TEXT("RenderStreamPackaging"), INVTEXT("Build Configuration"));
+
+            for (const TCHAR* buildConfiguration : PackagingConfigurations)
+            {
+                section.AddMenuEntry(
+                    FName(buildConfiguration),
+                    FText::FromString(buildConfiguration),
+                    FText::Format(INVTEXT("Build and package the project as a {0} build that can be used with RenderStream."), FText::FromString(buildConfiguration)),
+                    FSlateIcon(),
+                    FUIAction(FExecuteAction::CreateLambda([this, buildConfiguration]()
+                    {
+                        FRenderStreamEditorModule::RunPackageAndCopy(buildConfiguration);
+                    }))
+                );
+            }
+        })),
         INVTEXT("Package For RenderStream"),
         INVTEXT("Will build and package the project into an exe that can be used with RenderStream."),
         FSlateIcon(RenderStreamStyleSetName, PackageForRenderStreamIconName)
