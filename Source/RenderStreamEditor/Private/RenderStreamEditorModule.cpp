@@ -1188,7 +1188,7 @@ void FRenderStreamEditorModule::RegisterToolBarButton()
             {
                 section.AddMenuEntry(
                     FName(buildConfiguration),
-                    FText::FromString(buildConfiguration),
+                    FText::Format(INVTEXT("Build {0}"), FText::FromString(buildConfiguration)),
                     FText::Format(INVTEXT("Build and package the project as a {0} build that can be used with RenderStream."), FText::FromString(buildConfiguration)),
                     FSlateIcon(),
                     FUIAction(FExecuteAction::CreateLambda([this, buildConfiguration]()
