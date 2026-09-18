@@ -125,6 +125,8 @@ void FRenderStreamEditorModule::StartupModule()
             this, &FRenderStreamEditorModule::RegisterToolBarButton));
     }
 
+    RemoveStaleShippingConfig();
+
     FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
     FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
@@ -980,38 +982,99 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
     return FString();
 }
 
-namespace RenderStreamPackaging
+// When launching a workload d3 passes these settings as command-line config overrides
+// Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
+static const TCHAR* const ShippingConfig =
+    TEXT("; Written by the RenderStream plugin during packaging and removed afterwards.") LINE_TERMINATOR
+    TEXT("; Safe to delete if a package was interrupted.") LINE_TERMINATOR
+    LINE_TERMINATOR
+    TEXT("[/Script/Engine.Engine]") LINE_TERMINATOR
+    TEXT("GameEngine=/Script/DisplayCluster.DisplayClusterGameEngine") LINE_TERMINATOR
+    TEXT("GameViewportClientClassName=/Script/RenderStream.RenderStreamViewportClient") LINE_TERMINATOR
+    LINE_TERMINATOR
+    TEXT("[SystemSettings]") LINE_TERMINATOR
+    TEXT("rhi.UseSubmissionThread=0") LINE_TERMINATOR;
+
+// The platform config rather than DefaultEngine.ini
+// It usually doesn't exist, so restoring is usually just deleting it
+FString FRenderStreamEditorModule::ShippingConfigPath() const
 {
-    // When launching a workload d3 passes these settings as command-line config overrides
-    // Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
-    bool WriteShippingConfig(const FString& ArchiveDir, const FString& ProjectName)
+    return FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("Windows/WindowsEngine.ini"));
+}
+
+// Puts the settings in the project for the duration of packaging
+class FShippingConfig
+{
+public:
+    explicit FShippingConfig(const FString& Path)
+        : m_path(Path)
+        , m_existed(FPaths::FileExists(m_path))
     {
-        static const TCHAR* const ShippingConfig =
-            TEXT("[/Script/Engine.Engine]") LINE_TERMINATOR
-            TEXT("GameEngine=/Script/DisplayCluster.DisplayClusterGameEngine") LINE_TERMINATOR
-            TEXT("GameViewportClientClassName=/Script/RenderStream.RenderStreamViewportClient") LINE_TERMINATOR
-            LINE_TERMINATOR
-            TEXT("[SystemSettings]") LINE_TERMINATOR
-            TEXT("rhi.UseSubmissionThread=0") LINE_TERMINATOR;
-
-        // Need to make sure this path doesn't already exist in the project
-        // If it does it will get put into the pak and UE will ignore the one we write
-        const FString projectConfig = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("Windows/WindowsEngine.ini"));
-        if (FPaths::FileExists(projectConfig))
+        if (m_existed)
         {
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("WindowsEngine.ini is part of the project, delete it and package again."));
-            return false;
+            if (!FFileHelper::LoadFileToArray(m_original, *m_path))
+            {
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("Could not read %s, aborting packaging."), *m_path);
+                return;
+            }
+
+            if (SourceControlHelpers::IsEnabled())
+            {
+                const FSourceControlState state = SourceControlHelpers::QueryFileState(m_path);
+                if (state.bIsSourceControlled && !state.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(m_path))
+                    UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *m_path);
+            }
         }
 
-        const FString stagedConfig = ArchiveDir / FString::Printf(TEXT("Windows/%s/Config/Windows/WindowsEngine.ini"), *ProjectName);
-        if (!FFileHelper::SaveStringToFile(ShippingConfig, *stagedConfig, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+        m_valid = FFileHelper::SaveStringToFile(ShippingConfig, *m_path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+            &IFileManager::Get(), m_existed ? FILEWRITE_Append : FILEWRITE_None);
+
+        if (!m_valid)
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s, aborting packaging."), *m_path);
+    }
+
+    ~FShippingConfig()
+    {
+        if (!m_valid)
+            return;
+
+        if (!m_existed)
         {
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s, d3 will not be able to launch this build correctly."), *stagedConfig);
-            return false;
+            IFileManager::Get().Delete(*m_path);
+            return;
         }
 
-        UE_LOG(LogRenderStreamEditor, Log, TEXT("Wrote launch settings to %s"), *stagedConfig);
-        return true;
+        if (!FFileHelper::SaveArrayToFile(m_original, *m_path))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to restore %s. Remove the RenderStream settings at the end of it by hand."), *m_path);
+            return;
+        }
+
+        if (SourceControlHelpers::IsEnabled())
+            SourceControlHelpers::RevertUnchangedFile(m_path, true);
+    }
+
+    FShippingConfig(const FShippingConfig&) = delete;
+    FShippingConfig& operator=(const FShippingConfig&) = delete;
+
+    bool IsValid() const { return m_valid; }
+
+private:
+    FString m_path;
+    TArray<uint8> m_original;
+    bool m_existed = false;
+    bool m_valid = false;
+};
+
+// A package interrupted by a crash doesn't restore the settings 
+// An exact match means the file is ours and can be safely removed
+void FRenderStreamEditorModule::RemoveStaleShippingConfig()
+{
+    FString existing;
+    if (FFileHelper::LoadFileToString(existing, *ShippingConfigPath()) && existing == ShippingConfig)
+    {
+        UE_LOG(LogRenderStreamEditor, Warning, TEXT("%s was left behind by an interrupted package, removing it."), *ShippingConfigPath());
+        IFileManager::Get().Delete(*ShippingConfigPath());
     }
 }
 
@@ -1025,6 +1088,10 @@ void FRenderStreamEditorModule::RunPackageAndCopy(const TCHAR* BuildConfiguratio
     FString outputFolder = GetSelectedOutputFolder();
 
     if(outputFolder == FString())
+        return;
+
+    FShippingConfig shippingConfig(ShippingConfigPath());
+    if (!shippingConfig.IsValid())
         return;
 
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
@@ -1045,9 +1112,6 @@ void FRenderStreamEditorModule::RunPackageAndCopy(const TCHAR* BuildConfiguratio
 
     if (bSuccess && ReturnCode == 0)
     {
-        if (FCString::Strcmp(BuildConfiguration, TEXT("Shipping")) == 0)
-            RenderStreamPackaging::WriteShippingConfig(outputFolder, projectName);
-
         // Need to copy metadata over to new .exe location
         FString filename = FString::Printf(TEXT("rs_%s.json"), FApp::GetProjectName());
         FString source = FPaths::ProjectDir() / filename;
