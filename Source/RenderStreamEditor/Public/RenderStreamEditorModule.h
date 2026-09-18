@@ -45,6 +45,9 @@ private:
 
     FString GetSelectedOutputFolder();
 
+    FString ShippingConfigPath() const;
+    void RemoveStaleShippingConfig();
+
     TWeakObjectPtr<UWorld> GameWorld;
     bool DirtyAssetMetadata = false;
 };
