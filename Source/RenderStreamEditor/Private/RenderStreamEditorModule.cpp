@@ -129,6 +129,8 @@ void FRenderStreamEditorModule::StartupModule()
             this, &FRenderStreamEditorModule::RegisterSaveCommandOverrides));
     }
 
+    RemoveStaleShippingConfig();
+
     FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
     FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
     FEditorDelegates::OnAssetsDeleted.AddRaw(this, &FRenderStreamEditorModule::OnAssetsDeleted);
@@ -986,90 +988,104 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
     return FString();
 }
 
-namespace RenderStreamPackaging
+// When launching a workload d3 passes these settings as command-line config overrides
+// Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
+static const TCHAR* const ShippingConfig =
+    LINE_TERMINATOR
+    TEXT("; Written by the RenderStream plugin during packaging and removed afterwards.") LINE_TERMINATOR
+    TEXT("; Safe to delete if a package was interrupted.") LINE_TERMINATOR
+    LINE_TERMINATOR
+    TEXT("[/Script/Engine.Engine]") LINE_TERMINATOR
+    TEXT("GameEngine=/Script/DisplayCluster.DisplayClusterGameEngine") LINE_TERMINATOR
+    TEXT("GameViewportClientClassName=/Script/RenderStream.RenderStreamViewportClient") LINE_TERMINATOR
+    LINE_TERMINATOR
+    TEXT("[SystemSettings]") LINE_TERMINATOR
+    TEXT("rhi.UseSubmissionThread=0") LINE_TERMINATOR;
+
+// The platform config rather than DefaultEngine.ini
+// It usually doesn't exist, so restoring is usually just deleting it
+FString FRenderStreamEditorModule::ShippingConfigPath() const
 {
-    struct FRequiredEngineSetting
+    return FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("Windows/WindowsEngine.ini"));
+}
+
+// Puts the settings in the project for the duration of packaging
+class FShippingConfig
+{
+public:
+    explicit FShippingConfig(const FString& Path)
+        : m_path(Path)
+        , m_existed(FPaths::FileExists(m_path))
     {
-        const TCHAR* Section;
-        const TCHAR* Key;
-        const TCHAR* Value;
-    };
-
-    bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
-    {
-        const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
-        const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
-
-        TArray<FString> lines;
-        IniContents.ParseIntoArrayLines(lines);
-
-        bool inSection = false;
-        for (const FString& line : lines)
+        if (m_existed)
         {
-            const FString trimmed = line.TrimStartAndEnd();
-
-            if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
-                continue;
-
-            if (trimmed.StartsWith(TEXT("[")))
-                inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
-            else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
-
-    // When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
-    bool EnsureShippingLaunchConfig()
-    {
-        static const FRequiredEngineSetting RequiredSettings[] = {
-            { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
-            { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
-            { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
-        };
-
-        const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
-
-        FString iniContents;
-        FFileHelper::LoadFileToString(iniContents, *engineIniPath);
-
-        FString additions;
-        FString currentSection;
-        for (const FRequiredEngineSetting& setting : RequiredSettings)
-        {
-            const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
-            if (IniSectionContainsSetting(iniContents, setting))
-                continue;
-
-            if (currentSection != setting.Section)
+            if (!FFileHelper::LoadFileToArray(m_original, *m_path))
             {
-                currentSection = setting.Section;
-                additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("Could not read %s, aborting packaging."), *m_path);
+                return;
             }
 
-            additions += entry + LINE_TERMINATOR;
-            UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
+            if (SourceControlHelpers::IsEnabled())
+            {
+                const FSourceControlState state = SourceControlHelpers::QueryFileState(m_path);
+                if (state.bIsSourceControlled && !state.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(m_path))
+                    UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *m_path);
+            }
         }
 
-        if (additions.IsEmpty())
-            return true;
+        m_valid = FFileHelper::SaveStringToFile(ShippingConfig, *m_path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+            &IFileManager::Get(), m_existed ? FILEWRITE_Append : FILEWRITE_None);
 
-        // In case ini is already checked in
-        if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
+        if (!m_valid)
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s, aborting packaging."), *m_path);
+    }
+
+    ~FShippingConfig()
+    {
+        if (!m_valid)
+            return;
+
+        if (!m_existed)
         {
-            const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
-            if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
-                UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
+            IFileManager::Get().Delete(*m_path);
+            return;
         }
 
-        if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
+        if (!FFileHelper::SaveArrayToFile(m_original, *m_path))
         {
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
-            return false;
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to restore %s. Remove the RenderStream settings at the end of it by hand."), *m_path);
+            return;
         }
 
-        return true;
+        if (SourceControlHelpers::IsEnabled())
+            SourceControlHelpers::RevertUnchangedFile(m_path, true);
+    }
+
+    FShippingConfig(const FShippingConfig&) = delete;
+    FShippingConfig& operator=(const FShippingConfig&) = delete;
+
+    bool IsValid() const { return m_valid; }
+
+private:
+    FString m_path;
+    TArray<uint8> m_original;
+    bool m_existed = false;
+    bool m_valid = false;
+};
+
+// A package interrupted by a crash doesn't restore the settings 
+// An exact match means the file is ours and can be safely removed
+void FRenderStreamEditorModule::RemoveStaleShippingConfig()
+{
+    // UAT cooks in an editor process, which would otherwise delete the config packaging just wrote
+    if (IsRunningCommandlet())
+        return;
+
+    FString existing;
+    if (FFileHelper::LoadFileToString(existing, *ShippingConfigPath()) && existing == ShippingConfig)
+    {
+        UE_LOG(LogRenderStreamEditor, Warning, TEXT("%s was left behind by an interrupted package, removing it."), *ShippingConfigPath());
+        IFileManager::Get().Delete(*ShippingConfigPath());
     }
 }
 
@@ -1085,11 +1101,9 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     if(outputFolder == FString())
         return;
 
-    if (!RenderStreamPackaging::EnsureShippingLaunchConfig())
-    {
-        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the required launch settings could not be written."));
+    FShippingConfig shippingConfig(ShippingConfigPath());
+    if (!shippingConfig.IsValid())
         return;
-    }
 
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
