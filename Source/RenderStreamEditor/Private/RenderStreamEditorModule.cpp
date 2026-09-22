@@ -982,6 +982,7 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
 // When launching a workload d3 passes these settings as command-line config overrides
 // Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
 static const TCHAR* const ShippingConfig =
+    LINE_TERMINATOR
     TEXT("; Written by the RenderStream plugin during packaging and removed afterwards.") LINE_TERMINATOR
     TEXT("; Safe to delete if a package was interrupted.") LINE_TERMINATOR
     LINE_TERMINATOR
@@ -1067,6 +1068,10 @@ private:
 // An exact match means the file is ours and can be safely removed
 void FRenderStreamEditorModule::RemoveStaleShippingConfig()
 {
+    // UAT cooks in an editor process, which would otherwise delete the config packaging just wrote
+    if (IsRunningCommandlet())
+        return;
+
     FString existing;
     if (FFileHelper::LoadFileToString(existing, *ShippingConfigPath()) && existing == ShippingConfig)
     {
