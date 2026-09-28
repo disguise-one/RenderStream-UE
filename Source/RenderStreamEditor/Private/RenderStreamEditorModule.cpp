@@ -1062,6 +1062,95 @@ namespace RenderStreamPackaging
 
         return true;
     }
+
+    bool WriteGeneratedFile(const FString& Path, const FString& Contents)
+    {
+        if (!FFileHelper::SaveStringToFile(Contents, *Path, FFileHelper::EEncodingOptions::AutoDetect))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *Path);
+            return false;
+        }
+
+        UE_LOG(LogRenderStreamEditor, Log, TEXT("Generated %s"), *Path);
+        return true;
+    }
+
+    // A Blueprint-only project has no build target, so UAT packages it content-only
+    // Game targets are monolithic, so giving the project a target and compiling it is the only way to get the plugin
+    bool EnsureBuildTarget(const FString& ProjectName)
+    {
+        const FString sourceDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("Source"));
+
+        TArray<FString> existingTargets;
+        IFileManager::Get().FindFiles(existingTargets, *(sourceDir / TEXT("*.Target.cs")), true, false);
+        if (existingTargets.Num() > 0)
+            return true;
+
+        UE_LOG(LogRenderStreamEditor, Log, TEXT("%s has no build target, so packaging it would produce no binary. Generating a minimal game module."), *ProjectName);
+
+        const FString moduleDir = sourceDir / ProjectName;
+
+        // Setting up the minimal needed for it to be valid
+        // Following what they look like when UE generates them in the editor
+        const FString targetCs = FString::Printf(
+            TEXT("using UnrealBuildTool;") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("public class %sTarget : TargetRules") LINE_TERMINATOR
+            TEXT("{") LINE_TERMINATOR
+            TEXT("    public %sTarget(TargetInfo Target) : base(Target)") LINE_TERMINATOR
+            TEXT("    {") LINE_TERMINATOR
+            TEXT("        Type = TargetType.Game;") LINE_TERMINATOR
+            TEXT("        DefaultBuildSettings = BuildSettingsVersion.Latest;") LINE_TERMINATOR
+            TEXT("        ExtraModuleNames.Add(\"%s\");") LINE_TERMINATOR
+            TEXT("    }") LINE_TERMINATOR
+            TEXT("}") LINE_TERMINATOR,
+            *ProjectName, *ProjectName, *ProjectName);
+
+        const FString editorTargetCs = FString::Printf(
+            TEXT("using UnrealBuildTool;") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("public class %sEditorTarget : TargetRules") LINE_TERMINATOR
+            TEXT("{") LINE_TERMINATOR
+            TEXT("    public %sEditorTarget(TargetInfo Target) : base(Target)") LINE_TERMINATOR
+            TEXT("    {") LINE_TERMINATOR
+            TEXT("        Type = TargetType.Editor;") LINE_TERMINATOR
+            TEXT("        DefaultBuildSettings = BuildSettingsVersion.Latest;") LINE_TERMINATOR
+            TEXT("        ExtraModuleNames.Add(\"%s\");") LINE_TERMINATOR
+            TEXT("    }") LINE_TERMINATOR
+            TEXT("}") LINE_TERMINATOR,
+            *ProjectName, *ProjectName, *ProjectName);
+
+        const FString buildCs = FString::Printf(
+            TEXT("using UnrealBuildTool;") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("public class %s : ModuleRules") LINE_TERMINATOR
+            TEXT("{") LINE_TERMINATOR
+            TEXT("    public %s(ReadOnlyTargetRules Target) : base(Target)") LINE_TERMINATOR
+            TEXT("    {") LINE_TERMINATOR
+            TEXT("        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;") LINE_TERMINATOR
+            TEXT("        PublicDependencyModuleNames.AddRange(new string[] { \"Core\", \"CoreUObject\", \"Engine\", \"InputCore\" });") LINE_TERMINATOR
+            TEXT("    }") LINE_TERMINATOR
+            TEXT("}") LINE_TERMINATOR,
+            *ProjectName, *ProjectName);
+
+        const FString moduleH =
+            TEXT("#pragma once") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("#include \"CoreMinimal.h\"") LINE_TERMINATOR;
+
+        const FString moduleCpp = FString::Printf(
+            TEXT("#include \"%s.h\"") LINE_TERMINATOR
+            TEXT("#include \"Modules/ModuleManager.h\"") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, %s, \"%s\");") LINE_TERMINATOR,
+            *ProjectName, *ProjectName, *ProjectName);
+
+        return WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%s.Target.cs"), *ProjectName), targetCs)
+            && WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%sEditor.Target.cs"), *ProjectName), editorTargetCs)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.Build.cs"), *ProjectName), buildCs)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.h"), *ProjectName), moduleH)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.cpp"), *ProjectName), moduleCpp);
+    }
 }
 
 void FRenderStreamEditorModule::RunPackageAndCopy()
@@ -1075,6 +1164,12 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
 
     if(outputFolder == FString())
         return;
+
+    if (!RenderStreamPackaging::EnsureBuildTarget(projectName))
+    {
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the project has no build target and one could not be generated."));
+        return;
+    }
 
     if (!RenderStreamPackaging::EnsureShippingLaunchConfig())
     {
