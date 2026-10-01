@@ -1063,7 +1063,7 @@ namespace RenderStreamPackaging
         return true;
     }
 
-    bool WriteGeneratedFile(const FString& Path, const FString& Contents)
+    bool WriteGeneratedFile(const FString& Path, const FString& Contents, TArray<FString>& OutCreated)
     {
         if (!FFileHelper::SaveStringToFile(Contents, *Path, FFileHelper::EEncodingOptions::AutoDetect))
         {
@@ -1071,6 +1071,7 @@ namespace RenderStreamPackaging
             return false;
         }
 
+        OutCreated.Add(Path);
         UE_LOG(LogRenderStreamEditor, Log, TEXT("Generated %s"), *Path);
         return true;
     }
@@ -1144,12 +1145,31 @@ namespace RenderStreamPackaging
             LINE_TERMINATOR
             TEXT("IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, %s, \"%s\");") LINE_TERMINATOR,
             *ProjectName, *ProjectName, *ProjectName);
+        
+        // Normally when generating the source files, the engine will also write the module as an entry in the .uproject file
+        // However if we do this right before packaging, it fails because it tries to open the module dll which doesn't exist
+        // If it was included then we would need to rebuild the project before packaging to ensure all the module dlls are accounted for
+        // We still need to generate a module for the build target but excluding it from .uproject means we don't need to worry about building it
+        TArray<FString> created;
+        const bool wroteAll =
+            WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%s.Target.cs"), *ProjectName), targetCs, created)
+            && WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%sEditor.Target.cs"), *ProjectName), editorTargetCs, created)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.Build.cs"), *ProjectName), buildCs, created)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.h"), *ProjectName), moduleH, created)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.cpp"), *ProjectName), moduleCpp, created);
 
-        return WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%s.Target.cs"), *ProjectName), targetCs)
-            && WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%sEditor.Target.cs"), *ProjectName), editorTargetCs)
-            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.Build.cs"), *ProjectName), buildCs)
-            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.h"), *ProjectName), moduleH)
-            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.cpp"), *ProjectName), moduleCpp);
+        if (!wroteAll)
+        {
+            for (const FString& path : created)
+                IFileManager::Get().Delete(*path);
+
+            return false;
+        }
+
+        if (SourceControlHelpers::IsEnabled())
+            SourceControlHelpers::MarkFilesForAdd(created, true);
+
+        return true;
     }
 }
 
