@@ -1095,9 +1095,14 @@ void FRenderStreamEditorModule::RunPackageAndCopy(const TCHAR* BuildConfiguratio
     if(outputFolder == FString())
         return;
 
-    FShippingConfig shippingConfig(ShippingConfigPath());
-    if (!shippingConfig.IsValid())
-        return;
+    // Only Shipping needs the settings baked in
+    TOptional<FShippingConfig> shippingConfig;
+    if (FCString::Strcmp(BuildConfiguration, TEXT("Shipping")) == 0)
+    {
+        shippingConfig.Emplace(ShippingConfigPath());
+        if (!shippingConfig->IsValid())
+            return;
+    }
 
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
