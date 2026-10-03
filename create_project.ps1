@@ -155,7 +155,7 @@ New-Item -ItemType Directory -Path (Join-Path $ProjectDir 'Content') -Force | Ou
 
 # --- Cube-rain spawner (runtime actor in the game module) ---------------------
 # A rigid-body cube-rain effect for the sub-levels. It ticks at runtime, reads the sub-level's
-# exposed params off the level script actor, and spawns physics cube actors that fall + collide.
+# exposed params off the level's RenderStream blueprint actor, and spawns physics cube actors that fall + collide.
 # Lives in the runtime game module so it also works outside the editor; the bake places one in
 # each sub-level (by class path, so no cross-module build dependency).
 $gameModuleDir = Join-Path $ProjectDir "Source\$ModuleName"
