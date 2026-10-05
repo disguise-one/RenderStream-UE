@@ -1087,7 +1087,10 @@ void FRenderStreamEditorModule::RemoveStaleShippingConfig()
         UE_LOG(LogRenderStreamEditor, Warning, TEXT("%s was left behind by an interrupted package, removing it."), *ShippingConfigPath());
         IFileManager::Get().Delete(*ShippingConfigPath());
     }
+}
 
+namespace RenderStreamPackaging
+{
     bool WriteGeneratedFile(const FString& Path, const FString& Contents, TArray<FString>& OutCreated)
     {
         if (!FFileHelper::SaveStringToFile(Contents, *Path, FFileHelper::EEncodingOptions::AutoDetect))
