@@ -11,6 +11,8 @@
 
 #include "IDisplayCluster.h"
 #include "Interfaces/IPluginManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/Paths.h"
 #include "Windows/WindowsHWrapper.h"
 
 namespace {
@@ -102,11 +104,65 @@ bool RenderStreamLink::loadExplicit()
 
     const FString dllName("d3renderstream.dll");
     const FString exePath = GetD3PathFromReg();
-    const FString dllPath = exePath + dllName;
-    if (!FPaths::FileExists(dllPath))
+    if (!FPaths::FileExists(exePath + dllName))
     {
         UE_LOG(LogRenderStream, Error, TEXT("%s not found in %s."), *dllName, *exePath);
         return false;
+    }
+
+    // Encrypted DLLs crash when loaded because UE parses their unwind info, which fails.
+    // CallstackTrace_FilterModule skips modules whose path has ThirdParty and not Binaries,
+    // so load a copy from there. Needed from 5.6 on; 5.5 skipped the d3 install path anyway.
+    FString dllPath = exePath + dllName;
+    IFileManager& fileManager = IFileManager::Get();
+    const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty/RenderStream"));
+
+    // Delete DLL copies not in use by a process.
+    TArray<FString> priorRunDirs;
+    fileManager.FindFiles(priorRunDirs, *(baseDir / TEXT("*")), false, true);
+    for (const FString& dir : priorRunDirs)
+    {
+        const uint32 ownerPid = (uint32)FCString::Atoi(*dir);
+        if (ownerPid != 0 && FPlatformProcess::IsApplicationRunning(ownerPid))
+            continue;
+        fileManager.DeleteDirectory(*(baseDir / dir), false, true);
+    }
+
+    // We need to guarantee that the DLLs are up to date so we copy them everytime we launch
+    // Since we can have multiple processes using the same DLLs we need to have copies for each process
+    const FString destDir = baseDir / FString::FromInt(FPlatformProcess::GetCurrentProcessId());
+    fileManager.MakeDirectory(*destDir, true);
+
+    const FString sendDllName(TEXT("d3renderstreamsend.dll"));
+    const TArray<FString> dllsToRelocate = {
+        dllName,
+        sendDllName,
+        TEXT("d3libvideosend.dll"),
+    };
+
+    bool copiedMain = false;
+    bool copiedSend = false;
+    for (const FString& dll : dllsToRelocate)
+    {
+        const FString src = exePath + dll;
+        if (!FPaths::FileExists(src))
+            continue;
+        const bool copied = fileManager.Copy(*(destDir / dll), *src, true, true) == COPY_OK;
+        if (dll == dllName)
+            copiedMain = copied;
+        else if (dll == sendDllName)
+            copiedSend = copied;
+    }
+
+    if (copiedMain && copiedSend)
+    {
+        AddDllDirectory(*exePath);
+        dllPath = destDir / dllName;
+        UE_LOG(LogRenderStream, Log, TEXT("Copied RenderStream DLLs to %s"), *destDir);
+    }
+    else
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("Failed to copy RenderStream DLLs"));
     }
 
     auto LogFatalIfNotInEditor = [](const FString& msg)
