@@ -69,6 +69,9 @@ DEFINE_LOG_CATEGORY(LogRenderStreamEditor);
 const FString CacheFolder = TEXT("/Game/" RS_PLUGIN_NAME "/Cache");
 const FString ContentFolder = TEXT("/Game");
 
+// Build configurations that were requested
+static const TCHAR* const PackagingConfigurations[] = { TEXT("DebugGame"), TEXT("Development"), TEXT("Shipping") };
+
 static const FName RenderStreamStyleSetName = TEXT("RenderStreamEditorStyle");
 static const FName PackageForRenderStreamIconName = TEXT("RenderStreamEditor.PackageForRenderStream");
 static TSharedPtr<FSlateStyleSet> RenderStreamStyleSet;
@@ -131,6 +134,8 @@ void FRenderStreamEditorModule::StartupModule()
         UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(
             this, &FRenderStreamEditorModule::RegisterSaveCommandOverrides));
     }
+
+    RemoveStaleShippingConfig();
 
     FEditorDelegates::PostSaveExternalActors.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorld);
     FEditorDelegates::PostSaveWorldWithContext.AddRaw(this, &FRenderStreamEditorModule::OnPostSaveWorldContext);
@@ -1047,94 +1052,220 @@ FString FRenderStreamEditorModule::GetSelectedOutputFolder()
     return FString();
 }
 
-namespace RenderStreamPackaging
+// When launching a workload d3 passes these settings as command-line config overrides
+// Shipping builds don't allow this so we need to write them to somewhere the packaged project will read
+static const TCHAR* const ShippingConfig =
+    LINE_TERMINATOR
+    TEXT("; Written by the RenderStream plugin during packaging and removed afterwards.") LINE_TERMINATOR
+    TEXT("; Safe to delete if a package was interrupted.") LINE_TERMINATOR
+    LINE_TERMINATOR
+    TEXT("[/Script/Engine.Engine]") LINE_TERMINATOR
+    TEXT("GameEngine=/Script/DisplayCluster.DisplayClusterGameEngine") LINE_TERMINATOR
+    TEXT("GameViewportClientClassName=/Script/RenderStream.RenderStreamViewportClient") LINE_TERMINATOR
+    LINE_TERMINATOR
+    TEXT("[SystemSettings]") LINE_TERMINATOR
+    TEXT("rhi.UseSubmissionThread=0") LINE_TERMINATOR;
+
+// The platform config rather than DefaultEngine.ini
+// It usually doesn't exist, so restoring is usually just deleting it
+FString FRenderStreamEditorModule::ShippingConfigPath() const
 {
-    struct FRequiredEngineSetting
+    return FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("Windows/WindowsEngine.ini"));
+}
+
+// Puts the settings in the project for the duration of packaging
+class FShippingConfig
+{
+public:
+    explicit FShippingConfig(const FString& Path)
+        : m_path(Path)
+        , m_existed(FPaths::FileExists(m_path))
     {
-        const TCHAR* Section;
-        const TCHAR* Key;
-        const TCHAR* Value;
-    };
-
-    bool IniSectionContainsSetting(const FString& IniContents, const FRequiredEngineSetting& Setting)
-    {
-        const FString sectionHeader = FString::Printf(TEXT("[%s]"), Setting.Section);
-        const FString entry = FString::Printf(TEXT("%s=%s"), Setting.Key, Setting.Value);
-
-        TArray<FString> lines;
-        IniContents.ParseIntoArrayLines(lines);
-
-        bool inSection = false;
-        for (const FString& line : lines)
+        if (m_existed)
         {
-            const FString trimmed = line.TrimStartAndEnd();
-
-            if (trimmed.StartsWith(TEXT(";")) || trimmed.StartsWith(TEXT("#")))
-                continue;
-
-            if (trimmed.StartsWith(TEXT("[")))
-                inSection = trimmed.Equals(sectionHeader, ESearchCase::IgnoreCase);
-            else if (inSection && trimmed.Equals(entry, ESearchCase::IgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
-
-    // When laucnhing d3 tries to modifiy the ini files, however in shipping builds ini files are unable to be overwritten
-    bool EnsureShippingLaunchConfig()
-    {
-        static const FRequiredEngineSetting RequiredSettings[] = {
-            { TEXT("/Script/Engine.Engine"), TEXT("GameEngine"), TEXT("/Script/DisplayCluster.DisplayClusterGameEngine") },
-            { TEXT("/Script/Engine.Engine"), TEXT("GameViewportClientClassName"), TEXT("/Script/RenderStream.RenderStreamViewportClient") },
-            { TEXT("SystemSettings"), TEXT("rhi.UseSubmissionThread"), TEXT("0") },
-        };
-
-        const FString engineIniPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectConfigDir() / TEXT("DefaultEngine.ini"));
-
-        FString iniContents;
-        FFileHelper::LoadFileToString(iniContents, *engineIniPath);
-
-        FString additions;
-        FString currentSection;
-        for (const FRequiredEngineSetting& setting : RequiredSettings)
-        {
-            const FString entry = FString::Printf(TEXT("%s=%s"), setting.Key, setting.Value);
-            if (IniSectionContainsSetting(iniContents, setting))
-                continue;
-
-            if (currentSection != setting.Section)
+            if (!FFileHelper::LoadFileToArray(m_original, *m_path))
             {
-                currentSection = setting.Section;
-                additions += FString::Printf(TEXT("%s[%s]%s"), LINE_TERMINATOR, setting.Section, LINE_TERMINATOR);
+                UE_LOG(LogRenderStreamEditor, Error, TEXT("Could not read %s, aborting packaging."), *m_path);
+                return;
             }
 
-            additions += entry + LINE_TERMINATOR;
-            UE_LOG(LogRenderStreamEditor, Log, TEXT("Adding [%s] %s to %s"), setting.Section, *entry, *engineIniPath);
+            if (SourceControlHelpers::IsEnabled())
+            {
+                const FSourceControlState state = SourceControlHelpers::QueryFileState(m_path);
+                if (state.bIsSourceControlled && !state.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(m_path))
+                    UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *m_path);
+            }
         }
 
-        if (additions.IsEmpty())
-            return true;
+        m_valid = FFileHelper::SaveStringToFile(ShippingConfig, *m_path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+            &IFileManager::Get(), m_existed ? FILEWRITE_Append : FILEWRITE_None);
 
-        // In case ini is already checked in
-        if (SourceControlHelpers::IsEnabled() && FPaths::FileExists(engineIniPath))
+        if (!m_valid)
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s, aborting packaging."), *m_path);
+    }
+
+    ~FShippingConfig()
+    {
+        if (!m_valid)
+            return;
+
+        if (!m_existed)
         {
-            const FSourceControlState iniSCState = SourceControlHelpers::QueryFileState(engineIniPath);
-            if (iniSCState.bIsSourceControlled && !iniSCState.bIsCheckedOut && !SourceControlHelpers::CheckOutFile(engineIniPath))
-                UE_LOG(LogRenderStreamEditor, Error, TEXT("%s failed to check out."), *engineIniPath);
+            IFileManager::Get().Delete(*m_path);
+            return;
         }
 
-        if (!FFileHelper::SaveStringToFile(additions, *engineIniPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_Append))
+        if (!FFileHelper::SaveArrayToFile(m_original, *m_path))
         {
-            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *engineIniPath);
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to restore %s. Remove the RenderStream settings at the end of it by hand."), *m_path);
+            return;
+        }
+
+        if (SourceControlHelpers::IsEnabled())
+            SourceControlHelpers::RevertUnchangedFile(m_path, true);
+    }
+
+    FShippingConfig(const FShippingConfig&) = delete;
+    FShippingConfig& operator=(const FShippingConfig&) = delete;
+
+    bool IsValid() const { return m_valid; }
+
+private:
+    FString m_path;
+    TArray<uint8> m_original;
+    bool m_existed = false;
+    bool m_valid = false;
+};
+
+// A package interrupted by a crash doesn't restore the settings 
+// An exact match means the file is ours and can be safely removed
+void FRenderStreamEditorModule::RemoveStaleShippingConfig()
+{
+    // UAT cooks in an editor process, which would otherwise delete the config packaging just wrote
+    if (IsRunningCommandlet())
+        return;
+
+    FString existing;
+    if (FFileHelper::LoadFileToString(existing, *ShippingConfigPath()) && existing == ShippingConfig)
+    {
+        UE_LOG(LogRenderStreamEditor, Warning, TEXT("%s was left behind by an interrupted package, removing it."), *ShippingConfigPath());
+        IFileManager::Get().Delete(*ShippingConfigPath());
+    }
+}
+
+namespace RenderStreamPackaging
+{
+    bool WriteGeneratedFile(const FString& Path, const FString& Contents, TArray<FString>& OutCreated)
+    {
+        if (!FFileHelper::SaveStringToFile(Contents, *Path, FFileHelper::EEncodingOptions::AutoDetect))
+        {
+            UE_LOG(LogRenderStreamEditor, Error, TEXT("Failed to write %s"), *Path);
             return false;
         }
+
+        OutCreated.Add(Path);
+        UE_LOG(LogRenderStreamEditor, Log, TEXT("Generated %s"), *Path);
+        return true;
+    }
+
+    // A Blueprint-only project has no build target, so UAT packages it content-only
+    // Game targets are monolithic, so giving the project a target and compiling it is the only way to get the plugin
+    bool EnsureBuildTarget(const FString& ProjectName)
+    {
+        const FString sourceDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("Source"));
+
+        TArray<FString> existingTargets;
+        IFileManager::Get().FindFiles(existingTargets, *(sourceDir / TEXT("*.Target.cs")), true, false);
+        if (existingTargets.Num() > 0)
+            return true;
+
+        UE_LOG(LogRenderStreamEditor, Log, TEXT("%s has no build target, so packaging it would produce no binary. Generating a minimal game module."), *ProjectName);
+
+        const FString moduleDir = sourceDir / ProjectName;
+
+        // Setting up the minimal needed for it to be valid
+        // Following what they look like when UE generates them in the editor
+        const FString targetCs = FString::Printf(
+            TEXT("using UnrealBuildTool;") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("public class %sTarget : TargetRules") LINE_TERMINATOR
+            TEXT("{") LINE_TERMINATOR
+            TEXT("    public %sTarget(TargetInfo Target) : base(Target)") LINE_TERMINATOR
+            TEXT("    {") LINE_TERMINATOR
+            TEXT("        Type = TargetType.Game;") LINE_TERMINATOR
+            TEXT("        DefaultBuildSettings = BuildSettingsVersion.Latest;") LINE_TERMINATOR
+            TEXT("        ExtraModuleNames.Add(\"%s\");") LINE_TERMINATOR
+            TEXT("    }") LINE_TERMINATOR
+            TEXT("}") LINE_TERMINATOR,
+            *ProjectName, *ProjectName, *ProjectName);
+
+        const FString editorTargetCs = FString::Printf(
+            TEXT("using UnrealBuildTool;") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("public class %sEditorTarget : TargetRules") LINE_TERMINATOR
+            TEXT("{") LINE_TERMINATOR
+            TEXT("    public %sEditorTarget(TargetInfo Target) : base(Target)") LINE_TERMINATOR
+            TEXT("    {") LINE_TERMINATOR
+            TEXT("        Type = TargetType.Editor;") LINE_TERMINATOR
+            TEXT("        DefaultBuildSettings = BuildSettingsVersion.Latest;") LINE_TERMINATOR
+            TEXT("        ExtraModuleNames.Add(\"%s\");") LINE_TERMINATOR
+            TEXT("    }") LINE_TERMINATOR
+            TEXT("}") LINE_TERMINATOR,
+            *ProjectName, *ProjectName, *ProjectName);
+
+        const FString buildCs = FString::Printf(
+            TEXT("using UnrealBuildTool;") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("public class %s : ModuleRules") LINE_TERMINATOR
+            TEXT("{") LINE_TERMINATOR
+            TEXT("    public %s(ReadOnlyTargetRules Target) : base(Target)") LINE_TERMINATOR
+            TEXT("    {") LINE_TERMINATOR
+            TEXT("        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;") LINE_TERMINATOR
+            TEXT("        PublicDependencyModuleNames.AddRange(new string[] { \"Core\", \"CoreUObject\", \"Engine\", \"InputCore\" });") LINE_TERMINATOR
+            TEXT("    }") LINE_TERMINATOR
+            TEXT("}") LINE_TERMINATOR,
+            *ProjectName, *ProjectName);
+
+        const FString moduleH =
+            TEXT("#pragma once") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("#include \"CoreMinimal.h\"") LINE_TERMINATOR;
+
+        const FString moduleCpp = FString::Printf(
+            TEXT("#include \"%s.h\"") LINE_TERMINATOR
+            TEXT("#include \"Modules/ModuleManager.h\"") LINE_TERMINATOR
+            LINE_TERMINATOR
+            TEXT("IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, %s, \"%s\");") LINE_TERMINATOR,
+            *ProjectName, *ProjectName, *ProjectName);
+        
+        // Normally when generating the source files, the engine will also write the module as an entry in the .uproject file
+        // However if we do this right before packaging, it fails because it tries to open the module dll which doesn't exist
+        // If it was included then we would need to rebuild the project before packaging to ensure all the module dlls are accounted for
+        // We still need to generate a module for the build target but excluding it from .uproject means we don't need to worry about building it
+        TArray<FString> created;
+        const bool wroteAll =
+            WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%s.Target.cs"), *ProjectName), targetCs, created)
+            && WriteGeneratedFile(sourceDir / FString::Printf(TEXT("%sEditor.Target.cs"), *ProjectName), editorTargetCs, created)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.Build.cs"), *ProjectName), buildCs, created)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.h"), *ProjectName), moduleH, created)
+            && WriteGeneratedFile(moduleDir / FString::Printf(TEXT("%s.cpp"), *ProjectName), moduleCpp, created);
+
+        if (!wroteAll)
+        {
+            for (const FString& path : created)
+                IFileManager::Get().Delete(*path);
+
+            return false;
+        }
+
+        if (SourceControlHelpers::IsEnabled())
+            SourceControlHelpers::MarkFilesForAdd(created, true);
 
         return true;
     }
 }
 
-void FRenderStreamEditorModule::RunPackageAndCopy()
+void FRenderStreamEditorModule::RunPackageAndCopy(const TCHAR* BuildConfiguration)
 {
     FString uatPath = FPaths::ConvertRelativePathToFull(FPaths::EngineDir() / TEXT("Build/BatchFiles/RunUAT.bat"));
     FString projectPath = FPaths::ConvertRelativePathToFull(FPaths::GetProjectFilePath());
@@ -1146,20 +1277,30 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
     if(outputFolder == FString())
         return;
 
-    if (!RenderStreamPackaging::EnsureShippingLaunchConfig())
+    if (!RenderStreamPackaging::EnsureBuildTarget(projectName))
     {
-        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the required launch settings could not be written."));
+        UE_LOG(LogRenderStreamEditor, Error, TEXT("Aborting packaging, the project has no build target and one could not be generated."));
         return;
+    }
+
+    // Only Shipping needs the settings baked in
+    TOptional<FShippingConfig> shippingConfig;
+    if (FCString::Strcmp(BuildConfiguration, TEXT("Shipping")) == 0)
+    {
+        shippingConfig.Emplace(ShippingConfigPath());
+        if (!shippingConfig->IsValid())
+            return;
     }
 
     FString arguments = FString::Printf(TEXT("Turnkey -command=VerifySdk -platform=Win64 -UpdateIfNeeded \
         BuildCookRun -nop4 -utf8output -nocompileeditor -skipbuildeditor -cook -project=\"%s\" -target=%s -unrealexe=\"%s\" \
         -platform=Win64 -installed -stage -archive -package -build -pak -iostore -compressed -prereqs \
-        -archivedirectory=\"%s\" -clientconfig=Shipping -nocompile -nocompileuat -NoBootstrapExe"),
+        -archivedirectory=\"%s\" -clientconfig=%s -nocompile -nocompileuat -NoBootstrapExe"),
         *projectPath,
         *projectName,
         *enginePath,
-        *outputFolder);
+        *outputFolder,
+        BuildConfiguration);
 
     FString errorOut;
     int32 ReturnCode = 0;
@@ -1188,11 +1329,12 @@ void FRenderStreamEditorModule::RunPackageAndCopy()
             UE_LOG(LogTemp, Log, TEXT("Failed to copy the meatadata over!"));
         }
 
-        // UAT adds a suffux to shipping builds that needs to be removed to match the json name
+        // UAT suffixes the exe with the build configuration, which needs removing to match the json
+        // Development is the default config so it doesn't get a suffix
         const FString binariesDir = outputFolder / FString::Printf(TEXT("Windows/%s/Binaries/Win64"), *projectName);
         const FString undecoratedExe = binariesDir / FString::Printf(TEXT("%s.exe"), *projectName);
 
-        const FString decoratedExe = binariesDir / FString::Printf(TEXT("%s-Win64-Shipping.exe"), *projectName);
+        const FString decoratedExe = binariesDir / FString::Printf(TEXT("%s-Win64-%s.exe"), *projectName, BuildConfiguration);
         if (FPaths::FileExists(decoratedExe))
         {
             if (FPaths::FileExists(undecoratedExe))
@@ -1233,12 +1375,27 @@ void FRenderStreamEditorModule::RegisterToolBarButton()
     UToolMenu* ToolbarMenu = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.ModesToolBar");
     FToolMenuSection& ToolbarSection = ToolbarMenu->FindOrAddSection("File");
 
-    ToolbarSection.AddEntry(FToolMenuEntry::InitToolBarButton(
+    ToolbarSection.AddEntry(FToolMenuEntry::InitComboButton(
         TEXT("Package For RenderStream"),
-        FExecuteAction::CreateLambda([this]()
+        FToolUIActionChoice(),
+        FNewToolMenuChoice(FNewToolMenuDelegate::CreateLambda([this](UToolMenu* InMenu)
         {
-            FRenderStreamEditorModule::RunPackageAndCopy();
-        }),
+            FToolMenuSection& section = InMenu->AddSection(TEXT("RenderStreamPackaging"), INVTEXT("Build Configuration"));
+
+            for (const TCHAR* buildConfiguration : PackagingConfigurations)
+            {
+                section.AddMenuEntry(
+                    FName(buildConfiguration),
+                    FText::Format(INVTEXT("Build {0}"), FText::FromString(buildConfiguration)),
+                    FText::Format(INVTEXT("Build and package the project as a {0} build that can be used with RenderStream."), FText::FromString(buildConfiguration)),
+                    FSlateIcon(),
+                    FUIAction(FExecuteAction::CreateLambda([this, buildConfiguration]()
+                    {
+                        FRenderStreamEditorModule::RunPackageAndCopy(buildConfiguration);
+                    }))
+                );
+            }
+        })),
         INVTEXT("Package For RenderStream"),
         INVTEXT("Will build and package the project into an exe that can be used with RenderStream."),
         FSlateIcon(RenderStreamStyleSetName, PackageForRenderStreamIconName)
