@@ -18,7 +18,7 @@ public:
 
     RENDERSTREAMEDITOR_API void GenerateAssetMetadata();
 
-    void RunPackageAndCopy();
+    void RunPackageAndCopy(const TCHAR* BuildConfiguration);
     void RegisterToolBarButton();
     void RegisterSaveCommandOverrides();
     void RestoreSaveCommandOverrides();
@@ -46,6 +46,9 @@ private:
     void RunValidation(const TArray<URenderStreamChannelCacheAsset*> Caches);
 
     FString GetSelectedOutputFolder();
+
+    FString ShippingConfigPath() const;
+    void RemoveStaleShippingConfig();
 
     TWeakObjectPtr<UWorld> GameWorld;
     bool DirtyAssetMetadata = false;
