@@ -110,8 +110,9 @@ bool RenderStreamLink::loadExplicit()
         return false;
     }
 
-    // Workaround for 5.8, encrypted DLLs crash when loaded because UE tries to parse the callstack unwind info which fails
-    // There is a filter that exempts DLLs within a ThirdParty folder from this parsing
+
+    // Encrypted DLLs crash when loaded because UE parses their unwind info, which fails.
+    // CallstackTrace_FilterModule skips modules whose path has ThirdParty and not Binaries
     FString dllPath = exePath + dllName;
     IFileManager& fileManager = IFileManager::Get();
     const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty/RenderStream"));
