@@ -7,9 +7,9 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/TextureRenderTarget2D.h"
-#include "Engine/LevelScriptActor.h"
 #include "Engine/Level.h"
 #include "Engine/World.h"
+#include "RenderStreamBlueprint.h"
 
 namespace
 {
@@ -40,6 +40,19 @@ namespace
                 return P->GetObjectPropertyValue_InContainer(Actor);
         return nullptr;
     }
+
+    // Since RS 3.0 a scene's exposed parameters live on an ARenderStreamBlueprint actor in the
+    // level rather than on the level script actor.
+    const AActor* FindParameterActor(const ULevel* Level)
+    {
+        if (!Level)
+            return nullptr;
+
+        for (AActor* Actor : Level->Actors)
+            if (Actor && Actor->IsA<ARenderStreamBlueprint>())
+                return Actor;
+        return nullptr;
+    }
 }
 
 ACubeRainSpawner::ACubeRainSpawner()
@@ -59,12 +72,12 @@ void ACubeRainSpawner::Tick(float DeltaSeconds)
     if (!BaseMaterial)
         BaseMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/Materials/M_Face.M_Face"));
 
-    const ALevelScriptActor* LSA = GetLevel() ? GetLevel()->GetLevelScriptActor() : nullptr;
-    const float Size      = ReadFloatParam(LSA, TEXT("SubLevelParticleSize"), 1.f);
-    const float Intensity = ReadFloatParam(LSA, TEXT("SubLevelParticleIntensity"), 1.f);
-    const float Speed     = ReadFloatParam(LSA, TEXT("SubLevelParticleSpeed"), 1.f);
-    const bool  bEnabled  = ReadBoolParam(LSA, TEXT("SubLevelEnabled"), true);
-    UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(ReadObjectParam(LSA, TEXT("SubLevelTexture")));
+    const AActor* Params  = FindParameterActor(GetLevel());
+    const float Size      = ReadFloatParam(Params, TEXT("SubLevelParticleSize"), 1.f);
+    const float Intensity = ReadFloatParam(Params, TEXT("SubLevelParticleIntensity"), 1.f);
+    const float Speed     = ReadFloatParam(Params, TEXT("SubLevelParticleSpeed"), 1.f);
+    const bool  bEnabled  = ReadBoolParam(Params, TEXT("SubLevelEnabled"), true);
+    UTextureRenderTarget2D* Texture = Cast<UTextureRenderTarget2D>(ReadObjectParam(Params, TEXT("SubLevelTexture")));
 
     // (Re)build the cube material instance when the exposed texture changes.
     if (BaseMaterial && Texture && Texture != BoundTexture)
