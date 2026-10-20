@@ -138,7 +138,8 @@ bool RenderStreamLink::loadExplicit(FString& outError)
 
     const FString dllName("d3renderstream.dll");
     const FString exePath = GetD3PathFromReg();
-    if (!FPaths::FileExists(exePath + dllName))
+    m_dllPath = exePath + dllName;
+    if (!FPaths::FileExists(m_dllPath))
     {
         UE_LOG(LogRenderStream, Error, TEXT("%s not found in %s."), *dllName, *exePath);
         return false;
@@ -147,7 +148,6 @@ bool RenderStreamLink::loadExplicit(FString& outError)
 
     // Encrypted DLLs crash when loaded because UE parses their unwind info, which fails.
     // CallstackTrace_FilterModule skips modules whose path has ThirdParty and not Binaries
-    FString dllPath = exePath + dllName;
     IFileManager& fileManager = IFileManager::Get();
     const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty/RenderStream"));
 
@@ -191,7 +191,7 @@ bool RenderStreamLink::loadExplicit(FString& outError)
     if (copiedMain && copiedSend)
     {
         AddDllDirectory(*exePath);
-        dllPath = destDir / dllName;
+        m_dllPath = destDir / dllName;
         UE_LOG(LogRenderStream, Log, TEXT("Copied RenderStream DLLs to %s"), *destDir);
     }
     else
