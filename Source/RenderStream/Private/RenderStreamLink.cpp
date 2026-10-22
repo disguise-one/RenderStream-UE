@@ -146,8 +146,9 @@ bool RenderStreamLink::loadExplicit(FString& outError)
     }
 
 
-    // Encrypted DLLs crash when loaded because UE parses their unwind info, which fails.
-    // CallstackTrace_FilterModule skips modules whose path has ThirdParty and not Binaries
+
+    // CallstackTrace_FilterModule skips modules whose path has ThirdParty and not Binaries,
+    // so load a copy from there. Needed from 5.6 on; 5.5 skipped the d3 install path anyway.
     IFileManager& fileManager = IFileManager::Get();
     const FString baseDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir() / TEXT("ThirdParty/RenderStream"));
 
