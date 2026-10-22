@@ -30,6 +30,7 @@ typedef struct VkSemaphore_T* VkSemaphore;
 #define RS_PLUGIN_NAME "RenderStream-UE"
 #define RS_PLUGIN_VERSION "RS3.0-UE5.6-v0"
 
+
 class RenderStreamLink
 {
 public:
