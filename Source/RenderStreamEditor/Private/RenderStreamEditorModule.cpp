@@ -729,7 +729,7 @@ TArray<ULevel*> BuildRequiredLevelsList()
     for (FAssetData const& Asset : LevelAssets)
     {
         URenderStreamChannelCacheAsset* Cache;
-        if (!TryGetCache(CacheFolder + Asset.GetFullName(), Cache)) {
+        if (!TryGetCache(Asset.PackageName.ToString(), Cache)) {
             auto world = Cast<UWorld>(Asset.FastGetAsset(true));
             // Use PersistentLevel (serialized) rather than GetLevel(0): the Levels array is
             // transient and only populated once a world is initialized, so a world loaded
