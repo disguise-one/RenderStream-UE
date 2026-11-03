@@ -782,10 +782,32 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     EnumAddFlags(ViewportRenderingFlags, EDisplayClusterViewportRenderingFlags::StereoRendering);
                 }
 
+                // TEMP DLSS diagnostics: number of view extensions before nDisplay adds the custom upscaler's
+                const int32 NumViewExtensionsBefore = ViewFamily.ViewExtensions.Num();
+
                 // Completing the of a ViewDamily configuration.
                 // The screen percentage is configurable in this function.
                 RenderFrameViewportManager->PostConfigureViewFamily(DCRenderTarget, DCViewFamily, ViewFamily, Views,
                     ViewportRenderingFlags, GetDPIScale());
+
+                // TEMP DLSS diagnostics: log the upscaler state of the first few frames of each viewport
+                {
+                    static TMap<FString, int32> UpscalerDiagnosticsLogged;
+                    const FString ViewportId = DCViewFamily.Views[0].Viewport->GetId();
+                    int32& NumLogged = UpscalerDiagnosticsLogged.FindOrAdd(ViewportId);
+                    if (NumLogged < 3)
+                    {
+                        ++NumLogged;
+                        const FSceneView* DiagView = ViewFamily.Views[0];
+                        UE_LOG(LogRenderStream, Log, TEXT("DLSS diag [%s] frame %llu: CustomUpscaler=%s FamilyAAMethod=%d | View AAMethod=%d ScreenPercentageMethod=%d HasState=%d | Flags ScreenPercentage=%d AntiAliasing=%d TemporalAA=%d PostProcessing=%d | Realtime=%d ViewMode=%d HasScreenPercentageInterface=%d | ViewExtensions %d -> %d"),
+                            *ViewportId, GFrameCounter,
+                            *DCViewFamily.UpscalerSettings.CustomUpscalerName.ToString(), int32(DCViewFamily.UpscalerSettings.AntiAliasingMethod),
+                            int32(DiagView->AntiAliasingMethod), int32(DiagView->PrimaryScreenPercentageMethod), DiagView->State != nullptr,
+                            ViewFamily.EngineShowFlags.ScreenPercentage, ViewFamily.EngineShowFlags.AntiAliasing, ViewFamily.EngineShowFlags.TemporalAA, ViewFamily.EngineShowFlags.PostProcessing,
+                            ViewFamily.bRealtimeUpdate, int32(ViewFamily.ViewMode), ViewFamily.GetScreenPercentageInterface() != nullptr,
+                            NumViewExtensionsBefore, ViewFamily.ViewExtensions.Num());
+                    }
+                }
 
                 ViewFamily.bIsHDR = GetWindow().IsValid() ? GetWindow().Get()->GetIsHDR() : false;
 

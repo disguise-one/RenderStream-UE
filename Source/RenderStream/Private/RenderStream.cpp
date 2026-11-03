@@ -83,6 +83,9 @@
 
 #include "OpenColorIORendering.h"
 
+#include "IUpscalerModularFeature.h"
+#include "Features/IModularFeatures.h"
+
 DEFINE_LOG_CATEGORY(LogRenderStream);
 
 #define LOCTEXT_NAMESPACE "FRenderStreamModule"
@@ -104,6 +107,94 @@ bool IsDX11()
 {
     static const bool bIsDx11RS = FCString::Stristr(GDynamicRHI->GetName(), TEXT("D3D11")) != nullptr; // Also covers -rhivalidation => D3D11_Validation
     return bIsDx11RS;
+}
+
+// Applies URenderStreamSettings::UpscalingMethod to nDisplay's default outer viewport upscaler.
+// RenderStream viewports use the "Default" method so they inherit it. The upscaler has to be set on the
+// stage default rather than per viewport, as nDisplay replaces per-viewport upscaler settings with the
+// stage default's unless they are marked as overrides.
+// Returns false if no upscaling method is configured.
+bool ConfigureDefaultUpscaler(UDisplayClusterConfigurationData* ConfigData)
+{
+    const URenderStreamSettings* Settings = GetDefault<URenderStreamSettings>();
+    if (Settings->UpscalingMethod.IsNone())
+        return false;
+
+    FDisplayClusterConfigurationUpscalerSettings& Upscaler = ConfigData->StageSettings.OuterViewportUpscalerSettings;
+    if (Upscaler.MethodName == Settings->UpscalingMethod)
+        return true;
+
+    Upscaler.MethodName = Settings->UpscalingMethod;
+    Upscaler.EditingData.Reset();
+    Upscaler.ParameterOverrideGuids.Empty();
+
+    // Built-in methods (TSR, TAA etc.) have no settings
+    if (StaticEnum<EDisplayClusterConfigurationUpscalingMethod>()->GetValueByNameString(Settings->UpscalingMethod.ToString()) != INDEX_NONE)
+    {
+        UE_LOG(LogRenderStream, Log, TEXT("Using nDisplay upscaling method %s"), *Settings->UpscalingMethod.ToString());
+        return true;
+    }
+
+    using UE::VirtualProduction::IUpscalerModularFeature;
+    IModularFeatures& ModularFeatures = IModularFeatures::Get();
+    ModularFeatures.LockModularFeatureList();
+    const TArray<IUpscalerModularFeature*> Upscalers = ModularFeatures.GetModularFeatureImplementations<IUpscalerModularFeature>(IUpscalerModularFeature::ModularFeatureName);
+    ModularFeatures.UnlockModularFeatureList();
+
+    bool Found = false;
+    for (IUpscalerModularFeature* Feature : Upscalers)
+    {
+        if (!Feature)
+            continue;
+
+        UE_LOG(LogRenderStream, Log, TEXT("Available nDisplay upscaler: %s (%s)%s"), *Feature->GetName().ToString(),
+            *Feature->GetDisplayName().ToString(), Feature->IsFeatureEnabled() ? TEXT("") : TEXT(" - disabled"));
+
+        if (Feature->GetName() == Settings->UpscalingMethod)
+        {
+            Found = true;
+            if (!Feature->IsFeatureEnabled())
+                UE_LOG(LogRenderStream, Warning, TEXT("nDisplay upscaler %s is disabled and will not be used"), *Feature->GetName().ToString());
+
+            Feature->GetSettings(Upscaler.EditingData);
+        }
+    }
+
+    if (!Found)
+    {
+        UE_LOG(LogRenderStream, Error, TEXT("nDisplay upscaler %s not found, falling back to the project's anti-aliasing method"), *Settings->UpscalingMethod.ToString());
+        return true;
+    }
+
+    for (const auto& Override : Settings->UpscalerSettingOverrides)
+    {
+        const FPropertyBagPropertyDesc* Desc = Upscaler.EditingData.FindPropertyDescByName(Override.Key);
+        if (!Desc || !Desc->CachedProperty)
+        {
+            UE_LOG(LogRenderStream, Error, TEXT("Upscaler %s has no setting %s"), *Settings->UpscalingMethod.ToString(), *Override.Key.ToString());
+            continue;
+        }
+
+        void* Value = Desc->CachedProperty->ContainerPtrToValuePtr<void>(Upscaler.EditingData.GetMutableValue().GetMemory());
+        if (!Desc->CachedProperty->ImportText_Direct(*Override.Value, Value, nullptr, PPF_None))
+            UE_LOG(LogRenderStream, Error, TEXT("Invalid value '%s' for upscaler setting %s"), *Override.Value, *Override.Key.ToString());
+    }
+
+    if (const UPropertyBag* Bag = Upscaler.EditingData.GetPropertyBagStruct())
+    {
+        for (const FPropertyBagPropertyDesc& Desc : Bag->GetPropertyDescs())
+        {
+            FString ValueText;
+            if (Desc.CachedProperty)
+            {
+                const void* Value = Desc.CachedProperty->ContainerPtrToValuePtr<void>(Upscaler.EditingData.GetValue().GetMemory());
+                Desc.CachedProperty->ExportTextItem_Direct(ValueText, Value, nullptr, nullptr, PPF_None);
+            }
+            UE_LOG(LogRenderStream, Log, TEXT("Upscaler %s setting %s = %s"), *Settings->UpscalingMethod.ToString(), *Desc.Name.ToString(), *ValueText);
+        }
+    }
+
+    return true;
 }
 
 class FRenderStreamMonitor : public FRunnable
@@ -524,11 +615,14 @@ bool FRenderStreamModule::PopulateStreamPool()
                 {
                     const FString LocalNodeId = IDisplayCluster::Get().GetConfigMgr()->GetLocalNodeId();
                     const ADisplayClusterRootActor* RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
-                    const UDisplayClusterConfigurationData* ConfigurationData = RootActor->GetConfigData();
-                    
-                    if (UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId); !ClusterNode->GetViewport(Name))
+                    UDisplayClusterConfigurationData* ConfigurationData = RootActor->GetConfigData();
+                    const bool UseDefaultUpscaler = ConfigureDefaultUpscaler(ConfigurationData);
+
+                    UDisplayClusterConfigurationClusterNode* ClusterNode = ConfigurationData->Cluster->GetNode(LocalNodeId);
+                    UDisplayClusterConfigurationViewport* Viewport = ClusterNode->GetViewport(Name);
+                    if (!Viewport)
                     {
-                        UDisplayClusterConfigurationViewport* Viewport = NewObject<UDisplayClusterConfigurationViewport>(ClusterNode, *Name, RF_Transactional | RF_ArchetypeObject | RF_Public);
+                        Viewport = NewObject<UDisplayClusterConfigurationViewport>(ClusterNode, *Name, RF_Transactional | RF_ArchetypeObject | RF_Public);
                         check(Viewport);
 
                         // Base parameters
@@ -541,6 +635,13 @@ bool FRenderStreamModule::PopulateStreamPool()
                         Viewport->ProjectionPolicy.Type = "renderstream";
 
                         ClusterNode->Viewports.Add(Name, Viewport);
+                    }
+
+                    // Inherit the stage default set by ConfigureDefaultUpscaler. This also applies to viewports
+                    // that already exist, as d3's generated nDisplay config contains a viewport per stream.
+                    if (UseDefaultUpscaler)
+                    {
+                        Viewport->RenderSettings.UpscalerSettings.MethodName = TEXT("Default");
                     }
                 }
             }

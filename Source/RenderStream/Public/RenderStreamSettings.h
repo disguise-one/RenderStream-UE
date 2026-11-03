@@ -42,4 +42,15 @@ public:
 
     UPROPERTY(EditAnywhere, config, Category = Settings, DisplayName="Detect and control custom events")
     bool GenerateEvents;
+
+    // nDisplay upscaling method for RenderStream viewports: a built-in method (TSR, TAA, FXAA, MSAA, Disable) or a
+    // custom upscaler name such as DLSS. Available custom upscaler names are logged when the first stream is created.
+    // Leave as None to use the project's anti-aliasing method.
+    UPROPERTY(EditAnywhere, config, Category = Upscaling)
+    FName UpscalingMethod;
+
+    // Overrides for the custom upscaler's settings, keyed by setting name (e.g. quality mode). Setting names and
+    // their default values are logged when the first stream is created.
+    UPROPERTY(EditAnywhere, config, Category = Upscaling)
+    TMap<FName, FString> UpscalerSettingOverrides;
 };
