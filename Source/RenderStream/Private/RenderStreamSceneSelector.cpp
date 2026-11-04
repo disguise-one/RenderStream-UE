@@ -21,6 +21,7 @@
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "UObject/TextProperty.h"
+#include "UObject/Package.h"
 
 #include "VulkanRHIPrivate.h"
 #include "VulkanResources.h"
@@ -29,18 +30,20 @@
 
 RenderStreamSceneSelector::~RenderStreamSceneSelector()
 {
-    for (UTextureRenderTarget2D* texture : m_texturesColourTransform)
+    // This can run after the UObject system has been torn down (module destruction at exit), at which
+    // point the textures have already been destroyed by the exit purge. Only touch them while UObjects
+    // are still alive; TStrongObjectPtr's own release is likewise skipped during GExitPurge.
+    if (!GExitPurge && UObjectInitialized())
     {
-        if (texture)
+        for (const TStrongObjectPtr<UTextureRenderTarget2D>& texture : m_texturesColourTransform)
         {
-            if (texture->IsRooted())
+            if (texture.IsValid())
             {
-                texture->RemoveFromRoot();
+                texture->ReleaseResource();
             }
-
-            UKismetRenderingLibrary::ReleaseRenderTarget2D(texture);
         }
     }
+    m_texturesColourTransform.clear();
 }
 
 void RenderStreamSceneSelector::GetActorsInLevel(TArray<AActor*>& Actors, ULevel* Level) const
@@ -937,22 +940,21 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 {
                     if (iImage >= m_texturesColourTransform.size())
                     {
-                        UTextureRenderTarget2D* texture = UKismetRenderingLibrary::CreateRenderTarget2D(
-                            Root,
-                            Texture->SizeX,
-                            Texture->SizeY,
-                            Texture->RenderTargetFormat
-                        );
-
+                        // Not UKismetRenderingLibrary::CreateRenderTarget2D: that outers the target to the
+                        // world context object (an actor in the current level), which ties it to that world.
+                        UTextureRenderTarget2D* texture = NewObject<UTextureRenderTarget2D>(GetTransientPackage());
+                        texture->RenderTargetFormat = Texture->RenderTargetFormat;
+                        texture->ClearColor = FLinearColor::Black;
                         texture->SRGB = 0;
                         texture->bForceLinearGamma = true;
-
-                        texture->AddToRoot();
+                        texture->bAutoGenerateMips = false;
+                        // Resized to the incoming frame below; just needs a valid initial size.
+                        texture->InitAutoFormat(FMath::Max(Texture->SizeX, 1), FMath::Max(Texture->SizeY, 1));
                         texture->UpdateResourceImmediate(true);
 
-                        m_texturesColourTransform.push_back(std::move(texture));
+                        m_texturesColourTransform.emplace_back(texture);
                     }
-                    UTextureRenderTarget2D* textureColourTransform = m_texturesColourTransform[iImage];
+                    UTextureRenderTarget2D* textureColourTransform = m_texturesColourTransform[iImage].Get();
 
                     if (Texture->OverrideFormat != EPixelFormat::PF_FloatRGBA)
                     {

@@ -3,6 +3,7 @@
 #include "RenderStreamLink.h"
 #include <vector>
 #include "Engine/TextureRenderTarget2D.h"
+#include "UObject/StrongObjectPtr.h"
 #include "OpenColorIOColorSpace.h"
 
 class UWorld;
@@ -57,7 +58,11 @@ private:
     RenderStreamLink::ScopedSchema m_defaultSchema;
     std::vector<float> m_floatValuesLast;
 
-    std::vector<UTextureRenderTarget2D*> m_texturesColourTransform;
+    // Intermediate targets for incoming texture params when OCIO is enabled. These outlive any one
+    // world (the selector persists across map changes), so they live in the transient package and are
+    // held via TStrongObjectPtr rather than AddToRoot - a rooted object outered to a world asserts in
+    // MarkAsGarbage when that world is torn down (RSP-425).
+    std::vector<TStrongObjectPtr<UTextureRenderTarget2D>> m_texturesColourTransform;
     mutable FOpenColorIOColorConversionSettings m_colourConversionSettings;
     mutable bool m_isColourConfigurationEnabled = false;
 };
