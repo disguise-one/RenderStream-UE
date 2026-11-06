@@ -28,24 +28,6 @@
 
 #include "HardwareInfo.h"
 
-RenderStreamSceneSelector::~RenderStreamSceneSelector()
-{
-    // This can run after the UObject system has been torn down (module destruction at exit), at which
-    // point the textures have already been destroyed by the exit purge. Only touch them while UObjects
-    // are still alive; TStrongObjectPtr's own release is likewise skipped during GExitPurge.
-    if (!GExitPurge && UObjectInitialized())
-    {
-        for (const TStrongObjectPtr<UTextureRenderTarget2D>& texture : m_texturesColourTransform)
-        {
-            if (texture.IsValid())
-            {
-                texture->ReleaseResource();
-            }
-        }
-    }
-    m_texturesColourTransform.clear();
-}
-
 void RenderStreamSceneSelector::GetActorsInLevel(TArray<AActor*>& Actors, ULevel* Level) const
 {
     if (!Level)
@@ -940,8 +922,7 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 {
                     if (iImage >= m_texturesColourTransform.size())
                     {
-                        // Not UKismetRenderingLibrary::CreateRenderTarget2D: that outers the target to the
-                        // world context object (an actor in the current level), which ties it to that world.
+                        // Transient parent so these can survive amp switching
                         UTextureRenderTarget2D* texture = NewObject<UTextureRenderTarget2D>(GetTransientPackage());
                         texture->RenderTargetFormat = Texture->RenderTargetFormat;
                         texture->ClearColor = FLinearColor::Black;
