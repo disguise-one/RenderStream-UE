@@ -21,27 +21,12 @@
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "UObject/TextProperty.h"
+#include "UObject/Package.h"
 
 #include "VulkanRHIPrivate.h"
 #include "VulkanResources.h"
 
 #include "HardwareInfo.h"
-
-RenderStreamSceneSelector::~RenderStreamSceneSelector()
-{
-    for (UTextureRenderTarget2D* texture : m_texturesColourTransform)
-    {
-        if (texture)
-        {
-            if (texture->IsRooted())
-            {
-                texture->RemoveFromRoot();
-            }
-
-            UKismetRenderingLibrary::ReleaseRenderTarget2D(texture);
-        }
-    }
-}
 
 void RenderStreamSceneSelector::GetActorsInLevel(TArray<AActor*>& Actors, ULevel* Level) const
 {
@@ -937,22 +922,20 @@ void RenderStreamSceneSelector::ApplyParameters(AActor* Root, uint64_t specHash,
                 {
                     if (iImage >= m_texturesColourTransform.size())
                     {
-                        UTextureRenderTarget2D* texture = UKismetRenderingLibrary::CreateRenderTarget2D(
-                            Root,
-                            Texture->SizeX,
-                            Texture->SizeY,
-                            Texture->RenderTargetFormat
-                        );
-
+                        // Transient parent so these can survive amp switching
+                        UTextureRenderTarget2D* texture = NewObject<UTextureRenderTarget2D>(GetTransientPackage());
+                        texture->RenderTargetFormat = Texture->RenderTargetFormat;
+                        texture->ClearColor = FLinearColor::Black;
                         texture->SRGB = 0;
                         texture->bForceLinearGamma = true;
-
-                        texture->AddToRoot();
+                        texture->bAutoGenerateMips = false;
+                        // Resized to the incoming frame below; just needs a valid initial size.
+                        texture->InitAutoFormat(FMath::Max(Texture->SizeX, 1), FMath::Max(Texture->SizeY, 1));
                         texture->UpdateResourceImmediate(true);
 
-                        m_texturesColourTransform.push_back(std::move(texture));
+                        m_texturesColourTransform.emplace_back(texture);
                     }
-                    UTextureRenderTarget2D* textureColourTransform = m_texturesColourTransform[iImage];
+                    UTextureRenderTarget2D* textureColourTransform = m_texturesColourTransform[iImage].Get();
 
                     if (Texture->OverrideFormat != EPixelFormat::PF_FloatRGBA)
                     {
