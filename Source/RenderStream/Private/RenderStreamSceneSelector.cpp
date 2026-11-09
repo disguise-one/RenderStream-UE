@@ -301,7 +301,7 @@ bool RenderStreamSceneSelector::ValidateParameters(const RenderStreamLink::Remot
     if (!ignoreParameterCount && offset < sceneParameters.nParameters)
     {
         UE_LOG(LogRenderStream, Error,
-            TEXT("Unexpected extra parameters in schema (nactors = %d, offset = %d, nparams = %d)"), 
+            TEXT("Unexpected extra parameters in schema (nactors = %d, offset = %zu, nparams = %d)"), 
             Actors.Num(), offset, sceneParameters.nParameters);
         return false;
     }
@@ -603,7 +603,7 @@ size_t RenderStreamSceneSelector::ValidateParameters(const AActor* Root, RenderS
         }
     }
 
-    UE_LOG(LogRenderStream, Log, TEXT("Exposed level '%s' with %d parameters"), *Root->GetActorNameOrLabel(), nParameters);
+    UE_LOG(LogRenderStream, Log, TEXT("Exposed level '%s' with %zu parameters"), *Root->GetActorNameOrLabel(), nParameters);
     return nParameters;
 }
 
