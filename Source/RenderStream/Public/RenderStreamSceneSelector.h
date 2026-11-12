@@ -3,6 +3,7 @@
 #include "RenderStreamLink.h"
 #include <vector>
 #include "Engine/TextureRenderTarget2D.h"
+#include "UObject/StrongObjectPtr.h"
 #include "OpenColorIOColorSpace.h"
 
 class UWorld;
@@ -12,7 +13,7 @@ class AActor;
 class RENDERSTREAM_API RenderStreamSceneSelector
 {
 public:
-    virtual ~RenderStreamSceneSelector();
+    virtual ~RenderStreamSceneSelector() = default;
     void LoadSchemas(const UWorld& world);
     virtual void ApplyScene(const UWorld& world, uint32_t sceneId) = 0;
 
@@ -57,7 +58,8 @@ private:
     RenderStreamLink::ScopedSchema m_defaultSchema;
     std::vector<float> m_floatValuesLast;
 
-    std::vector<UTextureRenderTarget2D*> m_texturesColourTransform;
+    // Intermediate targets for OCIO texture params; persist across map changes.
+    std::vector<TStrongObjectPtr<UTextureRenderTarget2D>> m_texturesColourTransform;
     mutable FOpenColorIOColorConversionSettings m_colourConversionSettings;
     mutable bool m_isColourConfigurationEnabled = false;
 };
