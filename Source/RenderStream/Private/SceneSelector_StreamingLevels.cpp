@@ -71,7 +71,7 @@ void SceneSelector_StreamingLevels::ApplyScene(const UWorld& World, uint32_t sce
 {
     if (sceneId >= m_specs.size())
     {
-        UE_LOG(LogRenderStream, Error, TEXT("Unable to get frame parameters - scene id %d >= %d"), sceneId, m_specs.size());
+        UE_LOG(LogRenderStream, Error, TEXT("Unable to get frame parameters - scene id %u >= %zu"), sceneId, m_specs.size());
         return;
     }
 

@@ -752,7 +752,7 @@ void FRenderStreamModule::OnPostEngineInit()
         break;
 
     default:
-        UE_LOG(LogRenderStream, Error, TEXT("Unknown scene selector option %d - defaulting to none"), settings->SceneSelector);
+        UE_LOG(LogRenderStream, Error, TEXT("Unknown scene selector option %d - defaulting to none"), static_cast<int32>(settings->SceneSelector));
         m_sceneSelector = std::make_unique<SceneSelector_None>();
     }
 
