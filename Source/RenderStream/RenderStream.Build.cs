@@ -43,6 +43,7 @@ public class RenderStream : ModuleRules
                 "JsonUtilities", 
                 "DisplayCluster",
                 "DisplayClusterConfiguration",
+                "DisplayClusterShaders",
                 "HeadMountedDisplay",
                 "EngineSettings",
                 "AnimGraphRuntime"

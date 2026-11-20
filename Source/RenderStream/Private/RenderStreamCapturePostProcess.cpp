@@ -10,6 +10,9 @@
 #include "RenderStreamProjectionPolicy.h"
 #include "Render/Viewport/IDisplayClusterViewportManager.h"
 #include "Render/Viewport/IDisplayClusterViewportProxy.h"
+#include "Misc/DisplayClusterColorEncoding.h"
+#include "IDisplayClusterShaders.h"
+#include "IDisplayClusterShadersTextureUtils.h"
 
 #include "Engine/World.h"
 
@@ -120,7 +123,21 @@ void FRenderStreamCapturePostProcess::PerformPostProcessViewAfterWarpBlend_Rende
         }
         else
         {
-            Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+            // Before UE5.8 nDisplay re-encoded to gamma 2.2 when resolving into InputShaderResource
+            // 5.8+ it tags that resource with the engine display gamma and skips the conversion
+            const FDisplayClusterColorEncoding SourceEncoding = ViewportProxy->GetResourceColorEncoding_RenderThread(resourceType);
+            if (SourceEncoding.GetEqualEncoding() != EDisplayClusterColorEncoding::sRGB)
+            {
+                FTextureRHIRef& OutputTex = Module->GammaOutputTextures.FindOrAdd(ViewportId);
+                FIntRect OutputRect;
+                ApplyGammaEncoding(RHICmdList, Resources[0], Rects[0], SourceEncoding, OutputTex, OutputRect);
+
+                Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, OutputTex, OutputRect);
+            }
+            else
+            {
+                Stream->SendFrame_RenderingThread(RHICmdList, frameResponse, Resources[0], Rects[0]);
+            }
         }
     }
 
@@ -177,6 +194,35 @@ void FRenderStreamCapturePostProcess::ApplyOCIOTransform(FRHICommandListImmediat
         OCIOGamma);
 
     GraphBuilder.Execute();
+}
+
+void FRenderStreamCapturePostProcess::ApplyGammaEncoding(FRHICommandListImmediate& RHICmdList, FRHITexture* Resource, const FIntRect& Rect, const FDisplayClusterColorEncoding& InputEncoding, FTextureRHIRef& OutputTex, FIntRect& OutputRect) const
+{
+    const FIntPoint OutputSize(Rect.Width(), Rect.Height());
+
+    if (!OutputTex.IsValid() ||
+        OutputTex->GetSizeX() != (uint32)OutputSize.X ||
+        OutputTex->GetSizeY() != (uint32)OutputSize.Y ||
+        OutputTex->GetFormat() != Resource->GetFormat())
+    {
+        const FRHITextureCreateDesc Desc =
+            FRHITextureCreateDesc::Create2D(TEXT("RSCaptureGammaOutput"))
+            .SetExtent(OutputSize.X, OutputSize.Y)
+            .SetFormat(Resource->GetFormat())
+            .SetFlags(ETextureCreateFlags::RenderTargetable | ETextureCreateFlags::ShaderResource)
+            .SetClearValue(FClearValueBinding::Black);
+        OutputTex = RHICreateTexture(Desc);
+    }
+
+    OutputRect = FIntRect(FIntPoint::ZeroValue, OutputSize);
+
+    // Use nDisplay's own resolver so the conversion matches what it did pre-5.8
+    IDisplayClusterShaders::Get().CreateTextureUtils_RenderThread(RHICmdList)
+        ->SetInput(FDisplayClusterShadersTextureViewport(Resource, Rect, TEXT("RSCaptureGammaInput")))
+        ->SetInputEncoding(InputEncoding)
+        ->SetOutput(FDisplayClusterShadersTextureViewport(OutputTex, OutputRect, TEXT("RSCaptureGammaOutput")))
+        ->SetOutputEncoding(FDisplayClusterColorEncoding(EDisplayClusterColorEncoding::Gamma, InputEncoding.Premultiply))
+        ->Resolve();
 }
 
 FRenderStreamPostProcessFactory::BasePostProcessPtr FRenderStreamPostProcessFactory::Create(
