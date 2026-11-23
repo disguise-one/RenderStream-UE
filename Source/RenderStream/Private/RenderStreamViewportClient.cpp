@@ -28,6 +28,7 @@
 #include "Audio/AudioDebug.h"
 
 #include "GameFramework/PlayerController.h"
+#include "Camera/PlayerCameraManager.h"
 #include "Debug/DebugDrawService.h"
 #include "ContentStreaming.h"
 #include "EngineModule.h"
@@ -675,6 +676,24 @@ void URenderStreamViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanv
                     WorldViewInfo.ViewToWorld = View->ViewMatrices.GetInvViewMatrix();
                     World->LastRenderTime = World->GetTimeSeconds();
                 }
+            }
+
+            // Mirror UGameViewportClient::Draw: consume each rendered player's camera cut flag once its views are
+            // calculated. FRenderStreamModule::ApplyCameraData sets the flag on the first frame and on every camera
+            // switch; without this reset it stays set forever, so every frame renders as a camera cut and TSR/TAA,
+            // Lumen and other temporal history is discarded each frame.
+            {
+                bool bAnyPlayerCameraCut = false;
+                for (const TPair<ULocalPlayer*, FSceneView*>& PlayerView : PlayerViewMap)
+                {
+                    APlayerController* ViewPlayerController = PlayerView.Key ? PlayerView.Key->PlayerController.Get() : nullptr;
+                    if (APlayerCameraManager* CameraManager = ViewPlayerController ? ViewPlayerController->PlayerCameraManager.Get() : nullptr)
+                    {
+                        bAnyPlayerCameraCut = bAnyPlayerCameraCut || CameraManager->bGameCameraCutThisFrame;
+                        CameraManager->bGameCameraCutThisFrame = false;
+                    }
+                }
+                InViewport->SetCameraCut(bAnyPlayerCameraCut);
             }
 
 #if CSV_PROFILER_STATS
