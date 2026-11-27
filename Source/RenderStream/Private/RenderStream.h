@@ -118,4 +118,7 @@ public:
     FOpenColorIORenderPassResources CachedOCIOResources;
     ERHIFeatureLevel::Type CachedOCIOFeatureLevel = ERHIFeatureLevel::SM5;
     TMap<FString, FTextureRHIRef> OCIOOutputTextures;
+
+    // Per-viewport intermediate used when the captured viewport is not gamma encoded
+    TMap<FString, FTextureRHIRef> GammaOutputTextures;
 };
